@@ -41,7 +41,7 @@ class _BranchCounterCreateScreenState extends State<BranchCounterCreateScreen> {
       <String, TextEditingController>{};
   String _kind = 'DELIVERY';
   String _payment = 'CASH';
-  String _category = 'PARCEL';
+  String _category = 'OTHER';
   String _routeId = '';
   bool _prohibitedItemsAcknowledged = false;
   bool _unusableWalletRetry = false;
@@ -104,7 +104,18 @@ class _BranchCounterCreateScreenState extends State<BranchCounterCreateScreen> {
       _kind = '${draft['kind'] ?? 'DELIVERY'}';
       _payment = '${draft['paymentMethod'] ?? 'CASH'}';
       _routeId = '${draft['routeId'] ?? ''}';
-      _category = '${parcel['category'] ?? 'PARCEL'}';
+      _category = '${parcel['category'] ?? 'OTHER'}';
+      if (!const [
+        'DOCUMENTS',
+        'ELECTRONICS',
+        'FASHION',
+        'FOOD_NON_PERISHABLE',
+        'COSMETICS',
+        'HOUSEHOLD_ITEMS',
+        'SPARE_PARTS',
+        'BUSINESS_GOODS',
+        'OTHER'
+      ].contains(_category)) _category = 'OTHER';
       _prohibitedItemsAcknowledged =
           draft['prohibitedItemsAcknowledged'] == true;
       _unusableWalletRetry =
@@ -186,14 +197,18 @@ class _BranchCounterCreateScreenState extends State<BranchCounterCreateScreen> {
       'quantity',
     ];
     for (final String key in required) {
-      if (_v(key).isEmpty) return 'Complete all required parcel and contact fields.';
+      if (_v(key).isEmpty)
+        return 'Complete all required parcel and contact fields.';
     }
     final int? quantity = int.tryParse(_v('quantity'));
-    if (quantity == null || quantity < 1) return 'Quantity must be at least one.';
+    if (quantity == null || quantity < 1)
+      return 'Quantity must be at least one.';
     if (_kind == 'INTERSTATE') {
-      if (_selectedRoute == null) return 'Select a configured interstate route.';
+      if (_selectedRoute == null)
+        return 'Select a configured interstate route.';
       final num? weight = num.tryParse(_v('weightKg'));
-      if (weight == null || weight <= 0) return 'Enter the parcel weight in kg.';
+      if (weight == null || weight <= 0)
+        return 'Enter the parcel weight in kg.';
       if (!_prohibitedItemsAcknowledged) {
         return 'Acknowledge the prohibited-items declaration before quoting this interstate parcel.';
       }
@@ -217,7 +232,8 @@ class _BranchCounterCreateScreenState extends State<BranchCounterCreateScreen> {
       final Map<String, dynamic> response = await widget.api.quote(_draft());
       final Map<String, dynamic> quote = _map(response['quote']);
       if (quote['quoteToken'] == null || quote['total'] == null) {
-        throw const CounterApiException('A complete server quote was not returned.');
+        throw const CounterApiException(
+            'A complete server quote was not returned.');
       }
       if (mounted) setState(() => _quote = quote);
     } catch (error) {
@@ -275,6 +291,10 @@ class _BranchCounterCreateScreenState extends State<BranchCounterCreateScreen> {
               'Could not save a safe retry record. No order was submitted.');
         }
       }
+      if (resume && !await widget.pendingStore.write(pending!)) {
+        throw const CounterApiException(
+            'Could not persist the saved retry record. No retry was submitted.');
+      }
       final Map<String, dynamic> response = await widget.api.createOrder(
         draft,
         quoteToken: quoteToken,
@@ -311,7 +331,7 @@ class _BranchCounterCreateScreenState extends State<BranchCounterCreateScreen> {
       _error = null;
       _kind = 'DELIVERY';
       _payment = 'CASH';
-      _category = 'PARCEL';
+      _category = 'OTHER';
       _routeId = '';
       _prohibitedItemsAcknowledged = false;
       _unusableWalletRetry = false;
@@ -382,10 +402,13 @@ class _BranchCounterCreateScreenState extends State<BranchCounterCreateScreen> {
       _textField('senderAddress', 'Pickup address'),
       _textField('senderLga', 'Origin LGA / city'),
       _textField('receiverName', 'Recipient name'),
-      _textField('receiverPhone', 'Recipient phone', keyboard: TextInputType.phone),
-      _textField('receiverEmail', 'Recipient email (optional)', required: false),
+      _textField('receiverPhone', 'Recipient phone',
+          keyboard: TextInputType.phone),
+      _textField('receiverEmail', 'Recipient email (optional)',
+          required: false),
       _textField('receiverAddress', 'Delivery address'),
-      if (_kind == 'DELIVERY') _textField('receiverLga', 'Destination LGA / city'),
+      if (_kind == 'DELIVERY')
+        _textField('receiverLga', 'Destination LGA / city'),
     ];
     return Scaffold(
       backgroundColor: _canvas,
@@ -429,7 +452,8 @@ class _BranchCounterCreateScreenState extends State<BranchCounterCreateScreen> {
                     if (_kind == 'INTERSTATE') ...<Widget>[
                       DropdownButtonFormField<String>(
                         key: const Key('counter-route'),
-                        value: _routes.any((route) => '${route['_id']}' == _routeId)
+                        value: _routes
+                                .any((route) => '${route['_id']}' == _routeId)
                             ? _routeId
                             : null,
                         decoration: const InputDecoration(
@@ -475,8 +499,7 @@ class _BranchCounterCreateScreenState extends State<BranchCounterCreateScreen> {
                         onChanged: _recovering
                             ? null
                             : (bool? value) => setState(() {
-                                  _prohibitedItemsAcknowledged =
-                                      value ?? false;
+                                  _prohibitedItemsAcknowledged = value ?? false;
                                   _quote = null;
                                 }),
                         controlAffinity: ListTileControlAffinity.leading,
@@ -498,13 +521,15 @@ class _BranchCounterCreateScreenState extends State<BranchCounterCreateScreen> {
               const SizedBox(height: 12),
               _Panel(
                 title: 'Parcel details',
-                subtitle: 'Be specific so the delivery team can identify the item.',
+                subtitle:
+                    'Be specific so the delivery team can identify the item.',
                 child: Column(children: <Widget>[
                   _textField('description', 'What is being sent?'),
                   const SizedBox(height: 12),
                   LayoutBuilder(builder: (context, bounds) {
-                    final double width =
-                        bounds.maxWidth >= 600 ? (bounds.maxWidth - 12) / 2 : bounds.maxWidth;
+                    final double width = bounds.maxWidth >= 600
+                        ? (bounds.maxWidth - 12) / 2
+                        : bounds.maxWidth;
                     return Wrap(spacing: 12, runSpacing: 12, children: [
                       SizedBox(
                         width: width,
@@ -515,14 +540,17 @@ class _BranchCounterCreateScreenState extends State<BranchCounterCreateScreen> {
                         width: width,
                         child: DropdownButtonFormField<String>(
                           value: _category,
-                          decoration:
-                              const InputDecoration(labelText: 'Parcel category'),
+                          decoration: const InputDecoration(
+                              labelText: 'Parcel category'),
                           items: const <String>[
-                            'PARCEL',
-                            'DOCUMENT',
-                            'FOOD',
-                            'FRAGILE',
+                            'DOCUMENTS',
                             'ELECTRONICS',
+                            'FASHION',
+                            'FOOD_NON_PERISHABLE',
+                            'COSMETICS',
+                            'HOUSEHOLD_ITEMS',
+                            'SPARE_PARTS',
+                            'BUSINESS_GOODS',
                             'OTHER'
                           ]
                               .map((String item) => DropdownMenuItem<String>(
@@ -531,7 +559,7 @@ class _BranchCounterCreateScreenState extends State<BranchCounterCreateScreen> {
                           onChanged: _recovering
                               ? null
                               : (String? value) => setState(() {
-                                    _category = value ?? 'PARCEL';
+                                    _category = value ?? 'OTHER';
                                     _quote = null;
                                   }),
                         ),
@@ -539,8 +567,8 @@ class _BranchCounterCreateScreenState extends State<BranchCounterCreateScreen> {
                     ]);
                   }),
                   const SizedBox(height: 12),
-                  _textField('specialHandlingNote',
-                      'Special instructions (optional)',
+                  _textField(
+                      'specialHandlingNote', 'Special instructions (optional)',
                       required: false, maxLines: 2),
                 ]),
               ),
@@ -598,13 +626,11 @@ class _BranchCounterCreateScreenState extends State<BranchCounterCreateScreen> {
                           'Delivery fee', '₦${_money(_quote!['deliveryFee'])}'),
                     ..._chargeDetails(_quote!['charges']),
                     const Divider(),
-                    _DetailLine(
-                        'Total', '₦${_money(_quote!['total'])}'),
+                    _DetailLine('Total', '₦${_money(_quote!['total'])}'),
                     if (_quote!['expiresAt'] != null)
                       Align(
                         alignment: Alignment.centerLeft,
-                        child: Text(
-                            'Quote valid until ${_quote!['expiresAt']}',
+                        child: Text('Quote valid until ${_quote!['expiresAt']}',
                             style: const TextStyle(
                                 color: Color(0xff718177), fontSize: 10)),
                       ),
@@ -623,7 +649,8 @@ class _BranchCounterCreateScreenState extends State<BranchCounterCreateScreen> {
                           child: CircularProgressIndicator(
                               strokeWidth: 2, color: Colors.white))
                       : const Icon(Icons.calculate_outlined),
-                  label: Text(_busy ? 'Getting authoritative quote…' : 'Get quote'),
+                  label: Text(
+                      _busy ? 'Getting authoritative quote…' : 'Get quote'),
                   style: FilledButton.styleFrom(
                       backgroundColor: _green,
                       minimumSize: const Size.fromHeight(50)),
@@ -631,8 +658,7 @@ class _BranchCounterCreateScreenState extends State<BranchCounterCreateScreen> {
               else
                 FilledButton.icon(
                   key: const Key('counter-submit-order'),
-                  onPressed:
-                      _busy || _unusableWalletRetry ? null : _submit,
+                  onPressed: _busy || _unusableWalletRetry ? null : _submit,
                   icon: _busy
                       ? const SizedBox(
                           width: 16,
@@ -644,9 +670,9 @@ class _BranchCounterCreateScreenState extends State<BranchCounterCreateScreen> {
                       ? 'Submitting safely…'
                       : _unusableWalletRetry
                           ? 'Wallet request needs support'
-                      : _recovering
-                          ? 'Retry saved order'
-                          : 'Register parcel'),
+                          : _recovering
+                              ? 'Retry saved order'
+                              : 'Register parcel'),
                   style: FilledButton.styleFrom(
                       backgroundColor: _green,
                       minimumSize: const Size.fromHeight(50)),
@@ -697,15 +723,16 @@ class _BranchCounterCreateScreenState extends State<BranchCounterCreateScreen> {
                       style: TextStyle(color: Color(0xff65776d))),
                   const SizedBox(height: 18),
                   _TrackingBlock(
-                    tracking: '${order['trackingNumber'] ?? 'Awaiting tracking'}',
+                    tracking:
+                        '${order['trackingNumber'] ?? 'Awaiting tracking'}',
                     receipt: '${order['receiptNumber'] ?? '—'}',
                   ),
                   const SizedBox(height: 12),
                   _DetailLine('Sender / recipient',
                       '${sender['name'] ?? 'Sender'} → ${receiver['name'] ?? 'Recipient'}'),
                   if (order['deliveryFee'] != null)
-                    _DetailLine('Delivery fee',
-                        '₦${_money(order['deliveryFee'])}'),
+                    _DetailLine(
+                        'Delivery fee', '₦${_money(order['deliveryFee'])}'),
                   ..._chargeDetails(order['charges']),
                   _DetailLine('Total', '₦${_money(order['total'])}'),
                   const _Notice(

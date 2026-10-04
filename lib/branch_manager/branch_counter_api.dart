@@ -59,11 +59,13 @@ class BranchCounterHttpApi implements BranchCounterApi {
     http.Client? client,
     this.baseUrl = 'https://api.servicepay.ng/api',
     this.tokenReader = SessionStore.readToken,
+    this.requestTimeout = const Duration(seconds: 35),
   }) : _client = client ?? http.Client();
 
   final http.Client _client;
   final String baseUrl;
   final Future<String?> Function() tokenReader;
+  final Duration requestTimeout;
 
   String get _root {
     final String value = baseUrl.replaceFirst(RegExp(r'/+$'), '');
@@ -100,11 +102,14 @@ class BranchCounterHttpApi implements BranchCounterApi {
     late final http.Response response;
     switch (method) {
       case 'GET':
-        response = await _client.get(uri, headers: headers);
+        response =
+            await _client.get(uri, headers: headers).timeout(requestTimeout);
         break;
       case 'POST':
-        response = await _client.post(uri,
-            headers: headers, body: jsonEncode(body ?? <String, dynamic>{}));
+        response = await _client
+            .post(uri,
+                headers: headers, body: jsonEncode(body ?? <String, dynamic>{}))
+            .timeout(requestTimeout);
         break;
       default:
         throw ArgumentError.value(method, 'method');
@@ -233,9 +238,30 @@ class CounterPendingIntentStore {
 
   Future<String> keyForAccount() async {
     final SharedPreferences prefs = await preferencesLoader();
-    final String account =
-        (prefs.getString('user_id') ?? (await tokenReader()) ?? '').trim();
-    // Hash the stable account identifier; token material is never persisted.
+    final String token = (await tokenReader() ?? '').trim();
+    String account = '';
+    try {
+      final parts = token.split('.');
+      if (parts.length == 3) {
+        final claims = jsonDecode(
+            utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))));
+        if (claims is Map) {
+          account =
+              '${claims['id'] ?? claims['_id'] ?? claims['sub'] ?? ''}'.trim();
+        }
+      }
+    } catch (_) {
+      // Fixtures/older sessions may instead have the saved account ID.
+    }
+    account = account.isNotEmpty
+        ? account
+        : (prefs.getString('user_id') ?? '').trim();
+    if (account.isEmpty) {
+      throw const CounterApiException(
+          'Sign in again before saving or resuming a counter request.');
+    }
+    // Claims only partition local retry storage; the server authenticates them.
+    // A renewed token for the same account must preserve the same retry record.
     final String accountHash =
         sha256.convert(utf8.encode(account)).toString().substring(0, 24);
     return 'branch_counter_pending_$accountHash';

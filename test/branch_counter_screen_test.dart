@@ -9,7 +9,8 @@ import 'package:servicepay_app/branch_manager/branch_counter_screen.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  SharedPreferences.setMockInitialValues(<String, Object>{});
+  SharedPreferences.setMockInitialValues(
+      <String, Object>{'user_id': 'test-branch-account'});
 
   late _FakeCounterApi api;
   late CounterPendingIntentStore store;
@@ -143,8 +144,8 @@ void main() {
       'weightKg': '2.4',
     };
     for (final MapEntry<String, String> entry in values.entries) {
-      await tester.enterText(find.byKey(Key('counter-field-${entry.key}')),
-          entry.value);
+      await tester.enterText(
+          find.byKey(Key('counter-field-${entry.key}')), entry.value);
     }
     await tester.tap(find.byKey(const Key('counter-get-quote')));
     await tester.pumpAndSettle();
@@ -196,7 +197,10 @@ void main() {
     };
     await store.write(<String, dynamic>{
       'draft': draft,
-      'quote': <String, dynamic>{'quoteToken': 'bound-old-quote', 'total': 2500},
+      'quote': <String, dynamic>{
+        'quoteToken': 'bound-old-quote',
+        'total': 2500
+      },
       'quoteToken': 'bound-old-quote',
       'idempotencyKey': 'legacy-wallet-request',
       'fingerprint': jsonEncode(draft),
@@ -220,8 +224,8 @@ void main() {
       find.byType(Scrollable).first,
       const Offset(0, -250),
     );
-    final FilledButton retry = tester.widget<FilledButton>(
-        find.byKey(const Key('counter-submit-order')));
+    final FilledButton retry = tester
+        .widget<FilledButton>(find.byKey(const Key('counter-submit-order')));
     expect(retry.onPressed, isNull);
     expect(api.idempotencyKeys, isEmpty);
     expect(api.quoteCalls, 0);
@@ -444,17 +448,17 @@ class _FakeCounterApi implements BranchCounterApi {
     quoteCalls++;
     lastQuoteDraft = draft;
     return <String, dynamic>{
-        'success': true,
-        'quote': <String, dynamic>{
-          'deliveryFee': 2000,
-          'charges': <Map<String, dynamic>>[
-            <String, dynamic>{'name': 'Handling', 'amount': 500}
-          ],
-          'total': 2500,
-          'quoteToken': 'quote-one',
-          'expiresAt': '2026-06-03T12:30:00Z',
-        },
-      };
+      'success': true,
+      'quote': <String, dynamic>{
+        'deliveryFee': 2000,
+        'charges': <Map<String, dynamic>>[
+          <String, dynamic>{'name': 'Handling', 'amount': 500}
+        ],
+        'total': 2500,
+        'quoteToken': 'quote-one',
+        'expiresAt': '2026-06-03T12:30:00Z',
+      },
+    };
   }
 
   @override
