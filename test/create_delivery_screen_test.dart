@@ -9,7 +9,7 @@ void main() {
   });
 
   testWidgets(
-    'shows the simplified fixed-fee delivery request form',
+    'shows the delivery request form without inventing an unavailable live price',
     (WidgetTester tester) async {
       await tester.pumpWidget(
         const MaterialApp(
@@ -32,7 +32,8 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Delivery Fee'), findsOneWidget);
-      expect(find.text('₦2,000'), findsOneWidget);
+      expect(find.text('₦2,000'), findsNothing);
+      expect(find.text('Retry price'), findsOneWidget);
       expect(find.text('Request Delivery'), findsOneWidget);
 
       expect(find.text('Pickup State'), findsOneWidget);

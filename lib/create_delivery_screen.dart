@@ -4,6 +4,7 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'services/session_store.dart';
 import 'servicepay_theme.dart';
@@ -54,6 +55,10 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
   String profileAddress = '';
   bool useProfileDetails = false;
   String? pendingIdempotencyKey;
+  double? deliveryPrice;
+  int? deliveryPriceVersion;
+  bool isLoadingPrice = true;
+  String priceError = '';
 
   @override
   void initState() {
@@ -82,7 +87,36 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
     await Future.wait<void>([
       loadProfileDetails(),
       loadDeliveryCoverage(),
+      loadDeliveryPrice(),
     ]);
+  }
+
+  Future<void> loadDeliveryPrice() async {
+    if (mounted) {
+      setState(() { isLoadingPrice = true; priceError = ''; });
+    }
+    try {
+      final token = await getSavedToken();
+      final response = await http.get(
+        Uri.parse('$baseUrl/delivery/pricing'),
+        headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'},
+      ).timeout(const Duration(seconds: 35));
+      final root = decodeResponse(response);
+      final value = double.tryParse('${root['standardDeliveryFee']}');
+      final version = int.tryParse('${root['version']}');
+      if (response.statusCode != 200 || value == null || !value.isFinite ||
+          value <= 0 || version == null || version < 0) {
+        throw Exception('Unable to load the current Delivery price. Please retry.');
+      }
+      if (mounted) setState(() { deliveryPrice = value; deliveryPriceVersion = version; });
+    } catch (error) {
+      if (mounted) setState(() {
+        deliveryPrice = null; deliveryPriceVersion = null;
+        priceError = 'Unable to load the current Delivery price. Please retry.';
+      });
+    } finally {
+      if (mounted) setState(() { isLoadingPrice = false; });
+    }
   }
 
   Future<String> getDeliveryIdempotencyKey() async {
@@ -541,6 +575,10 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
   }
 
   Future<void> createDelivery() async {
+    if (isLoadingPrice || deliveryPrice == null || deliveryPriceVersion == null) {
+      await loadDeliveryPrice();
+      return;
+    }
     FocusScope.of(context).unfocus();
 
     if (!(formKey.currentState?.validate() ?? false)) {
@@ -587,6 +625,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
               'receiverName': receiverNameController.text.trim(),
               'receiverPhone': receiverPhoneController.text.trim(),
               'packageDescription': packageDescriptionController.text.trim(),
+              'deliveryPriceVersion': deliveryPriceVersion,
             }),
           )
           .timeout(
@@ -700,6 +739,9 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
           );
         }
       } else {
+        if (decodeResponse(response)['code'] == 'DELIVERY_PRICE_CHANGED') {
+          await loadDeliveryPrice();
+        }
         final String message = getErrorMessage(response);
         if (response.statusCode >= 400 &&
             response.statusCode < 500 &&
@@ -1310,7 +1352,8 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
                   ),
-                  child: const ListTile(
+                  child: ListTile(
+                    subtitle: priceError.isEmpty ? null : Text(priceError),
                     leading: Icon(
                       Icons.payments_outlined,
                       color: primaryGreen,
@@ -1319,9 +1362,13 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
                       'Delivery Fee',
                       style: TextStyle(fontWeight: FontWeight.w700),
                     ),
-                    trailing: Text(
-                      '₦2,000',
-                      style: TextStyle(
+                    trailing: isLoadingPrice
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                        : deliveryPrice == null
+                        ? TextButton(onPressed: loadDeliveryPrice, child: const Text('Retry price'))
+                        : Text(
+                      NumberFormat.currency(locale: 'en_NG', symbol: '₦', decimalDigits: 2).format(deliveryPrice),
+                      style: const TextStyle(
                         color: primaryGreen,
                         fontSize: 17,
                         fontWeight: FontWeight.w800,
@@ -1336,7 +1383,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
                   width: double.infinity,
                   height: 54,
                   child: FilledButton.icon(
-                    onPressed: isLoading ? null : createDelivery,
+                    onPressed: isLoading || isLoadingPrice || deliveryPrice == null ? null : createDelivery,
                     icon: isLoading
                         ? const SizedBox(
                             width: 22,
