@@ -5,6 +5,7 @@ const LogisticsRoute = require("../models/logisticsRoute.model");
 const Shipment = require("../models/interstateShipment.model");
 const Branch = require("../models/branch.model");
 const controller = require("../controllers/interstateLogistics.controller");
+const pricingService = require("../services/adminDeliveryPricing.service");
 
 const response = () => ({
   statusCode: 200,
@@ -43,6 +44,7 @@ test("customer route listing requests only active non-archived routes", async ()
 });
 
 test("route lifecycle endpoints activate, deactivate, archive, and restore safely", async () => {
+  const originalStatus = pricingService.status;
   const originalFindById = LogisticsRoute.findById;
   const originalExists = Shipment.exists;
   const originalStartSession = mongoose.startSession;
@@ -62,6 +64,11 @@ test("route lifecycle endpoints activate, deactivate, archive, and restore safel
     async save() { this.saveCalls += 1; return this; },
   };
   mongoose.startSession = async () => session;
+  pricingService.status = async (req, status) => {
+    route.status = status;
+    await route.save();
+    return route;
+  };
   LogisticsRoute.findById = async () => route;
   Shipment.exists = () => ({ session: async () => null });
   const req = {
@@ -89,6 +96,7 @@ test("route lifecycle endpoints activate, deactivate, archive, and restore safel
     assert.equal(route.status, "INACTIVE");
     assert.equal(route.archivedAt, null);
   } finally {
+    pricingService.status = originalStatus;
     LogisticsRoute.findById = originalFindById;
     Shipment.exists = originalExists;
     mongoose.startSession = originalStartSession;

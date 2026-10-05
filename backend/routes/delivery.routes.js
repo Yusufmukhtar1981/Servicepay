@@ -44,6 +44,16 @@ const requireDeliveryAdmin = adminOnly(
 const requireHeadOfficeDeliveryAdmin = adminOnly(
   "HEAD_OFFICE", "HEAD_OFFICE_ADMIN", "ADMIN", "SUPER_ADMIN"
 );
+router.get("/pricing", protect, async (req, res) => {
+  try {
+    const price = await require("../services/deliveryPricing.service").intraState();
+    res.set("Cache-Control", "no-store");
+    res.json({ success: true, standardDeliveryFee: price.price,
+      version: price.version, updatedAt: price.updatedAt });
+  } catch (error) {
+    res.status(503).json({ success: false, message: "Delivery pricing is temporarily unavailable. Please retry." });
+  }
+});
 
 /*
  * Zonal managers have a separate, scope-aware oversight surface.  In

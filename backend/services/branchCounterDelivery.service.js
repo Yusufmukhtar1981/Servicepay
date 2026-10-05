@@ -73,7 +73,7 @@ async function price(req, input, session = null) {
     if (state(input.receiver.state) !== state(b.state)) throw fail("Choose Interstate Logistics for different states.");
     const live = await Coverage.findOne({ stateCode: state(b.state).replace(/ /g, "_"), isLive: true }).session(session);
     if (!live) throw fail("Delivery is not active in this state.", 409);
-    fee = Delivery.STANDARD_DELIVERY_FEE;
+    fee = (await require("./deliveryPricing.service").intraState(session, { admit: Boolean(session) })).price;
     breakdown = { deliveryFee: fee };
   } else {
     if (!mongoose.isValidObjectId(input.routeId)) throw fail("Select a configured Interstate route.");
@@ -197,6 +197,7 @@ async function create(req) {
         creationChannel: "OFFICE", createdBy: req.user._id, officeName: b.name,
         orderReference: common.trackingNumber, originBranchId: b._id,
         destinationBranchId: current.route.destinationBranchId, routeId: current.route._id,
+        pricingSnapshot: require("./interstatePricing.service").snapshotPricing(current.route),
         pickupMethod: "BRANCH_DROP_OFF", deliveryMethod: "DOOR_DELIVERY", serviceType: "STANDARD",
         quote: { total: current.fee, breakdown: current.breakdown,
           routeVersion: verified.routeVersion }, status: "RECEIVED_AT_ORIGIN_HUB",

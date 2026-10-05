@@ -8,6 +8,7 @@ const logisticsRouteSchema = new mongoose.Schema({
   destinationBranchId: { type: mongoose.Schema.Types.ObjectId, ref: "Branch", required: true, index: true },
   distanceKm: { type: Number, min: 0, default: null },
   baseFare: { type: Number, required: true, min: 0 },
+  pricingMode: { type: String, enum: ["CALCULATED", "FIXED"], default: "CALCULATED" },
   minimumWeightKg: { type: Number, required: true, min: 0, default: 0 },
   maximumWeightKg: { type: Number, required: true, min: 0 },
   pricePerAdditionalKg: { type: Number, required: true, min: 0 },

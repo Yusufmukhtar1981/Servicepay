@@ -194,9 +194,14 @@ exports.createDelivery = async (req, res) => {
     }).select("+idempotencyFingerprint").lean();
     if (existingRequest) return await returnExistingRequest(existingRequest);
 
-    const deliveryFee = Delivery.STANDARD_DELIVERY_FEE;
-
     session.startTransaction();
+    const admittedPrice = await require("../services/deliveryPricing.service").intraState(session, { admit: true });
+    const deliveryFee = admittedPrice.price;
+    if (req.body.deliveryPriceVersion !== undefined &&
+        req.body.deliveryPriceVersion !== admittedPrice.version) {
+      throw Object.assign(new Error("Delivery pricing changed. Refresh and confirm the current price before submitting."),
+        { status: 409, code: "DELIVERY_PRICE_CHANGED" });
+    }
 
     const concurrentRequest = await Delivery.findOne({
       customerId: req.user._id,
@@ -568,10 +573,11 @@ exports.createDelivery = async (req, res) => {
       error
     );
 
-    return res.status(500).json({
+    return res.status(error.status || 500).json({
       success: false,
+      ...(error.code === "DELIVERY_PRICE_CHANGED" ? { code: error.code } : {}),
       message:
-        "Unable to create delivery request.",
+        error.status ? error.message : "Unable to create delivery request.",
       error:
         error.message,
     });

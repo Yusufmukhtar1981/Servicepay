@@ -196,7 +196,7 @@ exports.createShipment = async (req, res, retryAttempt = 0) => {
       error.status = 409; error.code = "QUOTE_STALE";
       throw error;
     }
-    const [shipment] = await Shipment.create([{ customerId: req.user._id, trackingNumber: trackingNumber(), orderReference: ref(), createdBy: req.user._id, routeId: route._id, originBranchId: route.originBranchId, destinationBranchId: route.destinationBranchId, sender: { ...b.sender, state: route.originState }, receiver: { ...b.receiver, state: route.destinationState }, pickupMethod: b.pickupMethod, deliveryMethod: b.deliveryMethod, parcel: { ...b.parcel, dimensions: input.dimensions, specialHandlingNote: b.parcel.specialHandlingNote ?? b.parcel.specialHandling ?? "" }, serviceType: b.serviceType, protection: !!b.protection, quote: { routeVersion: savedQuote.routeVersion, breakdown: quote.breakdown, total: quote.total, expectedDelivery: quote.expectedDelivery }, status: "AWAITING_PAYMENT" }], { session });
+    const [shipment] = await Shipment.create([{ pricingSnapshot: require("../services/interstatePricing.service").snapshotPricing(route), customerId: req.user._id, trackingNumber: trackingNumber(), orderReference: ref(), createdBy: req.user._id, routeId: route._id, originBranchId: route.originBranchId, destinationBranchId: route.destinationBranchId, sender: { ...b.sender, state: route.originState }, receiver: { ...b.receiver, state: route.destinationState }, pickupMethod: b.pickupMethod, deliveryMethod: b.deliveryMethod, parcel: { ...b.parcel, dimensions: input.dimensions, specialHandlingNote: b.parcel.specialHandlingNote ?? b.parcel.specialHandling ?? "" }, serviceType: b.serviceType, protection: !!b.protection, quote: { routeVersion: savedQuote.routeVersion, breakdown: quote.breakdown, total: quote.total, expectedDelivery: quote.expectedDelivery }, status: "AWAITING_PAYMENT" }], { session });
     await History.create([{ shipmentId: shipment._id, status: "AWAITING_PAYMENT", actorId: req.user._id, actorRole: req.user.role, branchId: route.originBranchId, note: "Shipment created" }], { session });
     await session.commitTransaction();
     return res.status(201).json({ success: true, data: shipment, shipment });
@@ -223,11 +223,10 @@ exports.pay = async (req, res) => {
       paymentStatus: "UNPAID", $or: [{ status: "AWAITING_PAYMENT" },
         { status: "RECEIVED_AT_ORIGIN_HUB", creationChannel: "OFFICE" }] }).session(session);
     if (!shipment) throw Object.assign(new Error("Shipment is not available for payment."), { status: 404 });
-    const receivedOfficeParcel = shipment.creationChannel === "OFFICE" && shipment.status === "RECEIVED_AT_ORIGIN_HUB";
-    const route = await LogisticsRoute.findOne(receivedOfficeParcel ?
-      { _id: shipment.routeId, status: "ACTIVE", isArchived: { $ne: true } } :
-      customerRouteFilter({ _id: shipment.routeId })).session(session);
-    if (!route || shipment.quote.routeVersion !== String(route.updatedAt.getTime())) throw Object.assign(new Error("Route pricing changed. Request a new quote before payment."), { status: 409, code: "QUOTE_STALE" });
+    // Admission captured the authoritative total. Subsequent tariff or
+    // availability edits cannot change a pending order's agreed price.
+    const route = await LogisticsRoute.findById(shipment.routeId).session(session);
+    if (!route) throw Object.assign(new Error("The booked route requires staff review."), { status: 409, code: "BOOKED_ROUTE_UNAVAILABLE" });
     shipment.paymentIdempotencyKey = key; shipment.paymentStatus = "PAID"; shipment.paidAt = new Date();
     if (!receivedOfficeParcel) shipment.status = "PAID";
     if (shipment.counter) {
@@ -285,9 +284,20 @@ exports.branchStatus = async (req, res) => {
   if (status === "VERIFIED_AT_ORIGIN_HUB" && req.body.verifiedWeightKg !== undefined) {
     const verifiedWeightKg = Number(req.body.verifiedWeightKg);
     if (!Number.isFinite(verifiedWeightKg) || verifiedWeightKg <= 0) return res.status(400).json({ success: false, message: "Verified weight must be valid." });
-    const route = await LogisticsRoute.findOne(activeRouteFilter({ _id: shipment.routeId }));
-    if (!route) return res.status(409).json({ success: false, message: "Route is unavailable for weight verification." });
-    const recalculated = calculateInterstateQuote(route, { weightKg: verifiedWeightKg, declaredValue: shipment.parcel.declaredValue, dimensions: shipment.parcel.dimensions, serviceType: shipment.serviceType, pickupMethod: shipment.pickupMethod, deliveryMethod: shipment.deliveryMethod, protection: shipment.protection, fragile: shipment.parcel.fragile });
+    let bookedPricing = shipment.pricingSnapshot;
+    if (!bookedPricing && verifiedWeightKg !== Number(shipment.parcel.weightKg)) {
+      const originalRoute = await LogisticsRoute.findById(shipment.routeId);
+      if (!originalRoute || String(originalRoute.updatedAt.getTime()) !== shipment.quote.routeVersion)
+        return res.status(409).json({ success: false, code: "ORIGINAL_PRICE_REVIEW_REQUIRED",
+          message: "This legacy order needs review using its original tariff. Its saved price has not been changed." });
+      bookedPricing = originalRoute;
+    }
+    const recalculated = bookedPricing ? calculateInterstateQuote(bookedPricing,
+      { weightKg: verifiedWeightKg, declaredValue: shipment.parcel.declaredValue,
+        dimensions: shipment.parcel.dimensions, serviceType: shipment.serviceType,
+        pickupMethod: shipment.pickupMethod, deliveryMethod: shipment.deliveryMethod,
+        protection: shipment.protection, fragile: shipment.parcel.fragile }) :
+      { total: shipment.quote.total, breakdown: shipment.quote.breakdown };
     const difference = Number((recalculated.total - shipment.quote.total).toFixed(2));
     shipment.verifiedWeightKg = verifiedWeightKg;
     shipment.priceAdjustments.push({ declaredWeightKg: shipment.parcel.weightKg, verifiedWeightKg, previousTotal: shipment.quote.total, adjustedTotal: recalculated.total, difference, actorId: req.user._id });
@@ -397,6 +407,7 @@ exports.verifyDelivery = async (req, res) => {
   } finally { await session.endSession(); }
 };
 const routeFields = [
+  "pricingMode",
   "name", "originState", "originBranchId", "destinationState",
   "destinationBranchId", "distanceKm", "baseFare", "minimumWeightKg",
   "maximumWeightKg", "pricePerAdditionalKg", "maximumDimensionCm", "oversizeSurcharge", "expressEnabled",
@@ -416,6 +427,7 @@ const picked = (body, fields) => Object.fromEntries(
     .map((field) => [field, body[field]]),
 );
 const validateRouteInput = (input) => {
+  if (input.pricingMode !== undefined && !["CALCULATED", "FIXED"].includes(input.pricingMode)) throw new Error("Invalid route pricing mode.");
   for (const field of ["name", "originState", "originBranchId", "destinationState", "destinationBranchId", "standardDeliveryTime"]) {
     if (!String(input[field] || "").trim()) throw new Error(`${field} is required.`);
   }
@@ -469,9 +481,9 @@ exports.createRoute = async (req, res) => {
     const input = picked(req.body, routeFields);
     validateRouteInput(input);
     await validateRouteBranches(input);
-    const route = await LogisticsRoute.create({ customerVisible: false, ...input, isArchived: false, archivedAt: null, archivedBy: null, archiveReason: "", createdBy: req.user._id });
-    res.status(201).json({ success: true, route });
-  } catch (e) { res.status(e.code === 11000 ? 409 : 400).json({ success: false, code: e.code === 11000 ? "ROUTE_ALREADY_EXISTS" : undefined, message: e.code === 11000 ? "A route already exists for this directional branch pair." : e.message }); }
+    const result = await require("../services/adminDeliveryPricing.service").createRoute(req, input);
+    res.status(201).json({ success: true, ...result });
+  } catch (e) { require("./adminDeliveryPricing.controller").error(res, e); }
 };
 exports.updateRoute = async (req, res) => {
   try {
@@ -482,18 +494,15 @@ exports.updateRoute = async (req, res) => {
     const merged = { ...existing.toObject(), ...input };
     validateRouteInput(merged);
     await validateRouteBranches(merged);
-    const route = await LogisticsRoute.findByIdAndUpdate(req.params.id, { ...input, updatedBy: req.user._id }, { new: true, runValidators: true });
+    const route = await require("../services/adminDeliveryPricing.service").updateRoute(req, input);
     res.json({ success: true, route });
-  } catch (e) { res.status(e.code === 11000 ? 409 : 400).json({ success: false, code: e.code === 11000 ? "ROUTE_ALREADY_EXISTS" : undefined, message: e.code === 11000 ? "A route already exists for this directional branch pair." : e.message }); }
+  } catch (e) { require("./adminDeliveryPricing.controller").error(res, e); }
 };
 const setRouteStatus = async (req, res, status) => {
-  const route = await LogisticsRoute.findById(req.params.id);
-  if (!route) return res.status(404).json({ success: false, message: "Route not found." });
-  if (route.isArchived) return res.status(409).json({ success: false, code: "ROUTE_ARCHIVED", message: "Restore this route before changing its status." });
-  route.status = status;
-  route.updatedBy = req.user._id;
-  await route.save();
-  return res.json({ success: true, route });
+  try {
+    const route = await require("../services/adminDeliveryPricing.service").status(req, status);
+    return res.json({ success: true, route });
+  } catch (e) { return require("./adminDeliveryPricing.controller").error(res, e); }
 };
 exports.activateRoute = async (req, res) => {
   try { return await setRouteStatus(req, res, "ACTIVE"); }

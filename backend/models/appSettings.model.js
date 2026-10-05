@@ -687,6 +687,17 @@ const appSettingsSchema =
         required: true,
       },
 
+      deliveryPricing: {
+        type: new mongoose.Schema({
+          price: { type: Number, required: true, min: 0.01, max: 10000000 },
+          version: { type: Number, required: true, min: 0, default: 0 },
+          updatedAt: { type: Date, required: true },
+          updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+        }, { _id: false }),
+        default: undefined,
+      },
+      deliveryPriceAdmissionVersion: { type: Number, default: 0, select: false },
+
       // DATA provider routing lives in the existing settings singleton so a
       // new collection is not required on collection-limited Atlas clusters.
       // Independent bill-service settings reuse this existing singleton when

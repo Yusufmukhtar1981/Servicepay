@@ -30,8 +30,26 @@ function calculateInterstateQuote(route, input) {
   const protectionFee = input.protection && route.protectionEnabled
     ? money(Number(route.protectionFlatFee || 0) + declaredValue * Number(route.protectionPercent || 0) / 100) : 0;
   const total = money(transportFee + sizeSurcharge + expressSurcharge + fragileItemSurcharge + pickupFee + deliveryFee + protectionFee);
+  if (route.pricingMode === "FIXED") {
+    const fixedTotal = money(route.baseFare);
+    if (!Number.isFinite(fixedTotal) || fixedTotal <= 0) throw new Error("This route has no valid active delivery price.");
+    return { breakdown: { transportFee: fixedTotal, sizeSurcharge: 0,
+      expressSurcharge: 0, fragileItemSurcharge: 0, pickupFee: 0,
+      deliveryFee: 0, protectionFee: 0 }, total: fixedTotal,
+      expectedDelivery: input.serviceType === "EXPRESS" ? route.expressDeliveryTime : route.standardDeliveryTime };
+  }
   return { breakdown: { transportFee, sizeSurcharge, expressSurcharge, fragileItemSurcharge, pickupFee, deliveryFee, protectionFee,
     ...(excessMode ? { baseFare: money(route.baseFare), excessKg: extraWeight, excessWeightCharge } : {}) }, total,
     expectedDelivery: input.serviceType === "EXPRESS" ? route.expressDeliveryTime : route.standardDeliveryTime };
 }
-module.exports = { calculateInterstateQuote };
+const pricingFields = [
+  "pricingMode", "weightPricingMode", "baseFare", "minimumWeightKg", "maximumWeightKg",
+  "pricePerAdditionalKg", "maximumDimensionCm", "oversizeSurcharge",
+  "expressEnabled", "expressSurcharge", "fragileItemSurcharge", "pickupFee",
+  "doorDeliveryFee", "branchCollectionFee", "protectionEnabled", "protectionPercent",
+  "protectionFlatFee", "standardDeliveryTime", "expressDeliveryTime",
+];
+function snapshotPricing(route) {
+  return Object.fromEntries(pricingFields.filter(key => route[key] !== undefined).map(key => [key, route[key]]));
+}
+module.exports = { calculateInterstateQuote, snapshotPricing };

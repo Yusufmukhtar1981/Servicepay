@@ -18,7 +18,7 @@ exports.config = wrap(async (req, res) => {
   const routes = await Route.find({ originBranchId: b._id, status: "ACTIVE", isArchived: { $ne: true } })
     .select("_id name originState destinationState originBranchId destinationBranchId").limit(100).lean();
   res.json({ success: true, branch: { _id: b._id, name: b.name, state: b.state, lga: b.lga, address: b.address },
-    routes, standardDeliveryFee: Delivery.STANDARD_DELIVERY_FEE, canConfirmPayments: s.isManager(req, b) });
+    routes, standardDeliveryFee: (await require("../services/deliveryPricing.service").intraState()).price, canConfirmPayments: s.isManager(req, b) });
 });
 exports.quote = wrap(async (req, res) => res.json({ success: true, quote: await s.quote(req) }));
 exports.create = wrap(async (req, res) => {
