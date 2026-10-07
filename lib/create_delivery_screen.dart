@@ -12,13 +12,17 @@ import 'servicepay_theme.dart';
 class CreateDeliveryScreen extends StatefulWidget {
   const CreateDeliveryScreen({
     super.key,
+    this.httpClient,
   });
+
+  final http.Client? httpClient;
 
   @override
   State<CreateDeliveryScreen> createState() => _CreateDeliveryScreenState();
 }
 
 class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
+  late final http.Client _httpClient = widget.httpClient ?? http.Client();
   static const String baseUrl = 'https://api.servicepay.ng/api';
 
   static const Color primaryBlue = ServicePayColors.brandDeep;
@@ -69,6 +73,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
 
   @override
   void dispose() {
+    if (widget.httpClient == null) _httpClient.close();
     pickupController.dispose();
     deliveryController.dispose();
 
@@ -97,7 +102,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
     }
     try {
       final token = await getSavedToken();
-      final response = await http.get(
+      final response = await _httpClient.get(
         Uri.parse('$baseUrl/delivery/pricing'),
         headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'},
       ).timeout(const Duration(seconds: 35));
@@ -267,7 +272,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
     }
 
     try {
-      final http.Response response = await http.get(
+      final http.Response response = await _httpClient.get(
         Uri.parse(
           '$baseUrl/delivery/coverage',
         ),
@@ -604,7 +609,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
 
     try {
       final String idempotencyKey = await getDeliveryIdempotencyKey();
-      final http.Response response = await http
+      final http.Response response = await _httpClient
           .post(
             Uri.parse(
               '$baseUrl/delivery',
@@ -648,6 +653,12 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
         final String trackingNumber = text(
           delivery['trackingNumber'],
         );
+        final double? savedDeliveryFee =
+            double.tryParse('${delivery['deliveryFee']}');
+        final String confirmedFee = savedDeliveryFee != null &&
+                savedDeliveryFee.isFinite && savedDeliveryFee > 0
+            ? 'Delivery Fee: ${NumberFormat.currency(locale: 'en_NG', symbol: '₦', decimalDigits: 2).format(savedDeliveryFee)}'
+            : 'View Delivery History for the saved delivery fee.';
 
         if (!mounted) {
           return;
@@ -679,10 +690,10 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
                   const SizedBox(
                     height: 14,
                   ),
-                  const Text(
-                    'Delivery Fee: ₦2,000',
+                  Text(
+                    confirmedFee,
                     textAlign: TextAlign.center,
-                    style: TextStyle(
+                    style: const TextStyle(
                       color: primaryBlue,
                       fontWeight: FontWeight.w700,
                     ),
@@ -1416,11 +1427,13 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
                 const SizedBox(
                   height: 16,
                 ),
-                const Center(
+                Center(
                   child: Text(
-                    'A fixed delivery fee of ₦2,000 will be debited from your wallet.',
+                    deliveryPrice == null
+                        ? 'The current Admin-configured delivery fee must load before you can submit.'
+                        : 'The current delivery fee of ${NumberFormat.currency(locale: 'en_NG', symbol: '₦', decimalDigits: 2).format(deliveryPrice)} will be debited from your wallet.',
                     textAlign: TextAlign.center,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 12,
                       color: Color(
                         0xFF6B7280,
