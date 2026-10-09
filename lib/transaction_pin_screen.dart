@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'security_utils.dart';
+import 'services/session_store.dart';
 
 class TransactionPinScreen extends StatefulWidget {
   const TransactionPinScreen({
@@ -91,7 +92,7 @@ class _TransactionPinScreenState extends State<TransactionPinScreen> {
 
       final SharedPreferences prefs = await SharedPreferences.getInstance();
 
-      final String token = await readAuthToken() ?? '';
+      final String token = await SessionStore.readToken() ?? '';
 
       if (token.isEmpty) {
         showMessage(

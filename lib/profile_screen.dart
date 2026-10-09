@@ -95,7 +95,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> loadKycSummary() async {
     try {
-      final SharedPreferences prefs = await SharedPreferences.getInstance();
       final String token = (await SessionStore.readToken()) ?? '';
       if (token.trim().isEmpty) return;
       final http.Response response = await _client.get(
@@ -146,8 +145,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     });
 
     try {
-      final SharedPreferences prefs = await SharedPreferences.getInstance();
-
       final String token = (await SessionStore.readToken()) ?? '';
 
       if (token.trim().isEmpty) {
@@ -170,6 +167,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final Map<String, dynamic> loadedUser = _extractUser(decoded);
+
+        // A legacy set flag can exist without a usable PIN. The authenticated
+        // status endpoint repairs that state before choosing Create or Change.
+        if (loadedUser['transactionPinSet'] == true) {
+          try {
+            final pinResponse = await _client.get(
+              Uri.parse('$baseUrl/transaction-pin/status'),
+              headers: {'Authorization': 'Bearer $token'},
+            ).timeout(const Duration(seconds: 15));
+            final pinStatus = _decodeResponse(pinResponse.body);
+            if (pinResponse.statusCode == 200 &&
+                pinStatus is Map &&
+                pinStatus['success'] == true &&
+                pinStatus['transactionPinSet'] is bool) {
+              loadedUser['transactionPinSet'] = pinStatus['transactionPinSet'];
+            }
+          } catch (_) {
+            // An unavailable optional check must not hide the profile.
+          }
+        }
 
         await _saveUserLocally(
           loadedUser,
@@ -439,7 +456,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     setState(() => isPhotoUploading = true);
     try {
-      final SharedPreferences prefs = await SharedPreferences.getInstance();
       final String token = (await SessionStore.readToken()) ?? '';
       final http.MultipartRequest request = http.MultipartRequest(
         'PATCH',

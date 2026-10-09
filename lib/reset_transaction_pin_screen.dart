@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'security_utils.dart';
+import 'services/session_store.dart';
 
 class ResetTransactionPinScreen extends StatefulWidget {
   const ResetTransactionPinScreen({super.key, this.client});
@@ -116,7 +117,7 @@ class _ResetTransactionPinScreenState extends State<ResetTransactionPinScreen> {
 
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
-      final String token = await readAuthToken() ?? '';
+      final String token = await SessionStore.readToken() ?? '';
 
       if (token.trim().isEmpty) {
         _showMessage('Your login session has expired. Please sign in again.');

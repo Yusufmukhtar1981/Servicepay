@@ -2,7 +2,7 @@ name: servicepay_app
 description: "Servicepay bill payment application."
 publish_to: "none"
 
-version: 1.0.3+5
+version: 1.0.4+6
 
 environment:
   sdk: ">=3.0.0 <4.0.0"

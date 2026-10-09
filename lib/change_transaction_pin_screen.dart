@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 
 import 'security_utils.dart';
+import 'services/session_store.dart';
 
 class ChangeTransactionPinScreen extends StatefulWidget {
   const ChangeTransactionPinScreen({super.key, this.client});
@@ -82,7 +83,7 @@ class _ChangeTransactionPinScreenState
     }
     setState(() => _submitting = true);
     try {
-      final token = await readAuthToken();
+      final token = await SessionStore.readToken();
       if (token == null) {
         throw StateError(
             'Your login session has expired. Please sign in again.');
