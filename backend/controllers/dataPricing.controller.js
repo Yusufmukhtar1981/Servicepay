@@ -3,6 +3,8 @@ const DataPriceOverride = require(
 );
 
 const { getCatalog } = require("../services/telecomAbodeDataCatalog.service");
+const changeAvailability = require("../services/dataPlanAvailability.service")
+  .createDataPlanAvailability();
 
 const normalizeNetwork = (value = "") => {
   const v = String(value)
@@ -22,6 +24,22 @@ const normalizeNetwork = (value = "") => {
   };
 
   return map[v] || null;
+};
+
+exports.setDataPlanAvailability = async (req, res) => {
+  try {
+    const networkCode = normalizeNetwork(req.params.network);
+    if (!networkCode) return res.status(400).json({ success: false, message: "Invalid network." });
+    const result = await changeAvailability({
+      networkCode, body: req.body, actor: req.user, ipAddress: req.ip || "",
+    });
+    return res.json({ success: true, ...result });
+  } catch (error) {
+    return res.status(error.statusCode || 503).json({
+      success: false,
+      message: error.statusCode ? error.message : "Unable to change DATA plan availability.",
+    });
+  }
 };
 
 exports.getAdminDataPricing = async (req, res) => {
@@ -59,9 +77,9 @@ exports.getAdminDataPricing = async (req, res) => {
       );
 
       const configuredPrice = Number(override?.sellingPrice);
-      const priced = override?.active === true &&
-        Number.isFinite(configuredPrice) && configuredPrice > 0;
-      const sellingPrice = priced ? configuredPrice : null;
+      const configured = Number.isFinite(configuredPrice) && configuredPrice > 0;
+      const priced = override?.active === true && configured;
+      const sellingPrice = configured ? configuredPrice : null;
 
       return {
         code: plan.code,
@@ -74,7 +92,12 @@ exports.getAdminDataPricing = async (req, res) => {
         sellingPrice,
         priced,
         active: priced,
-        margin: priced
+        available: !plan.ambiguousIdentity,
+        canEnable: configured && !plan.ambiguousIdentity,
+        dataVolume: plan.name.match(/\b\d+(?:\.\d+)?\s*(?:GB|MB|TB)\b/i)?.[0] || "",
+        validity: plan.name.match(/\b\d+\s*(?:days?|weeks?|months?|hours?)\b/i)?.[0] || "",
+        dataType: /SME/i.test(plan.name) ? "SME" : /GIFT/i.test(plan.name) ? "GIFTING" : "OTHER",
+        margin: configured
           ? Number((sellingPrice - providerPrice).toFixed(2))
           : null,
       };
@@ -162,9 +185,9 @@ exports.saveDataSellingPrice = async (
             planName: plan.name || "",
             providerPrice,
             sellingPrice,
-            active: true,
             updatedBy: req.user?._id || null,
           },
+          $setOnInsert: { active: false },
           $inc: { pricingVersion: 1 },
         },
         {

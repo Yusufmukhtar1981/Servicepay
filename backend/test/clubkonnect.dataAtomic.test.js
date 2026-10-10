@@ -440,6 +440,49 @@ test("customer receives a product-bound Telecom Abode quote and can buy the same
   assert.equal(await LedgerEntry.countDocuments({ user: user._id, service: "DATA", direction: "DEBIT" }), 1);
 });
 
+test("a disabled DATA plan is hidden and even its previously valid quote cannot debit", async () => {
+  const user = await makeUser();
+  const catalog = await invokeHandler(controller.getDataPlans, {
+    user: { _id: user._id }, params: { network: "MTN" }, query: {},
+  });
+  const quote = catalog.body.plans[0].productQuote;
+  const { getCatalog } = require("../services/telecomAbodeDataCatalog.service");
+  const supported = await getCatalog("MTN");
+  const { createDataPlanAvailability } = require("../services/dataPlanAvailability.service");
+  await createDataPlanAvailability()({
+    networkCode: "01", actor: { _id: user._id, role: "HEAD_OFFICE" },
+    body: { confirmed: true, active: false, planCodes: [supported[0].code] },
+  });
+  const hidden = await invokeHandler(controller.getDataPlans, {
+    user: { _id: user._id }, params: { network: "MTN" }, query: {},
+  });
+  assert.equal(hidden.body.plans.length, 0);
+  const result = await invoke(user, { ...purchaseBody(user), productQuote: quote },
+    { idempotencyKey: "disabled-quoted-plan" });
+  assert.equal(result.status, 409);
+  assert.equal((await User.findById(user._id)).walletBalance, user.walletBalance);
+  assert.equal(await LedgerEntry.countDocuments(), 0);
+  assert.equal(await Transaction.countDocuments(), 0);
+  assert.equal(dataRequestCount, 0);
+});
+
+test("disabling a plan leaves a completed order and its idempotent retry unchanged", async () => {
+  const user = await makeUser();
+  const body = purchaseBody(user);
+  const first = await invoke(user, body, { idempotencyKey: "order-before-disable" });
+  assert.equal(first.status, 200);
+  const before = await Transaction.findOne({ idempotencyKey: "order-before-disable" }).lean();
+  await DataPriceOverride.updateMany({}, { $set: { active: false } });
+  const retry = await invoke(user, body, { idempotencyKey: "order-before-disable" });
+  assert.equal(retry.status, 200);
+  assert.equal(dataRequestCount, 1);
+  assert.equal((await User.findById(user._id)).walletBalance, first.body.walletBalance);
+  const after = await Transaction.findById(before._id).lean();
+  assert.equal(after.amount, before.amount);
+  assert.equal(after.status, before.status);
+  assert.equal(after.updatedAt.getTime(), before.updatedAt.getTime());
+});
+
 test("tampered, expired, another customer's, and repriced quotes all reject before wallet debit", async () => {
   const user = await makeUser();
   const other = await makeUser();

@@ -3,6 +3,7 @@ const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const User = require("../models/user.model");
+const { createCustomerRefreshSession } = require("../services/customerRefreshSession.service");
 const AppSettings = require("../models/appSettings.model");
 const AccountRestriction = require("../models/accountRestriction.model");
 const FintechWatchlist = require("../models/fintechWatchlist.model");
@@ -1295,13 +1296,15 @@ exports.loginUser = async (
       });
     }
 
-    await recordLoginSecurityEvent(req, {
-      user,
-      identifier: cleanLoginValue,
-      outcome: "SUCCESS",
-    });
-
-    const schoolMemberships = await activeEduPaySchoolMemberships(user._id);
+    // Independent reads/writes after all eligibility checks: do not bypass
+    // audit persistence or tenant membership validation to shorten login.
+    const [, refreshToken, schoolMemberships] = await Promise.all([
+      recordLoginSecurityEvent(req, {
+        user, identifier: cleanLoginValue, outcome: "SUCCESS",
+      }),
+      createCustomerRefreshSession({ restricted: loginIsRestricted }).issue(user),
+      activeEduPaySchoolMemberships(user._id),
+    ]);
     const schoolMembership =
       schoolMemberships.length === 1 ? schoolMemberships[0] : null;
     return res.status(200).json({
@@ -1309,6 +1312,7 @@ exports.loginUser = async (
       message:
         "Login successful.",
       token: generateToken(user._id, user.authTokenVersion),
+      ...(refreshToken ? { refreshToken } : {}),
       user: formatUser(user),
       schoolMembership,
       schoolMemberships,
@@ -1324,6 +1328,32 @@ exports.loginUser = async (
       message:
         "Unable to sign in at the moment.",
       error: error.message,
+    });
+  }
+};
+
+exports.refreshCustomerSession = async (req, res) => {
+  try {
+    const result = await createCustomerRefreshSession({ restricted: loginIsRestricted })
+      .refresh(req.body?.refreshToken);
+    res.set("Cache-Control", "no-store");
+    return res.json({ success: true, ...result });
+  } catch (error) {
+    return res.status(error.statusCode || 503).json({
+      success: false,
+      message: error.statusCode ? "Please sign in again." : "Session refresh is temporarily unavailable.",
+    });
+  }
+};
+
+exports.revokeCustomerRefreshSession = async (req, res) => {
+  try {
+    await createCustomerRefreshSession().revoke(req.body?.refreshToken);
+    res.set("Cache-Control", "no-store");
+    return res.json({ success: true });
+  } catch (error) {
+    return res.status(error.statusCode || 503).json({
+      success: false, message: "Unable to revoke this session.",
     });
   }
 };

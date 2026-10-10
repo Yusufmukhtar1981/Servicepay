@@ -4,6 +4,8 @@ const multer = require("multer");
 const {
   registerUser,
   loginUser,
+  refreshCustomerSession,
+  revokeCustomerRefreshSession,
   getProfile,
   getMyReferral,
   validateReferralCode,
@@ -98,6 +100,22 @@ router.post(
   "/login",
   loginUser
 );
+
+// Signed 256-bit refresh credentials cannot be guessed; bound requests and
+// limit attempts before signature verification without adding a collection.
+const refreshWindows = new Map();
+const limitRefresh = (req, res, next) => {
+  const now = Date.now();
+  const key = String(req.ip || "");
+  let entry = refreshWindows.get(key);
+  if (!entry || entry.until <= now) entry = { until: now + 900000, count: 0 };
+  if (refreshWindows.size > 10000) refreshWindows.delete(refreshWindows.keys().next().value);
+  refreshWindows.set(key, entry);
+  if (++entry.count > 50) return res.status(429).json({ success: false, message: "Too many session refresh attempts." });
+  return next();
+};
+router.post("/refresh", limitRefresh, refreshCustomerSession);
+router.post("/refresh/revoke", limitRefresh, revokeCustomerRefreshSession);
 
 router.get(
   "/profile",

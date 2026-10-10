@@ -12,6 +12,7 @@ const {
 const {
   getAdminDataPricing,
   saveDataSellingPrice,
+  setDataPlanAvailability,
 } = require(
   "../controllers/dataPricing.controller"
 );
@@ -131,6 +132,13 @@ router.get(
   loadStaffRole,
   requireExplicitFinanceView,
   getDataReconciliationQueue
+);
+
+router.patch(
+  "/admin/data-pricing/:network/availability",
+  protect,
+  headOfficeOnly,
+  setDataPlanAvailability
 );
 
 router.get(

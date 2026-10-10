@@ -30,7 +30,7 @@ const dataPriceOverrideSchema =
 
       sellingPrice: {
         type: Number,
-        required: true,
+        default: null,
         min: 0.01,
       },
 
