@@ -52,7 +52,7 @@ void main() {
 
     // Finish the catalogue read timeout in fake time, then remove the old
     // Navigator before mounting the next chooser. No purchase is submitted.
-    await tester.pump(const Duration(seconds: 5));
+    await tester.pump(const Duration(seconds: 61));
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
     await tester.pumpWidget(const MaterialApp(home: AirtimeDataScreen()));
@@ -65,7 +65,8 @@ void main() {
     );
     await tester.pump();
     expect(find.text('Buy Data'), findsWidgets);
+    await tester.pump(const Duration(seconds: 61));
     await tester.pumpWidget(const SizedBox.shrink());
-    await tester.pump(const Duration(seconds: 9));
+    await tester.pump();
   });
 }

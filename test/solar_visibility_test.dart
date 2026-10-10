@@ -33,6 +33,11 @@ void main() {
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
 
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'auth_token': 'solar-test-token',
+        'user_name': 'Solar Test User',
+        'user_role': 'CUSTOMER',
+      });
       await tester.pumpWidget(
         MaterialApp(
           home: const DashboardScreen(),
@@ -41,16 +46,21 @@ void main() {
       );
       await tester.pump();
 
+      final allServices = find.byKey(const Key('customer-all-services'));
+      await tester.ensureVisible(allServices);
+      await tester.tap(allServices);
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'Solar');
+      await tester.pumpAndSettle();
       final Finder solarEntry = find.text('ServicePay Solar');
-      await tester.scrollUntilVisible(
-        solarEntry,
-        300,
-        scrollable: find.byType(Scrollable).first,
-      );
       expect(solarEntry, findsOneWidget);
+      await tester.ensureVisible(solarEntry);
 
       await tester.tap(solarEntry);
       expect(observer.pushedRoutes, contains('/solar'));
+      // This is a navigation test; catalogue reads are covered by Solar's
+      // injected-client tests, not the widget binding's rejected HTTP client.
+      await tester.pumpWidget(const SizedBox.shrink());
     },
   );
 

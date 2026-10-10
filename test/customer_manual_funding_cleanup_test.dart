@@ -28,7 +28,7 @@ void main() {
     expect(find.text('Manual Funding'), findsNothing);
     expect(find.text('Wallet'), findsOneWidget);
     expect(find.text('Transfer'), findsOneWidget);
-    expect(find.text('Withdraw'), findsOneWidget);
+    expect(find.text('Withdrawal'), findsOneWidget);
   });
 
   testWidgets('customer services omit Wallet Funding',

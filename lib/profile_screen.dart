@@ -1,4 +1,5 @@
 import 'services/session_store.dart';
+import 'services/pin_session_client.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -683,6 +684,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
 
+      await PinSessionClient.revoke(_client, Uri.parse('$baseUrl/auth/refresh/revoke'));
       await SessionStore.clear();
       await prefs.remove(
         'auth_token',
