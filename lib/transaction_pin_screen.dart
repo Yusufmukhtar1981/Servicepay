@@ -6,6 +6,8 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'security_utils.dart';
 import 'services/session_store.dart';
+import 'services/pin_session_client.dart';
+import 'login_screen.dart';
 
 class TransactionPinScreen extends StatefulWidget {
   const TransactionPinScreen({
@@ -94,31 +96,17 @@ class _TransactionPinScreenState extends State<TransactionPinScreen> {
 
       final String token = await SessionStore.readToken() ?? '';
 
-      if (token.isEmpty) {
-        showMessage(
-          'Your login session has expired. Please sign in again.',
-        );
-        return;
-      }
+      if (token.isEmpty) throw PinSessionInvalid();
 
-      final http.Response response = await _client
-          .post(
+      final http.Response response = await PinSessionClient.post(
+            _client,
             Uri.parse(
               '$baseUrl/transaction-pin/create',
             ),
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer $token',
-            },
-            body: jsonEncode({
+            {
               'pin': pin,
               'confirmPin': confirmPin,
-            }),
-          )
-          .timeout(
-            const Duration(
-              seconds: 30,
-            ),
+            },
           );
 
       Map<String, dynamic> data = {};
@@ -168,6 +156,20 @@ class _TransactionPinScreenState extends State<TransactionPinScreen> {
       showMessage(
         data['message']?.toString() ?? 'Unable to create transaction PIN.',
       );
+    } on PinSessionInvalid {
+      final prefs = await SharedPreferences.getInstance();
+      final expectedId = prefs.getString('user_id');
+      await SessionStore.clear();
+      if (!mounted) return;
+      setState(() => isLoading = false);
+      final restored = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(builder: (_) => LoginScreen(
+          returnToCaller: true, expectedCustomerId: expectedId,
+        )),
+      );
+      if (restored == true && mounted) {
+        showMessage('Signed in. Confirm your PIN and tap Create PIN to continue.', isError: false);
+      }
     } catch (error) {
       showMessage(
         'Unable to connect to the server. Please try again.',

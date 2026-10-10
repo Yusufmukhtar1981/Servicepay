@@ -300,6 +300,19 @@ class _DataScreenState extends State<DataScreen> {
     }
   }
 
+  int comparePlans(Map<String, dynamic> a, Map<String, dynamic> b) {
+    double volume(Map<String, dynamic> plan) {
+      final match = RegExp(r'(\d+(?:\.\d+)?)\s*(MB|GB|TB)', caseSensitive: false)
+          .firstMatch(getPlanName(plan));
+      if (match == null) return double.infinity;
+      final size = double.parse(match.group(1)!);
+      return size * (match.group(2)!.toUpperCase() == 'TB'
+          ? 1024 * 1024 : match.group(2)!.toUpperCase() == 'GB' ? 1024 : 1);
+    }
+    final byVolume = volume(a).compareTo(volume(b));
+    return byVolume != 0 ? byVolume : parseAmount(a['price']).compareTo(parseAmount(b['price']));
+  }
+
   double parseAmount(dynamic amount) {
     final String value =
         amount.toString().replaceAll('₦', '').replaceAll(',', '').trim();
@@ -446,15 +459,7 @@ class _DataScreenState extends State<DataScreen> {
             )
             .toList();
 
-    result.sort(
-      (
-        Map<String, dynamic> a,
-        Map<String, dynamic> b,
-      ) =>
-          parseAmount(a['price']).compareTo(
-        parseAmount(b['price']),
-      ),
-    );
+    result.sort(comparePlans);
 
     return result;
   }
@@ -528,15 +533,7 @@ class _DataScreenState extends State<DataScreen> {
         }
       }
 
-      plans.sort(
-        (
-          Map<String, dynamic> a,
-          Map<String, dynamic> b,
-        ) =>
-            parseAmount(a['price']).compareTo(
-          parseAmount(b['price']),
-        ),
-      );
+      plans.sort(comparePlans);
 
       if (!mounted || generation != _catalogGeneration) return;
 

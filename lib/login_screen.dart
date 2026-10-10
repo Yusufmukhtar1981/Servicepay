@@ -16,8 +16,12 @@ class LoginScreen extends StatefulWidget {
   const LoginScreen({
     super.key,
     BiometricAuthService? biometricService,
+    this.returnToCaller = false,
+    this.expectedCustomerId,
   }) : biometricService = biometricService;
   final BiometricAuthService? biometricService;
+  final bool returnToCaller;
+  final String? expectedCustomerId;
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -371,6 +375,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> login() async {
+    if (isLoading) return;
     if (!validateFields()) {
       return;
     }
@@ -500,10 +505,18 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
+      if (widget.returnToCaller &&
+          (user['role'] != 'CUSTOMER' ||
+              (widget.expectedCustomerId != null &&
+                  (user['_id'] ?? user['id']).toString() != widget.expectedCustomerId))) {
+        throw Exception('Sign in with the same customer account to continue.');
+      }
       await saveLoginData(
         token,
         user,
       );
+      await SessionStore.writeSession(token,
+          refreshToken: result['refreshToken'] is String ? result['refreshToken'] : null);
 
       if (!mounted) {
         return;
@@ -514,6 +527,10 @@ class _LoginScreenState extends State<LoginScreen> {
         isError: false,
       );
 
+      if (widget.returnToCaller) {
+        Navigator.of(context).pop(true);
+        return;
+      }
       Navigator.pushAndRemoveUntil(
         context,
         MaterialPageRoute(
