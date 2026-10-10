@@ -124,6 +124,15 @@ const userSchema = new mongoose.Schema(
       min: 0,
       select: false,
     },
+    customerRefreshSessions: {
+      type: [{
+        tokenHash: String,
+        expiresAt: Date,
+        authTime: Number,
+      }],
+      select: false,
+      default: undefined,
+    },
     // Serializes hierarchy mutations (promotion and child registration) on
     // the owning manager document.
     hierarchyVersion: {

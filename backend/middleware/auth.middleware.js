@@ -49,6 +49,9 @@ const protect = async (req, res, next) => {
       token,
       process.env.JWT_SECRET
     );
+    if (decoded.tokenUse === "refresh") {
+      return res.status(401).json({ success: false, message: "Invalid access token." });
+    }
     req.authTokenIssuedAt =
       decoded.jti ||
       (decoded.iat ? String(decoded.iat) : null);
