@@ -743,6 +743,11 @@ const userSchema = new mongoose.Schema(
      * =====================================================
      */
     virtualAccount: {
+      creationAttemptId: {
+        type: String,
+        default: undefined,
+        select: false,
+      },
       provider: {
         type: String,
         default: undefined,

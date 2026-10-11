@@ -1,4 +1,24 @@
 const User = require("../models/user.model");
+const { randomUUID } = require("node:crypto");
+
+const VIRTUAL_ACCOUNT_UNAVAILABLE =
+  "Virtual account service is temporarily unavailable. Please try again later.";
+const safeProvisioningFailure = (message) =>
+  /^(PROVIDER_ACCESS_REJECTED|CONFIGURATION_UNAVAILABLE)$/.test(String(message || "")) ||
+  /this ip address .{0,60}not whitelisted/i.test(String(message || "")) ||
+  /^SecureWaveNG (live API keys|Business ID|merchant BVN).*(not configured|exactly 11 digits)/.test(String(message || ""));
+const logProviderFailure = (event, error, attemptId) => {
+  const message = String(error?.message || "");
+  const ip = /this ip address (\d{1,3}(?:\.\d{1,3}){3}) is not whitelisted/i.exec(message)?.[1];
+  console.error(JSON.stringify({
+    event,
+    provider: "SECUREWAVENG",
+    status: Number.isInteger(error?.statusCode) ? error.statusCode : 500,
+    category: ip ? "IP_NOT_WHITELISTED" : "PROVIDER_UNAVAILABLE",
+    ...(ip ? { outboundIp: ip } : {}),
+    ...(attemptId ? { attemptId } : {}),
+  }));
+};
 
 const {
   getBanks,
@@ -43,7 +63,7 @@ const formatVirtualAccount = (virtualAccount) => {
     status:
       virtualAccount.status || "NOT_CREATED",
     failureReason:
-      virtualAccount.failureReason || null,
+      virtualAccount.failureReason ? VIRTUAL_ACCOUNT_UNAVAILABLE : null,
     createdAt:
       virtualAccount.createdAt || null,
     updatedAt:
@@ -127,7 +147,7 @@ const extractVirtualAccount = (providerResponse) => {
       ""
   ).trim();
 
-  if (!accountNumber) {
+  if (!/^\d{10}$/.test(accountNumber) || !accountName || !bankName) {
     return null;
   }
 
@@ -147,26 +167,23 @@ const extractVirtualAccount = (providerResponse) => {
 exports.getBanks = async (req, res) => {
   try {
     const response = await getBanks();
+    if (response?.success === false || response?.status === false ||
+        ["failed", "error"].includes(String(response?.status || "").toLowerCase())) {
+      throw new Error("Provider bank request rejected.");
+    }
 
     return res.status(200).json({
       success: true,
       ...response,
     });
   } catch (error) {
-    console.error(
-      "SecureWave get banks error:",
-      error.providerResponse || error.message
-    );
+    logProviderFailure("securewave.banks.failed", error);
 
     return res
-      .status(error.statusCode || 500)
+      .status(503)
       .json({
         success: false,
-        message:
-          error.message ||
-          "Unable to fetch banks.",
-        providerResponse:
-          error.providerResponse || null,
+        message: "Bank service is temporarily unavailable. Please try again later.",
       });
   }
 };
@@ -228,10 +245,7 @@ exports.getMyVirtualAccount = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error(
-      "Get virtual account error:",
-      error.message
-    );
+    logProviderFailure("securewave.virtual_account.read_failed", error);
 
     return res.status(500).json({
       success: false,
@@ -285,26 +299,23 @@ exports.validateAccountName = async (req, res) => {
       bankCode,
       accountNumber,
     });
+    if (response?.success === false || response?.status === false ||
+        ["failed", "error"].includes(String(response?.status || "").toLowerCase())) {
+      throw new Error("Provider account validation rejected.");
+    }
 
     return res.status(200).json({
       success: true,
       ...response,
     });
   } catch (error) {
-    console.error(
-      "SecureWave account verification error:",
-      error.providerResponse || error.message
-    );
+    logProviderFailure("securewave.account_validation.failed", error);
 
     return res
-      .status(error.statusCode || 500)
+      .status(503)
       .json({
         success: false,
-        message:
-          error.message ||
-          "Unable to verify account name.",
-        providerResponse:
-          error.providerResponse || null,
+        message: "Account verification is temporarily unavailable. Please try again later.",
       });
   }
 };
@@ -317,6 +328,7 @@ exports.generateVirtualAccount = async (
   res
 ) => {
   let customer = null;
+  let attemptId = null;
 
   try {
     const authenticatedUserId =
@@ -357,8 +369,6 @@ exports.generateVirtualAccount = async (
     }
 
     if (
-      customer.virtualAccount?.status ===
-        "ACTIVE" &&
       customer.virtualAccount?.accountNumber
     ) {
       return res.status(200).json({
@@ -373,12 +383,16 @@ exports.generateVirtualAccount = async (
 
     if (
       customer.virtualAccount?.status ===
-      "PENDING"
+      "PENDING" ||
+      customer.virtualAccount?.status === "ACTIVE" ||
+      customer.virtualAccount?.status === "DISABLED" ||
+      (customer.virtualAccount?.status === "FAILED" &&
+        !safeProvisioningFailure(customer.virtualAccount?.failureReason))
     ) {
       return res.status(409).json({
         success: false,
         message:
-          "Virtual account creation is already in progress.",
+          VIRTUAL_ACCOUNT_UNAVAILABLE,
       });
     }
 
@@ -435,18 +449,45 @@ exports.generateVirtualAccount = async (
       nameParts.join(" ").trim() ||
       firstName;
 
-    customer.virtualAccount = {
-      ...(customer.virtualAccount?.toObject
-        ? customer.virtualAccount.toObject()
-        : customer.virtualAccount || {}),
-
-      provider: "SECUREWAVENG",
-      status: "PENDING",
-      failureReason: null,
-      updatedAt: new Date(),
-    };
-
-    await customer.save();
+    attemptId = randomUUID();
+    const claim = await User.findOneAndUpdate(
+      {
+        _id: authenticatedUserId,
+        role: "CUSTOMER",
+        status: "ACTIVE",
+        $and: [
+          { $or: [
+            { "virtualAccount.accountNumber": { $exists: false } },
+            { "virtualAccount.accountNumber": { $in: [null, ""] } },
+          ] },
+          { "virtualAccount.status": { $nin: ["PENDING", "ACTIVE", "DISABLED"] } },
+          ...(customer.virtualAccount?.status === "FAILED"
+            ? [{ "virtualAccount.failureReason": customer.virtualAccount.failureReason }]
+            : []),
+        ],
+      },
+      { $set: {
+        "virtualAccount.provider": "SECUREWAVENG",
+        "virtualAccount.status": "PENDING",
+        "virtualAccount.creationAttemptId": attemptId,
+        "virtualAccount.failureReason": null,
+        "virtualAccount.updatedAt": new Date(),
+      } },
+      { new: true, runValidators: true }
+    );
+    if (!claim) {
+      attemptId = null;
+      const current = await User.findById(authenticatedUserId);
+      if (current?.virtualAccount?.accountNumber) {
+        return res.status(200).json({
+          success: true,
+          message: "Virtual account already exists.",
+          data: formatVirtualAccount(current.virtualAccount),
+        });
+      }
+      return res.status(409).json({ success: false, message: VIRTUAL_ACCOUNT_UNAVAILABLE });
+    }
+    customer = claim;
 
     /*
      * Merchant BVN and Business ID are read
@@ -465,7 +506,9 @@ exports.generateVirtualAccount = async (
         providerResponse
       );
 
-    if (!virtualAccount) {
+    if (!virtualAccount || providerResponse?.success === false ||
+        providerResponse?.status === false ||
+        ["failed", "error"].includes(String(providerResponse?.status || "").toLowerCase())) {
       const responseError = new Error(
         "SecureWaveNG did not return a valid virtual account number."
       );
@@ -477,7 +520,7 @@ exports.generateVirtualAccount = async (
       throw responseError;
     }
 
-    customer.virtualAccount = {
+    const confirmedAccount = {
       provider: "SECUREWAVENG",
 
       accountNumber:
@@ -510,63 +553,79 @@ exports.generateVirtualAccount = async (
         new Date(),
 
       updatedAt: new Date(),
+      creationAttemptId: attemptId,
     };
 
-    await customer.save();
+    const persisted = await User.findOneAndUpdate(
+      {
+        _id: authenticatedUserId,
+        "virtualAccount.status": "PENDING",
+        "virtualAccount.creationAttemptId": attemptId,
+        $or: [
+          { "virtualAccount.accountNumber": { $exists: false } },
+          { "virtualAccount.accountNumber": { $in: [null, ""] } },
+        ],
+      },
+      { $set: { virtualAccount: confirmedAccount } },
+      { new: true, runValidators: true }
+    );
+    if (!persisted) {
+      const current = await User.findById(authenticatedUserId);
+      if (current?.virtualAccount?.accountNumber) {
+        return res.status(200).json({
+          success: true,
+          message: "Virtual account already exists.",
+          data: formatVirtualAccount(current.virtualAccount),
+        });
+      }
+      throw new Error("Confirmed account persistence needs reconciliation.");
+    }
 
     return res.status(201).json({
       success: true,
-      message:
-        providerResponse?.message ||
-        "Virtual account created successfully.",
+      message: "Virtual account created successfully.",
       data: formatVirtualAccount(
-        customer.virtualAccount
+        persisted.virtualAccount
       ),
-      providerData:
-        providerResponse?.data || null,
     });
   } catch (error) {
-    console.error(
-      "SecureWave virtual account error:",
-      error.message
-    );
+    logProviderFailure("securewave.virtual_account.failed", error, attemptId);
 
-    if (customer) {
+    if (customer && attemptId) {
       try {
-        customer.virtualAccount = {
-          ...(customer.virtualAccount?.toObject
-            ? customer.virtualAccount.toObject()
-            : customer.virtualAccount || {}),
-
-          provider: "SECUREWAVENG",
-
-          status: "FAILED",
-
-          failureReason:
-            error.message ||
-            "Virtual account creation failed.",
-
-          updatedAt: new Date(),
-        };
-
-        await customer.save();
-      } catch (saveError) {
-        console.error(
-          "Unable to save virtual account failure:",
-          saveError.message
+        // A timeout, malformed response, crash or failed persistence is not proof
+        // that no bank account was created. Keep its durable claim non-retryable.
+        const accessRejected = Boolean(error.providerResponse) &&
+          error.statusCode >= 400 && error.statusCode < 500 &&
+          /not whitelisted|unauthorized|invalid api key/i.test(String(error.message || ""));
+        const configurationUnavailable = !error.providerResponse && error.statusCode === 503 &&
+          safeProvisioningFailure(error.message);
+        const definiteRejection = accessRejected || configurationUnavailable;
+        await User.updateOne(
+          {
+            _id: getAuthenticatedUserId(req),
+            "virtualAccount.status": "PENDING",
+            "virtualAccount.creationAttemptId": attemptId,
+          },
+          { $set: {
+            "virtualAccount.status": definiteRejection ? "FAILED" : "PENDING",
+            "virtualAccount.failureReason": definiteRejection
+              ? (accessRejected ? "PROVIDER_ACCESS_REJECTED" : "CONFIGURATION_UNAVAILABLE")
+              : "PROVIDER_OUTCOME_UNCONFIRMED",
+            "virtualAccount.updatedAt": new Date(),
+          } },
+          { runValidators: true }
         );
+      } catch (saveError) {
+        logProviderFailure("securewave.virtual_account.failure_persistence_failed", saveError, attemptId);
       }
     }
 
     return res
-      .status(error.statusCode || 500)
+      .status(503)
       .json({
         success: false,
-        message:
-          error.message ||
-          "Unable to generate virtual account.",
-        providerResponse:
-          error.providerResponse || null,
+        message: VIRTUAL_ACCOUNT_UNAVAILABLE,
       });
   }
 };
