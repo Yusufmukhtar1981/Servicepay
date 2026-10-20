@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'services/api_service.dart';
@@ -64,6 +65,8 @@ class _DataScreenState extends State<DataScreen> {
   bool _canRetireUnrecorded = false;
   bool _authenticationRequired = false;
   List<Map<String, dynamic>> _retainedRequests = [];
+  Timer? _statusTimer;
+  int _retainedCursor = 0;
 
   String plansError = '';
 
@@ -73,10 +76,23 @@ class _DataScreenState extends State<DataScreen> {
     _purchaseIntent = widget.purchaseIntent ?? DataPurchaseIntent();
     loadDataPlans();
     _restorePurchase();
+    _statusTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (!mounted || _restoring || isBuyingData || _authenticationRequired ||
+          WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed ||
+          ModalRoute.of(context)?.isCurrent != true) return;
+      if (_phase == PurchasePhase.pending && _pendingKey?.isNotEmpty == true) {
+        unawaited(_checkPurchase(automatic: true));
+      } else if (_retainedRequests.isNotEmpty) {
+        final request = _retainedRequests[
+            _retainedCursor++ % _retainedRequests.length];
+        unawaited(_checkPurchase(retained: request, automatic: true));
+      }
+    });
   }
 
   @override
   void dispose() {
+    _statusTimer?.cancel();
     phoneController.dispose();
     _phoneFocus.dispose();
     super.dispose();
@@ -117,7 +133,10 @@ class _DataScreenState extends State<DataScreen> {
     }
   }
 
-  Future<void> _checkPurchase({Map<String, dynamic>? retained}) async {
+  Future<void> _checkPurchase({
+    Map<String, dynamic>? retained,
+    bool automatic = false,
+  }) async {
     final key = retained?['key'] as String? ?? _pendingKey;
     if (isBuyingData || key == null || key.isEmpty) return;
     setState(() {
@@ -150,8 +169,11 @@ class _DataScreenState extends State<DataScreen> {
           final remaining = await _purchaseIntent.retained();
           if (mounted) setState(() => _retainedRequests = remaining);
         }
-        showMessage(result['message']?.toString() ??
-            'This earlier request is still awaiting confirmation.');
+        if (!automatic || outcome == PurchasePhase.success ||
+            outcome == PurchasePhase.failed) {
+          showMessage(result['message']?.toString() ??
+              'This earlier request is still awaiting confirmation.');
+        }
         return;
       }
       setState(() => _canStartSeparate =
@@ -164,7 +186,8 @@ class _DataScreenState extends State<DataScreen> {
           phone: parts[1].toString(),
           code: parts[2].toString(),
           name: pending['planName']?.toString() ?? parts[2].toString(),
-          price: double.parse(parts[3].toString()));
+          price: double.parse(parts[3].toString()),
+          automatic: automatic);
     } catch (error) {
       if (mounted) {
         setState(() {
@@ -747,7 +770,8 @@ class _DataScreenState extends State<DataScreen> {
       }
 
       await _purchaseIntent.markSubmitted(idempotencyKey);
-      _pendingKey = idempotencyKey;
+      if (!mounted) return;
+      setState(() => _pendingKey = idempotencyKey);
       final Map<String, dynamic> result = widget.purchase != null
           ? await widget.purchase!({
               'transactionPin': transactionPin,
@@ -807,6 +831,7 @@ class _DataScreenState extends State<DataScreen> {
     required String code,
     required String name,
     required double price,
+    bool automatic = false,
   }) async {
     final outcome =
         result['requestRetired'] == true && result['status'] == 'FAILED'
@@ -845,7 +870,9 @@ class _DataScreenState extends State<DataScreen> {
           : 'Your transaction is being processed. Please do not retry '
               'with a new request. Its final status must be confirmed.';
       setState(() {
-        _pendingMessage = message;
+        _pendingMessage = reference.isNotEmpty
+            ? '$message Reference: $reference'
+            : '$message Request ID: ${_pendingKey ?? "unavailable"}';
       });
     }
     if (!success && (status == 'REFUNDED' || status == 'REVERSED')) {
@@ -856,10 +883,12 @@ class _DataScreenState extends State<DataScreen> {
       message = '$message Reference: $reference';
     }
 
-    showMessage(
-      message,
-      isError: !success,
-    );
+    if (!automatic || outcome != PurchasePhase.pending) {
+      showMessage(
+        message,
+        isError: !success,
+      );
+    }
 
     if (success) {
       final String receiptPhone = result['phone']?.toString() ??
@@ -1192,6 +1221,7 @@ class _DataScreenState extends State<DataScreen> {
         canPop: _phase != PurchasePhase.processing,
         child: PurchaseProcessing(
           processing: _phase == PurchasePhase.processing,
+          requestId: _pendingKey,
           service: 'data',
           child: RefreshIndicator(
             onRefresh: loadDataPlans,
@@ -1202,7 +1232,7 @@ class _DataScreenState extends State<DataScreen> {
                   if (_pendingMessage.isNotEmpty)
                     MaterialBanner(
                       content: Text(
-                          '${_authenticationRequired ? 'Sign in required' : _canStartSeparate || _canRetireUnrecorded ? 'Earlier request needs review' : 'Transaction Pending'}\n$_pendingMessage'),
+                          '${_authenticationRequired ? 'Sign in required' : _canStartSeparate || _canRetireUnrecorded ? 'Earlier request needs review' : 'Transaction Processing'}\n$_pendingMessage'),
                       actions: [
                         if (_authenticationRequired)
                           TextButton(
@@ -1233,6 +1263,7 @@ class _DataScreenState extends State<DataScreen> {
                     ListTile(
                       title: const Text(
                           'Earlier DATA request retained for review'),
+                      subtitle: Text('Request ID: ${request['key']}'),
                       trailing: TextButton(
                         onPressed: isBuyingData
                             ? null

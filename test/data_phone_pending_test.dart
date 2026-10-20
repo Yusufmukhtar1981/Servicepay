@@ -21,6 +21,49 @@ class IntentStorage implements DataPurchaseIntentStorage {
 }
 
 void main() {
+  testWidgets('pending DATA automatically checks the original request without PIN or resend',
+      (tester) async {
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    tester.view.physicalSize = const Size(1000, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final intent = DataPurchaseIntent(
+        storage: IntentStorage(), accountId: () async => 'poll-test');
+    final key = await intent.keyForSubmission(
+        network: 'MTN', phone: '08012345678', planCode: 'x', price: 100);
+    int queries = 0, purchases = 0;
+    await tester.pumpWidget(MaterialApp(home: DataScreen(
+      purchaseIntent: intent,
+      loadBeneficiaries: () async => [],
+      loadPlans: (_) async => {'success': true, 'plans': []},
+      purchase: (_) async { purchases++; return {}; },
+      statusQuery: (request) async {
+        expect(request, key);
+        queries++;
+        return {'status': 'PENDING', 'reference': 'DATA-AUTO-STATUS'};
+      },
+    )));
+    await tester.pumpAndSettle();
+    final initial = queries;
+    expect(initial, 1);
+    expect(find.textContaining('Reference: DATA-AUTO-STATUS'), findsWidgets);
+    await tester.pump(const Duration(seconds: 15));
+    await tester.pumpAndSettle();
+    expect(queries, initial + 1);
+    expect(purchases, 0);
+    expect((await intent.pending())!['key'], key);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump(const Duration(seconds: 30));
+    expect(queries, initial + 1, reason: 'background screens must not poll');
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpWidget(const SizedBox());
+  });
+
   test('normalizes all requested Nigerian mobile formats safely', () {
     for (final number in [
       '08012345678',

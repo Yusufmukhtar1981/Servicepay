@@ -32,10 +32,12 @@ class PurchaseProcessing extends StatelessWidget {
     required this.processing,
     required this.service,
     required this.child,
+    this.requestId,
   });
   final bool processing;
   final String service;
   final Widget child;
+  final String? requestId;
 
   @override
   Widget build(BuildContext context) => PopScope(
@@ -64,6 +66,9 @@ class PurchaseProcessing extends StatelessWidget {
                                 textAlign: TextAlign.center,
                                 style: Theme.of(context).textTheme.titleMedium),
                             const SizedBox(height: 12),
+                            if (requestId?.isNotEmpty == true)
+                              Text('Request ID: $requestId',
+                                  textAlign: TextAlign.center),
                             const Text(
                               'Please wait. Do not close this page or submit again.',
                               textAlign: TextAlign.center,

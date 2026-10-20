@@ -191,7 +191,7 @@ void main() {
               {'success': true, 'status': 'PENDING', 'reference': 'DATA-proof'},
         )));
         await tester.pumpAndSettle();
-        expect(find.textContaining('Transaction Pending'), findsOneWidget);
+        expect(find.textContaining('Transaction Processing'), findsOneWidget);
         await tester.tap(find.text('Check existing request'));
         await tester.pumpAndSettle();
         expect(submits, 1,
