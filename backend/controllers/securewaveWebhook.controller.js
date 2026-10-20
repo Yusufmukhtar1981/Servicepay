@@ -429,32 +429,7 @@ const markFailed = async (
 exports.handleVirtualAccountWebhook =
   async (req, res) => {
 
-    console.log(
-      "SECUREWAVE_REQUEST_REACHED_BACKEND",
-      {
-        time: new Date().toISOString(),
-        method: req.method,
-        url: req.originalUrl,
-        contentType: req.headers["content-type"],
-        signatureHeaders: {
-          xSignature:
-            Boolean(req.headers["x-signature"]),
-          xSecurewaveSignature:
-            Boolean(
-              req.headers["x-securewave-signature"]
-            ),
-          securewaveSignature:
-            Boolean(
-              req.headers["securewave-signature"]
-            ),
-        },
-        bodyKeys:
-          req.body &&
-          typeof req.body === "object"
-            ? Object.keys(req.body)
-            : [],
-      }
-    );
+    console.log("SecureWave webhook received.");
 
     let webhookEvent = null;
     let session = null;
@@ -471,11 +446,6 @@ exports.handleVirtualAccountWebhook =
       const payload = req.body || {};
       const data =
         extractWebhookData(payload);
-
-      console.log(
-        "SecureWave normalized webhook:",
-        data
-      );
 
       if (!data.transactionId) {
         return res.status(400).json({
@@ -623,8 +593,7 @@ exports.handleVirtualAccountWebhook =
 
       if (!customer) {
         console.error(
-          "SecureWave customer not found:",
-          data
+          "SecureWave webhook customer match unavailable."
         );
 
         await markFailed(
@@ -797,15 +766,7 @@ exports.handleVirtualAccountWebhook =
       );
 
       console.log(
-        "SecureWave wallet credited:",
-        {
-          customerId: customer._id,
-          accountNumber:
-            data.accountNumber,
-          amount: data.amount,
-          transactionId:
-            data.transactionId,
-        }
+        "SecureWave webhook credit processed."
       );
 
       return res.status(200).json({
@@ -815,8 +776,7 @@ exports.handleVirtualAccountWebhook =
       });
     } catch (error) {
       console.error(
-        "SecureWave webhook error:",
-        error
+        "SecureWave webhook processing unavailable."
       );
 
       if (webhookEvent?._id) {
@@ -828,8 +788,7 @@ exports.handleVirtualAccountWebhook =
           );
         } catch (updateError) {
           console.error(
-            "Unable to update webhook failure:",
-            updateError.message
+            "Unable to record SecureWave webhook failure."
           );
         }
       }

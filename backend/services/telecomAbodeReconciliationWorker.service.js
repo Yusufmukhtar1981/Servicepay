@@ -23,6 +23,14 @@ function createTelecomAbodeReconciliationWorker({
           debitLedgerEntryId: { $ne: null }, providerRequestId: { $type: "string" },
           createdAt: { $lte: new Date(date.getTime() - 120000) },
           $and: [
+            // A recently claimed dispatch is still in flight even when the
+            // admission itself is older. Never race its provider response.
+            { $or: [
+              { dispatchStatus: "UNKNOWN" },
+              { dispatchStatus: "SENDING", dispatchClaimedAt: {
+                $lte: new Date(date.getTime() - 120000),
+              } },
+            ] },
             { $or: [{ "providerResponse.statusReconciliation.nextCheckAt": { $exists: false } },
               { "providerResponse.statusReconciliation.nextCheckAt": { $lte: date } }] },
             { $or: [{ "providerResponse.statusReconciliation.leaseUntil": { $exists: false } },
@@ -36,6 +44,20 @@ function createTelecomAbodeReconciliationWorker({
         let lookupReason = null;
         try {
           if (tx.serviceType === "DATA") {
+            if (tx.dispatchStatus === "SENDING") {
+              // A crash after dispatch cannot prove delivery or non-delivery.
+              // Move only this stale claim to recovery custody. Do not send,
+              // debit, refund, or change its original request reference.
+              const recovered = await model.findOneAndUpdate({
+                _id: tx._id, provider: "TELECOM_ABODE", serviceType: "DATA",
+                status: "PENDING", dispatchStatus: "SENDING",
+                providerRequestId: tx.providerRequestId,
+                reference: tx.providerRequestId,
+                dispatchClaimedAt: { $lte: new Date(date.getTime() - 120000) },
+              }, { $set: { dispatchStatus: "UNKNOWN" } }, { new: true }).lean();
+              // A concurrent webhook/request may already have settled it.
+              if (!recovered) continue;
+            }
             const result = await data.reconcileByReference(tx.reference);
             outcome = result.body?.outcome || "UNKNOWN";
             lookupEvidence = result.evidence || null;

@@ -28,52 +28,10 @@ router.get(
   getBanks
 );
 
-/*
- * SecureWaveNG webhook.
- *
- * Temporary logging is included so that we can
- * see the exact payload sent by SecureWaveNG.
- */
+// Authentication and redacted diagnostics belong to the webhook controller.
+// Never log raw headers (including signatures) or customer bank payloads.
 router.post(
   "/webhook",
-
-  (req, res, next) => {
-    console.log(
-      "========== SECUREWAVE WEBHOOK START =========="
-    );
-
-    console.log(
-      "SecureWave webhook headers:",
-      JSON.stringify(
-        req.headers,
-        null,
-        2
-      )
-    );
-
-    console.log(
-      "SecureWave webhook body:",
-      JSON.stringify(
-        req.body,
-        null,
-        2
-      )
-    );
-
-    console.log(
-      "SecureWave raw body available:",
-      Buffer.isBuffer(
-        req.rawBody
-      )
-    );
-
-    console.log(
-      "========== SECUREWAVE WEBHOOK END =========="
-    );
-
-    next();
-  },
-
   handleVirtualAccountWebhook
 );
 
