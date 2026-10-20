@@ -192,6 +192,9 @@ const productionCorsOrigins = new Set([
   "https://servicepay.ng",
   "https://www.servicepay.ng",
   "https://admin.servicepay.ng",
+  ...require("./config/additionalWebOrigins").additionalWebOrigins(
+    process.env.SERVICEPAY_EXTRA_WEB_ORIGINS
+  ),
   ...String(process.env.REPLIT_DOMAINS || "")
     .split(",")
     .map((host) => host.trim())
