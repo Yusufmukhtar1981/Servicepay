@@ -553,7 +553,12 @@ for (const [scenario, outcome, expectedStatus, expectedDispatchStatus, heldDebit
     });
     assert.equal(debitCount, 1);
     assert.equal(creditCount, outcome === "FAILED" ? 1 : 0);
-    if (outcome === "FAILED") assert.equal(result.body.walletDebitHeld, false);
+    if (outcome === "FAILED") {
+      assert.equal(result.body.walletDebitHeld, false);
+      assert.equal(result.body.dispatchStatus, "REFUNDED",
+        "Customer classifiers require committed refund custody, not FAILED alone");
+      assert.equal(result.body.pending, false);
+    }
     if (outcome === "SUCCESS") assert.equal(Boolean(result.body.walletDebitHeld), false);
     assert.equal(heldDebit, ["UNKNOWN", "CONTRADICTORY"].includes(outcome));
     assert.equal(await User.findById(user._id).then((row) => row.walletBalance),
@@ -576,3 +581,50 @@ for (const [scenario, outcome, expectedStatus, expectedDispatchStatus, heldDebit
     }), outcome === "FAILED" ? 1 : 0);
   });
 }
+
+test("different keys for the same unresolved purchase cannot debit or dispatch twice", async () => {
+  const user = await makeUser();
+  await addCanonicalPrice();
+  setOutcome("UNKNOWN");
+  const first = await purchase(user, { key: "conflict-original-key" });
+  const second = await purchase(user, { key: "conflict-new-key" });
+  assert.equal(first.status, 202);
+  assert.equal(second.status, 409);
+  assert.equal(second.body.code, "DATA_PURCHASE_CONFLICT");
+  assert.equal(second.body.reference, first.body.reference);
+  assert.equal(second.body.newRequestNotAdmitted, true);
+  assert.equal(await Transaction.countDocuments({ customerId: user._id }), 1);
+  assert.equal(await LedgerEntry.countDocuments({ user: user._id, direction: "DEBIT" }), 1);
+  assert.equal((await User.findById(user._id)).walletBalance, 1000 - SERVICEPAY_PRICE);
+  assert.equal(dispatchCalls, 1);
+});
+
+test("concurrent distinct keys for the same pending intent admit only one purchase", async () => {
+  const user = await makeUser();
+  await addCanonicalPrice();
+  setOutcome("UNKNOWN");
+  const results = await Promise.all([
+    purchase(user, { key: "concurrent-conflict-one" }),
+    purchase(user, { key: "concurrent-conflict-two" }),
+  ]);
+  assert.deepEqual(results.map(r => r.status).sort(), [202, 409]);
+  assert.equal(await Transaction.countDocuments({ customerId: user._id }), 1);
+  assert.equal(await LedgerEntry.countDocuments({ user: user._id, direction: "DEBIT" }), 1);
+  assert.equal(dispatchCalls, 1);
+});
+
+test("an unresolved different recipient does not impose an account-wide lock", async () => {
+  const user = await makeUser();
+  await addCanonicalPrice();
+  await Transaction.create({
+    customerId: user._id, reference: "DATA-unrelated-old",
+    serviceType: "DATA", provider: "TELECOM_ABODE", status: "PENDING",
+    phone: "08099999999", amount: SERVICEPAY_PRICE,
+    dispatchStatus: "UNKNOWN", idempotencyKey: "unrelated-old-key",
+    providerResponse: { network: "01", planCode: PLAN_CODE },
+  });
+  const result = await purchase(user, { key: "unrelated-new-key" });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.status, "SUCCESSFUL");
+  assert.equal(dispatchCalls, 1);
+});

@@ -31,6 +31,47 @@ test("customer-bound UNKNOWN queries provider once, retains held funds and offer
   assert.equal(tx.status, "PENDING", "unknown never refunds or rewrites custody");
 });
 
+test("the original reference finds only its owned DATA record and preserves final refund custody", async () => {
+  const queries = [];
+  let reconciliations = 0;
+  const reference = "DATA-1792197455371-AE08B9D0";
+  const controller = createDataPurchaseStatus({
+    lookup: async filter => {
+      queries.push(filter);
+      return filter.reference ? { ...tx, reference,
+        status: "FAILED", dispatchStatus: "REFUNDED" } : null;
+    },
+    reconcile: async () => { reconciliations++; },
+  });
+  const res = response();
+  await controller({ ...req, params: { key: reference } }, res);
+  assert.deepEqual(queries, [
+    { customerId: "customer-a", serviceType: "DATA", idempotencyKey: reference },
+    { customerId: "customer-a", serviceType: "DATA", reference },
+  ]);
+  assert.equal(res.body.status, "FAILED");
+  assert.equal(res.body.displayStatus, "FAILED");
+  assert.equal(res.body.pending, false);
+  assert.equal(res.body.dispatchStatus, "REFUNDED");
+  assert.equal(reconciliations, 0, "terminal records never requery or refund again");
+});
+
+test("another customer's reference cannot bypass ownership or imply no debit", async () => {
+  const controller = createDataPurchaseStatus({
+    lookup: async filter => {
+      assert.equal(filter.customerId, "customer-a");
+      assert.equal(filter.serviceType, "DATA");
+      return null;
+    },
+    isRetired: async () => false,
+  });
+  const res = response();
+  await controller({ ...req, params: { key: "DATA-other-customer" } }, res);
+  assert.equal(res.statusCode, 404);
+  assert.equal(res.body.pending, true);
+  assert.equal(res.body.allowSeparatePurchase, false);
+});
+
 test("genuine provider PENDING and active dispatch remain locked against a new purchase", async () => {
   for (const dispatchStatus of ["READY", "CLAIMED", "SENDING", "UNKNOWN"]) {
     let calls = 0;

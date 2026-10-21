@@ -1234,6 +1234,26 @@ exports.buyData = async (req, res) => {
           return;
         }
 
+        // The customer write above serializes competing admissions. Abort the
+        // entire debit if a different key would repeat the same unresolved
+        // recipient/network/plan. Other recipients or plans remain independent.
+        const conflict = await Transaction.findOne({
+          customerId: customer._id, serviceType: "DATA",
+          $or: [
+            { status: "PENDING" },
+            { status: "FAILED", dispatchStatus: { $ne: "REFUNDED" },
+              debitLedgerEntryId: { $ne: null } },
+          ],
+          phone: mobileNumber,
+          "providerResponse.network": networkCode,
+          "providerResponse.planCode": selectedPlan,
+        }).session(session).lean();
+        if (conflict) {
+          throw Object.assign(new Error("DATA_PURCHASE_CONFLICT"), {
+            code: "DATA_PURCHASE_CONFLICT", conflict,
+          });
+        }
+
         const [created] = await Transaction.create(
           [{
             reference,
@@ -1291,6 +1311,19 @@ exports.buyData = async (req, res) => {
         await transaction.save({ session });
       });
     } catch (admissionError) {
+      if (admissionError.code === "DATA_PURCHASE_CONFLICT") {
+        const original = admissionError.conflict;
+        if (original.idempotencyKey === idempotencyKey) {
+          return returnExisting(original, networkCode, mobileNumber, selectedPlan,
+            requestedPlanProvider, requestedQuote, requestedAmount);
+        }
+        return res.status(409).json({
+          success: false, code: "DATA_PURCHASE_CONFLICT", status: "PENDING",
+          pending: true, reference: original.reference,
+          newRequestNotAdmitted: true, walletDebitHeld: false,
+          message: "An earlier purchase for this number and plan is unresolved. No new debit or purchase was made. Check the original transaction status.",
+        });
+      }
       if (admissionError.code === 11000) {
         const duplicate = await Transaction.findOne({
           customerId: req.user._id,
@@ -1487,6 +1520,8 @@ exports.buyData = async (req, res) => {
               message: "The provider reported failure and the wallet debit was refunded.",
               reference: settlement.transaction.reference,
               status: "FAILED",
+              dispatchStatus: "REFUNDED",
+              pending: false,
               walletDebitHeld: false,
               walletBalance: settlement.walletBalance,
             });

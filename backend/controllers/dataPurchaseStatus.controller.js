@@ -29,8 +29,14 @@ function createDataPurchaseStatus({ lookup = query => Transaction.findOne(query)
     if (typeof key !== "string" || !/^[A-Za-z0-9._:-]{8,128}$/.test(key))
       return res.status(400).json({ success: false, message: "Invalid request key." });
     try {
-      const filter = { customerId, serviceType: "DATA", idempotencyKey: key };
+      let filter = { customerId, serviceType: "DATA", idempotencyKey: key };
       let tx = await lookup(filter);
+      // Customer-visible references and durable client keys identify the same
+      // owned transaction. Never query another customer's record.
+      if (!tx && /^DATA-[A-Za-z0-9-]+$/.test(key)) {
+        filter = { customerId, serviceType: "DATA", reference: key };
+        tx = await lookup(filter);
+      }
       if (!tx && await isRetired(customerId, key)) {
         return res.json({ success: false, status: "FAILED",
           pending: false, requestRetired: true, walletDebitHeld: false,
@@ -60,6 +66,10 @@ function createDataPurchaseStatus({ lookup = query => Transaction.findOne(query)
         manualReviewRequired: review,
         allowSeparatePurchase: review,
         reference: tx.reference, dispatchStatus: tx.dispatchStatus,
+        displayStatus: tx.status === "SUCCESSFUL" ? "SUCCESS" :
+          tx.status === "REFUNDED" ||
+            (tx.status === "FAILED" && tx.dispatchStatus === "REFUNDED")
+            ? "FAILED" : "PROCESSING",
         phone: tx.phone, amount: tx.amount, amountCharged: tx.amount,
         createdAt: tx.createdAt,
         network: meta.network || meta.telecomAbodePurchaseIntent?.network,

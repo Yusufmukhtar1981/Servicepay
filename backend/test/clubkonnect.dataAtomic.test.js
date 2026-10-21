@@ -1268,8 +1268,10 @@ test("legacy body and Idempotency-Key contracts remain supported, conflicting ke
 });
 
 test("accepted and in-progress ClubKonnect statuses stay pending with no reward or commission", async () => {
-  const user = await makeUser();
   for (const status of ["PENDING", "PROCESSING", "ORDER_RECEIVED"]) {
+    // Each response fixture is an independent purchase, not a new key trying
+    // to duplicate a preceding unresolved purchase.
+    const user = await makeUser();
     providerDataResponse = { status: 200, data: { status } };
     const result = await invoke(user, purchaseBody(user), {
       idempotencyKey: `provider-${status.toLowerCase()}-key`,
@@ -1288,7 +1290,6 @@ test("accepted and in-progress ClubKonnect statuses stay pending with no reward 
 });
 
 test("contradictory provider success and failure signals remain UNKNOWN and pending", async () => {
-  const user = await makeUser();
   const contradictoryBodies = [
     {
       status: "SUCCESSFUL",
@@ -1299,6 +1300,7 @@ test("contradictory provider success and failure signals remain UNKNOWN and pend
   ];
 
   for (const [index, data] of contradictoryBodies.entries()) {
+    const user = await makeUser();
     providerDataResponse = { status: 200, data };
     const result = await invoke(user, purchaseBody(user), {
       idempotencyKey: `contradictory-outcome-key-${index}`,
@@ -1315,9 +1317,9 @@ test("contradictory provider success and failure signals remain UNKNOWN and pend
     assert.equal(transaction.providerResponse.response.contradictory, true);
     assert.equal(await Commission.countDocuments({ transactionId: transaction._id }), 0);
     assert.equal(await ReferralRewardReconciliation.countDocuments({ sourceId: transaction._id }), 0);
+    assert.equal((await User.findById(user._id)).walletBalance, 500 - transaction.amount);
   }
-  assert.equal(await User.findById(user._id).then((record) => record.walletBalance), 200);
-  assert.equal(await LedgerEntry.countDocuments({ user: user._id, direction: "CREDIT" }), 0);
+  assert.equal(await LedgerEntry.countDocuments({ direction: "CREDIT" }), 0);
 });
 
 test("active provider I/O stays debited until correlated failure is confirmed", async () => {
