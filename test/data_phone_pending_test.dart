@@ -39,7 +39,7 @@ void main() {
       loadPlans: (_) async => {'success': true, 'plans': []},
       purchase: (_) async { purchases++; return {}; },
       statusQuery: (request) async {
-        expect(request, key);
+        expect(request, queries == 0 ? key : 'DATA-AUTO-STATUS');
         queries++;
         return {'status': 'PENDING', 'reference': 'DATA-AUTO-STATUS'};
       },
@@ -207,6 +207,47 @@ void main() {
     expect(await intent.pending(), isNull);
     expect((await intent.retained()).single['key'], old);
     expect(submits, 0, reason: 'acknowledgement never buys or resends');
-    expect(find.text('Check status'), findsOneWidget);
+    expect(find.text('Check Status'), findsOneWidget);
+  });
+
+  testWidgets('Check Status uses the durable original reference and unlocks a refunded request',
+      (tester) async {
+    tester.view.physicalSize = const Size(1000, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final storage = IntentStorage();
+    final intent = DataPurchaseIntent(storage: storage, accountId: () async => 'a');
+    final key = await intent.keyForSubmission(
+        network: 'MTN', phone: '08012345678', planCode: 'x', price: 100);
+    await intent.rememberReference(key, 'DATA-original-reference');
+    var checked = 0;
+    var purchases = 0;
+    await tester.pumpWidget(MaterialApp(home: DataScreen(
+      purchaseIntent: intent,
+      loadBeneficiaries: () async => [],
+      loadPlans: (_) async => {'success': true, 'plans': [
+        {'code': 'x', 'name': '1GB SME', 'price': 100}
+      ]},
+      statusQuery: (reference) async {
+        expect(reference, 'DATA-original-reference');
+        checked++;
+        return checked == 1
+            ? {'status': 'PENDING', 'pending': true}
+            : {'success': false, 'status': 'FAILED', 'dispatchStatus': 'REFUNDED',
+                'pending': false, 'reference': reference,
+                'message': 'Data purchase failed. Wallet refund confirmed.'};
+      },
+      purchase: (_) async { purchases++; return {}; },
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('Check Status'), findsOneWidget);
+    await tester.tap(find.text('Check Status'));
+    await tester.pumpAndSettle();
+    expect(checked, 2);
+    expect(purchases, 0);
+    expect(await intent.pending(), isNull);
+    expect(find.textContaining('Transaction Processing'), findsNothing);
+    expect(find.textContaining('Wallet refund confirmed'), findsOneWidget);
   });
 }

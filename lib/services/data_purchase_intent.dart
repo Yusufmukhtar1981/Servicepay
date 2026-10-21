@@ -189,6 +189,30 @@ class DataPurchaseIntent {
     }
   }
 
+  /// Keep the server's original reference for query-only recovery, including
+  /// a rejected duplicate under a different local key. Never replace the key.
+  Future<void> rememberReference(String key, String reference) async {
+    if (!RegExp(r'^DATA-[A-Za-z0-9-]+$').hasMatch(reference)) return;
+    final storageKey = '$_prefix${await _accountId()}';
+    final preceding = _submissions[storageKey];
+    final completed = Completer<void>();
+    _submissions[storageKey] = completed.future;
+    try {
+      if (preceding != null) await preceding;
+      final saved = await _storage.read(storageKey);
+      final existing = saved == null ? null : jsonDecode(saved);
+      if (existing is Map && existing['key'] == key) {
+        await _storage.write(storageKey,
+            jsonEncode({...existing, 'statusReference': reference}));
+      }
+    } finally {
+      if (identical(_submissions[storageKey], completed.future)) {
+        _submissions.remove(storageKey);
+      }
+      completed.complete();
+    }
+  }
+
   Future<Map<String, dynamic>?> pending() async {
     final saved = await _storage.read('$_prefix${await _accountId()}');
     if (saved == null) return null;

@@ -147,7 +147,8 @@ class _DataScreenState extends State<DataScreen> {
       if (pending == null || !mounted) return;
       final parts = jsonDecode(pending['fingerprint'] as String) as List;
       final result =
-          await (widget.statusQuery ?? ApiService.dataPurchaseStatus)(key);
+          await (widget.statusQuery ?? ApiService.dataPurchaseStatus)(
+              pending['statusReference']?.toString() ?? key);
       if (!mounted) return;
       if (result['authenticationRequired'] == true ||
           result['httpStatus'] == 401) {
@@ -235,8 +236,10 @@ class _DataScreenState extends State<DataScreen> {
     try {
       // Recheck immediately: a formerly UNKNOWN operation can become active or
       // terminal while the acknowledgement dialog is open.
+      final original = await _purchaseIntent.pending();
       final result = await (widget.statusQuery ??
-          ApiService.dataPurchaseStatus)(_pendingKey!);
+          ApiService.dataPurchaseStatus)(
+              original?['statusReference']?.toString() ?? _pendingKey!);
       if (result['authenticationRequired'] == true ||
           result['httpStatus'] == 401) {
         if (mounted) {
@@ -852,6 +855,10 @@ class _DataScreenState extends State<DataScreen> {
     final String reference = result['reference']?.toString() ?? '';
 
     final String status = result['status']?.toString().toUpperCase() ?? '';
+    if (outcome == PurchasePhase.pending &&
+        _pendingKey != null && reference.isNotEmpty) {
+      await _purchaseIntent.rememberReference(_pendingKey!, reference);
+    }
     if (outcome == PurchasePhase.success || outcome == PurchasePhase.failed) {
       if (_pendingKey != null) await _purchaseIntent.finish(_pendingKey!);
       if (mounted)
@@ -1244,7 +1251,7 @@ class _DataScreenState extends State<DataScreen> {
                         TextButton(
                             onPressed:
                                 isBuyingData ? null : () => _checkPurchase(),
-                            child: const Text('Check existing request')),
+                            child: const Text('Check Status')),
                         if (_canStartSeparate)
                           TextButton(
                             onPressed:
@@ -1268,7 +1275,7 @@ class _DataScreenState extends State<DataScreen> {
                         onPressed: isBuyingData
                             ? null
                             : () => _checkPurchase(retained: request),
-                        child: const Text('Check status'),
+                            child: const Text('Check Status'),
                       ),
                     ),
                   Container(

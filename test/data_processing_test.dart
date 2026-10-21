@@ -192,7 +192,7 @@ void main() {
         )));
         await tester.pumpAndSettle();
         expect(find.textContaining('Transaction Processing'), findsOneWidget);
-        await tester.tap(find.text('Check existing request'));
+        await tester.tap(find.text('Check Status'));
         await tester.pumpAndSettle();
         expect(submits, 1,
             reason: 'reopening and checking status never purchases again');
@@ -210,5 +210,12 @@ void main() {
         PurchasePhase.pending);
     expect(purchaseOutcome({'success': false, 'httpStatus': 400}),
         PurchasePhase.failed);
+    expect(purchaseOutcome({'success': false, 'status': 'FAILED',
+      'httpStatus': 422, 'reference': 'DATA-refunded',
+      'dispatchStatus': 'REFUNDED', 'pending': false}),
+        PurchasePhase.failed);
+    expect(purchaseOutcome({'success': false, 'status': 'FAILED',
+      'httpStatus': 422, 'reference': 'DATA-uncertain',
+      'walletDebitHeld': true}), PurchasePhase.pending);
   });
 }
