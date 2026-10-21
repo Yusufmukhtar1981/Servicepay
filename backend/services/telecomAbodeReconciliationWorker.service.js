@@ -37,7 +37,12 @@ function createTelecomAbodeReconciliationWorker({
               { "providerResponse.statusReconciliation.leaseUntil": { $lte: date } }] },
           ],
         }, { $set: { "providerResponse.statusReconciliation.leaseUntil":
-          new Date(date.getTime() + 300000) } }, { new: true, sort: { createdAt: 1 } }).lean();
+          new Date(date.getTime() + 300000) } }, {
+          new: true,
+          // Repeatedly pending old purchases must not starve newer recovery.
+          // Missing checkedAt sorts first, then the least recently checked.
+          sort: { "providerResponse.statusReconciliation.checkedAt": 1, createdAt: 1 },
+        }).lean();
         if (!tx) break;
         let outcome = "UNKNOWN";
         let lookupEvidence = null;
