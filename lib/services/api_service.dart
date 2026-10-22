@@ -157,6 +157,7 @@ class ApiService {
 
   static Future<Map<String, dynamic>> buyAirtime({
     required String network,
+    bool acknowledgePendingPurchase = false,
     required String phone,
     required String amount,
     required String transactionPin,
@@ -188,6 +189,7 @@ class ApiService {
             if (providerNetworkId != null) 'provider': 'TELECOM_ABODE',
             if (customerSellingPrice != null)
               'customerSellingPrice': customerSellingPrice,
+            if (acknowledgePendingPurchase) 'acknowledgePendingPurchase': true,
             'phone': phone.trim(),
             'amount': amount.trim(),
             if (transactionPin.isNotEmpty) 'transactionPin': transactionPin,
@@ -257,6 +259,7 @@ class ApiService {
 
   static Future<Map<String, dynamic>> buyData({
     required String network,
+    bool acknowledgePendingPurchase = false,
     required String phone,
     required String planCode,
     required num amount,
@@ -288,6 +291,7 @@ class ApiService {
             'network': network.trim(),
             'phone': phone.trim(),
             'planCode': planCode.trim(),
+            if (acknowledgePendingPurchase) 'acknowledgePendingPurchase': true,
             'idempotencyKey': idempotencyKey,
             'amount': amount,
             if (productQuote != null && productQuote.isNotEmpty)
@@ -311,6 +315,17 @@ class ApiService {
       };
     }
     return result;
+  }
+
+  static Future<Map<String, dynamic>> pendingPurchaseContext(
+      Map<String, String> query) async {
+    final token = await _getAuthToken();
+    final response = await http.get(
+      Uri.parse('$baseUrl/clubkonnect/pending-purchase-context')
+          .replace(queryParameters: query),
+      headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'},
+    ).timeout(const Duration(seconds: 6));
+    return _handleResponse(response);
   }
 
   /// Recorded status only; never recreates or redispatches a provider purchase.

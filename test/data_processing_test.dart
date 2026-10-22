@@ -34,6 +34,7 @@ void main() {
       int submits = 0;
       await tester.pumpWidget(MaterialApp(
           home: DataScreen(
+        pendingContext: (_) async => {'success': true, 'pendingCount': 0},
         loadBeneficiaries: () async => [],
         purchaseIntent: DataPurchaseIntent(
             storage: MemoryIntent(), accountId: () async => 'mobile-test'),
@@ -112,6 +113,7 @@ void main() {
       String? submittedKey;
       await tester.pumpWidget(MaterialApp(
           home: DataScreen(
+        pendingContext: (_) async => {'success': true, 'pendingCount': 0},
         loadBeneficiaries: () async => [],
         purchaseIntent: intent,
         loadPlans: (_) async => {
@@ -183,6 +185,7 @@ void main() {
         await tester.pumpWidget(const SizedBox());
         await tester.pumpWidget(MaterialApp(
             home: DataScreen(
+          pendingContext: (_) async => {'success': true, 'pendingCount': 0},
           loadBeneficiaries: () async => [],
           purchaseIntent: DataPurchaseIntent(
               storage: storage, accountId: () async => 'test-customer'),
@@ -195,7 +198,7 @@ void main() {
               {'success': true, 'status': 'PENDING', 'reference': 'DATA-proof'},
         )));
         await tester.pumpAndSettle();
-        expect(find.textContaining('Transaction Processing'), findsOneWidget);
+        expect(find.textContaining('Earlier purchase awaiting confirmation'), findsOneWidget);
         await tester.tap(find.text('Check Status'));
         await tester.pumpAndSettle();
         expect(submits, 1,

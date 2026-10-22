@@ -104,6 +104,7 @@ class DataPurchaseIntent {
         try {
           final existing = jsonDecode(saved);
           if (existing is Map &&
+              !(preparedOnly && existing['submitted'] != false) &&
               existing['fingerprint'] == fingerprint &&
               existing['key'] is String &&
               (existing['key'] as String).isNotEmpty) {
@@ -179,15 +180,30 @@ class DataPurchaseIntent {
   Future<void> cancelPreparation(String key) =>
       _updatePreparation(key, submit: false);
 
-  Future<void> finish(String key) async {
+  Future<void> _withRequestLock(Future<void> Function(String storageKey) action) async {
     final storageKey = '$_prefix${await _accountId()}';
+    final preceding = _submissions[storageKey];
+    final completed = Completer<void>();
+    _submissions[storageKey] = completed.future;
+    try {
+      if (preceding != null) await preceding;
+      await action(storageKey);
+    } finally {
+      if (identical(_submissions[storageKey], completed.future)) {
+        _submissions.remove(storageKey);
+      }
+      completed.complete();
+    }
+  }
+
+  Future<void> finish(String key) => _withRequestLock((storageKey) async {
     final saved = await _storage.read(storageKey);
     if (saved == null) return;
     final existing = jsonDecode(saved);
     if (existing is Map && existing['key'] == key) {
       await _storage.delete(storageKey);
     }
-  }
+  });
 
   /// Keep the server's original reference for query-only recovery, including
   /// a rejected duplicate under a different local key. Never replace the key.
@@ -281,10 +297,10 @@ class DataPurchaseIntent {
     }
   }
 
-  Future<void> finishRetained(String key) async {
-    final storageKey = '$_prefix${await _accountId()}.retained';
-    final history = await retained();
+  Future<void> finishRetained(String key) => _withRequestLock((storageKey) async {
+    final raw = await _storage.read('$storageKey.retained');
+    final history = raw == null ? <dynamic>[] : jsonDecode(raw) as List;
     history.removeWhere((item) => item['key'] == key);
-    await _storage.write(storageKey, jsonEncode(history));
-  }
+    await _storage.write('$storageKey.retained', jsonEncode(history));
+  });
 }

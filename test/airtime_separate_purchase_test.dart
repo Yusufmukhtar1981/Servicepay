@@ -18,6 +18,26 @@ class MemoryStorage implements AirtimePurchaseIntentStorage {
 void main() {
   Future<String> key(AirtimePurchaseIntent intent) => intent.keyForSubmission(
       network: 'MTN', phone: '08012345678', amount: '50');
+  test('a new airtime submission never reuses an unresolved same-number key', () async {
+    final intent = AirtimePurchaseIntent(storage: MemoryStorage());
+    final old = await key(intent);
+    int dispatches = 0;
+    await expectLater(intent.submit(network: 'MTN', phone: '08012345678',
+      amount: '50', newPurchase: true, dispatch: (_) async {
+        dispatches++; return {};
+      }), throwsStateError);
+    expect(dispatches, 0);
+    await intent.retainForSeparatePurchase();
+    String? sent;
+    await intent.submit(network: 'MTN', phone: '08012345678',
+      amount: '50', newPurchase: true, dispatch: (key) async {
+        sent = key; dispatches++;
+        return {'status': 'PENDING'};
+      });
+    expect(sent, isNot(old));
+    expect(dispatches, 1);
+    expect(await intent.retainedKeys(), containsAll([old, sent]));
+  });
   test('explicit separate purchase preserves old UNKNOWN key and creates a new one', () async {
     final storage = MemoryStorage();
     final intent = AirtimePurchaseIntent(storage: storage);

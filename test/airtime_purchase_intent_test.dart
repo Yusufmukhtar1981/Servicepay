@@ -390,7 +390,8 @@ void main() {
         () async {
           await tester.pumpWidget(
             MaterialApp(
-              home: AirtimeScreen(purchaseIntent: intent),
+              home: AirtimeScreen(purchaseIntent: intent,
+                pendingContext: (_) async => {'success': true, 'pendingCount': 0}),
             ),
           );
           await tester.pumpAndSettle();
@@ -494,7 +495,8 @@ void main() {
         () async {
           await tester.pumpWidget(
             MaterialApp(
-              home: AirtimeScreen(purchaseIntent: intent),
+              home: AirtimeScreen(purchaseIntent: intent,
+                pendingContext: (_) async => {'success': true, 'pendingCount': 0}),
             ),
           );
           await tester.pumpAndSettle();

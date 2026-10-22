@@ -3,10 +3,12 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'widgets/pending_purchase_warning.dart';
 import 'widgets/purchase_processing.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'services/api_service.dart';
+import 'services/data_phone.dart';
 import 'services/purchase_session_recovery.dart';
 import 'widgets/saved_beneficiaries.dart';
 
@@ -16,11 +18,13 @@ class AirtimeScreen extends StatefulWidget {
     this.purchaseIntent,
     this.loadNetworks,
     this.loadBeneficiaries,
+    this.pendingContext,
   });
 
   final AirtimePurchaseIntent? purchaseIntent;
   final Future<Map<String, dynamic>> Function()? loadNetworks;
   final BeneficiaryLoader? loadBeneficiaries;
+  final PendingPurchaseContextLoader? pendingContext;
 
   @override
   State<AirtimeScreen> createState() => _AirtimeScreenState();
@@ -138,7 +142,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
   Future<void> buyAirtime() async {
     if (isLoading || _isCheckingStatus) return;
 
-    String phone = phoneController.text.trim();
+    String phone = normalizeDataPhone(phoneController.text.trim());
 
     final String amountText = amountController.text.trim();
 
@@ -148,6 +152,10 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
       showMessage(
         'Please enter the phone number and amount.',
       );
+      return;
+    }
+    if (!RegExp(r'^0\d{10}$').hasMatch(phone)) {
+      showMessage('Please enter a valid 11-digit phone number.');
       return;
     }
 
@@ -167,6 +175,17 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
     });
 
     try {
+      final previous = await _purchaseIntent.retainedKeys();
+      if (!mounted) return;
+      final acknowledged = await acknowledgeNewBillPurchase(context,
+        load: widget.pendingContext ?? ApiService.pendingPurchaseContext,
+        service: 'AIRTIME', phone: phone, network: network,
+        localPending: previous.isNotEmpty);
+      if (acknowledged == null || !mounted) return;
+      if (previous.isNotEmpty) {
+        await _purchaseIntent.retainForSeparatePurchase();
+        await _restorePendingIntent();
+      }
       final providerId = providerNetworkIds[network];
       if (providerId == null) {
         showMessage('Load the current Airtime networks before buying.');
@@ -300,12 +319,14 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
       }
 
       final Map<String, dynamic> result = await _purchaseIntent.submit(
+        newPurchase: true,
         network: network,
         phone: phone,
         amount: purchaseAmount,
         dispatch: (String idempotencyKey) => ApiService.buyAirtime(
           transactionPin: transactionPin,
           network: network,
+          acknowledgePendingPurchase: acknowledged,
           providerNetworkId: providerId,
           customerSellingPrice: sellingPrice,
           phone: phone,
@@ -749,7 +770,6 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                               _isCheckingStatus ||
                               _catalogLoading ||
                               _catalogError != null ||
-                              _pendingIdempotencyKey != null ||
                               _pendingIntentError != null
                           ? null
                           : buyAirtime,
@@ -876,6 +896,7 @@ class AirtimePurchaseIntent {
     required String network,
     required String phone,
     required String amount,
+    bool newPurchase = false,
   }) =>
       _withStorageLock<String>(() async {
         final fingerprint = _fingerprint(
@@ -884,6 +905,9 @@ class AirtimePurchaseIntent {
           amount: amount,
         );
         final saved = await _storage.read(_storageKey);
+        if (saved != null && newPurchase) {
+          throw StateError('A previous request needs a separate-purchase acknowledgement.');
+        }
         if (saved != null) {
           try {
             final existing = jsonDecode(saved);
@@ -946,10 +970,12 @@ class AirtimePurchaseIntent {
     required String network,
     required String phone,
     required String amount,
+    bool newPurchase = false,
     required Future<Map<String, dynamic>> Function(String idempotencyKey)
         dispatch,
   }) async {
     final key = await keyForSubmission(
+      newPurchase: newPurchase,
       network: network,
       phone: phone,
       amount: amount,

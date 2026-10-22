@@ -34,6 +34,7 @@ void main() {
         network: 'MTN', phone: '08012345678', planCode: 'x', price: 100);
     int queries = 0, purchases = 0;
     await tester.pumpWidget(MaterialApp(home: DataScreen(
+      pendingContext: (_) async => {'success': true, 'pendingCount': 0},
       purchaseIntent: intent,
       loadBeneficiaries: () async => [],
       loadPlans: (_) async => {'success': true, 'plans': []},
@@ -120,6 +121,7 @@ void main() {
     int purchases = 0, queries = 0;
     await tester.pumpWidget(MaterialApp(
         home: DataScreen(
+      pendingContext: (_) async => {'success': true, 'pendingCount': 0},
       purchaseIntent: intent,
       loadBeneficiaries: () async => [],
       loadPlans: (_) => plans.future,
@@ -156,7 +158,7 @@ void main() {
             .widget<FilledButton>(
                 find.widgetWithText(FilledButton, 'Buy').first)
             .onPressed,
-        isNull);
+        isNotNull);
   });
 
   testWidgets(
@@ -174,6 +176,7 @@ void main() {
     int submits = 0;
     await tester.pumpWidget(MaterialApp(
         home: DataScreen(
+      pendingContext: (_) async => {'success': true, 'pendingCount': 0},
       purchaseIntent: intent,
       loadBeneficiaries: () async => [],
       loadPlans: (_) async => {
@@ -197,7 +200,7 @@ void main() {
       },
     )));
     await tester.pumpAndSettle();
-    expect(find.textContaining('Earlier request needs review'), findsOneWidget);
+    expect(find.textContaining('Earlier purchase awaiting confirmation'), findsOneWidget);
     expect(find.textContaining('Your transaction is being processed'),
         findsNothing);
     await tester.tap(find.text('Start a separate purchase'));
@@ -224,6 +227,7 @@ void main() {
     var checked = 0;
     var purchases = 0;
     await tester.pumpWidget(MaterialApp(home: DataScreen(
+      pendingContext: (_) async => {'success': true, 'pendingCount': 0},
       purchaseIntent: intent,
       loadBeneficiaries: () async => [],
       loadPlans: (_) async => {'success': true, 'plans': [

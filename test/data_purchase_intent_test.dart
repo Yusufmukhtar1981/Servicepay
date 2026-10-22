@@ -105,7 +105,11 @@ void main() {
     await intent.markSubmitted(next);
     await intent.cancelPreparation(next);
     expect((await intent.pending())!['key'], next);
-    expect(await prepare(), next);
+    await expectLater(prepare(), throwsStateError,
+        reason: 'a genuinely new confirmation cannot silently reuse a submitted key');
+    expect(await intent.keyForSubmission(network: 'MTN', phone: '08012345678',
+        planCode: 'plan-a', price: 100), next,
+        reason: 'an actual retry of the same request still retains its key');
     await intent.finish(next);
     expect(await prepare(), isNot(next));
   });
