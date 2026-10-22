@@ -62,7 +62,11 @@ class PurchaseProcessing extends StatelessWidget {
                           children: [
                             const CircularProgressIndicator(),
                             const SizedBox(height: 20),
-                            Text('Processing your $service purchase...',
+                            Text(
+                                ['DATA', 'AIRTIME']
+                                        .contains(service.toUpperCase())
+                                    ? 'Processing your transaction. Please wait.'
+                                    : 'Processing your $service purchase...',
                                 textAlign: TextAlign.center,
                                 style: Theme.of(context).textTheme.titleMedium),
                             const SizedBox(height: 12),

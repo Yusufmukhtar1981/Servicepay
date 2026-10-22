@@ -4,7 +4,6 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'account_statement_screen.dart';
 import 'help_support_screen.dart';
@@ -70,8 +69,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           isLoading ||
           isRefreshing ||
           isLoadingMore ||
-          (scrollController.hasClients && scrollController.offset > 100))
+          (scrollController.hasClients && scrollController.offset > 100)) {
         return;
+      }
       if (transactions.any((row) => const <String>{
             'PENDING',
             'PROCESSING',
@@ -133,8 +133,6 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     });
 
     try {
-      final SharedPreferences prefs = await SharedPreferences.getInstance();
-
       final String token = (await SessionStore.readToken()) ?? '';
 
       if (token.trim().isEmpty) {
@@ -561,7 +559,6 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           ),
         );
       }
-      final SharedPreferences prefs = await SharedPreferences.getInstance();
       final String token = (await SessionStore.readToken()) ?? '';
       if (token.trim().isEmpty) {
         throw Exception('Your login session has expired.');
@@ -683,7 +680,6 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     setState(() => isPreparingStatement = true);
 
     try {
-      final SharedPreferences prefs = await SharedPreferences.getInstance();
       final String token = (await SessionStore.readToken()) ?? '';
       if (token.trim().isEmpty) {
         throw Exception('Your login session has expired.');
@@ -865,7 +861,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
-                      status,
+                      TransactionPresentation(transaction).statusLabel,
                       style: TextStyle(
                         color: _statusColor(status),
                         fontWeight: FontWeight.w800,
@@ -1189,9 +1185,8 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                               direction: _transactionDirection(
                                 transaction,
                               ),
-                              status: _transactionStatus(
-                                transaction,
-                              ),
+                              status: TransactionPresentation(transaction)
+                                  .statusLabel,
                               date: _formatDate(
                                 _transactionDate(
                                   transaction,

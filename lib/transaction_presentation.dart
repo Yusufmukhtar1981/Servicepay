@@ -75,6 +75,20 @@ class TransactionPresentation {
         'PROCESSING';
   }
 
+  /// Keep financial status unchanged for filters/polling; only label bill stages.
+  String get statusLabel {
+    final stage = raw['processingStatus']?.toString().toUpperCase();
+    final service =
+        _first(raw, const ['serviceType', 'type']).toString().toUpperCase();
+    if (const ['DATA', 'AIRTIME'].contains(service) &&
+        status == 'PENDING' &&
+        const ['INITIATED', 'PROCESSING', 'PENDING_VERIFICATION']
+            .contains(stage)) {
+      return stage!.replaceAll('_', ' ');
+    }
+    return status;
+  }
+
   String get title => _title(
         _first(raw, const [
           'serviceType',
@@ -205,9 +219,10 @@ class TransactionPresentation {
       'Voucher serial': ['serialNumber'],
     }.entries) {
       final value = _firstDeep(entry.value).toString().trim();
-      if (value.isNotEmpty)
+      if (value.isNotEmpty) {
         yield MapEntry(entry.key,
             entry.key == 'Narration' ? customerReceiptText(value) : value);
+      }
     }
     if (fee != null) {
       yield MapEntry('Fee', '₦${fee!.toStringAsFixed(2)}');

@@ -71,15 +71,16 @@ void main() {
               .processing,
           isTrue);
       await tester.pump(const Duration(milliseconds: 200));
-      final bounds =
-          tester.getRect(find.text('Processing your data purchase...'));
+      final bounds = tester
+          .getRect(find.text('Processing your transaction. Please wait.'));
       expect(bounds.top, greaterThanOrEqualTo(0));
       expect(bounds.bottom, lessThan(800));
       expect(bounds.left, greaterThanOrEqualTo(0));
       expect(bounds.right, lessThanOrEqualTo(width));
       expect(submits, 1);
       await tester.pump(const Duration(seconds: 2));
-      expect(find.text('Processing your data purchase...'), findsOneWidget);
+      expect(find.text('Processing your transaction. Please wait.'),
+          findsOneWidget);
       expect(submits, 1);
       result.complete({
         'success': true,
@@ -89,7 +90,8 @@ void main() {
       });
       await tester.pump();
       await tester.pumpAndSettle();
-      expect(find.text('Processing your data purchase...'), findsNothing);
+      expect(
+          find.text('Processing your transaction. Please wait.'), findsNothing);
       expect(find.text('Data Purchase Successful'), findsOneWidget);
       expect(submits, 1);
       expect(tester.takeException(), isNull);
@@ -146,9 +148,10 @@ void main() {
       await tester.pump(const Duration(milliseconds: 400));
       expect(submits, 1);
       expect(confirmedKey, contains(submittedKey!));
-      expect(find.text('Processing your data purchase...'), findsOneWidget);
-      final progressBounds =
-          tester.getRect(find.text('Processing your data purchase...'));
+      expect(find.text('Processing your transaction. Please wait.'),
+          findsOneWidget);
+      final progressBounds = tester
+          .getRect(find.text('Processing your transaction. Please wait.'));
       expect(progressBounds.top, greaterThanOrEqualTo(0));
       expect(progressBounds.bottom, lessThanOrEqualTo(1200));
       expect(find.text('Data Purchase Successful'), findsNothing);
@@ -169,7 +172,8 @@ void main() {
             : 'Result',
       });
       await tester.pumpAndSettle();
-      expect(find.text('Processing your data purchase...'), findsNothing);
+      expect(
+          find.text('Processing your transaction. Please wait.'), findsNothing);
       expect(submits, 1);
       expect(find.text('Data Purchase Successful'),
           finalStatus == 'SUCCESSFUL' ? findsOneWidget : findsNothing);
@@ -210,12 +214,24 @@ void main() {
         PurchasePhase.pending);
     expect(purchaseOutcome({'success': false, 'httpStatus': 400}),
         PurchasePhase.failed);
-    expect(purchaseOutcome({'success': false, 'status': 'FAILED',
-      'httpStatus': 422, 'reference': 'DATA-refunded',
-      'dispatchStatus': 'REFUNDED', 'pending': false}),
+    expect(
+        purchaseOutcome({
+          'success': false,
+          'status': 'FAILED',
+          'httpStatus': 422,
+          'reference': 'DATA-refunded',
+          'dispatchStatus': 'REFUNDED',
+          'pending': false
+        }),
         PurchasePhase.failed);
-    expect(purchaseOutcome({'success': false, 'status': 'FAILED',
-      'httpStatus': 422, 'reference': 'DATA-uncertain',
-      'walletDebitHeld': true}), PurchasePhase.pending);
+    expect(
+        purchaseOutcome({
+          'success': false,
+          'status': 'FAILED',
+          'httpStatus': 422,
+          'reference': 'DATA-uncertain',
+          'walletDebitHeld': true
+        }),
+        PurchasePhase.pending);
   });
 }
