@@ -35,6 +35,8 @@ const {
 } = require("../middleware/accountRestriction.middleware");
 
 const router = express.Router();
+router.get("/pending-purchase-context", protect,
+  require("../controllers/pendingPurchaseContext.controller").getPendingPurchaseContext);
 const { getDataPurchaseStatus, retireUnrecordedDataRequest } = require("../controllers/dataPurchaseStatus.controller");
 router.get("/data/status/:key", protect, getDataPurchaseStatus);
 router.post("/data/recovery/:key/retire", protect, retireUnrecordedDataRequest);

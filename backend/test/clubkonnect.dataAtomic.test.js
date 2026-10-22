@@ -1037,6 +1037,36 @@ test("a new DATA key intentionally buys the same plan a second time", async () =
   assert.equal(dataRequestCount, 2);
 });
 
+test("acknowledged same-plan purchase gets a fresh reference and one debit while historical pending stays byte-identical", async () => {
+  const user = await makeUser();
+  const timeout = new Error("socket timed out"); timeout.code = "ECONNABORTED";
+  providerDataResponse = timeout;
+  const old = await invoke(user, purchaseBody(user), { idempotencyKey: "historical-old-request" });
+  assert.equal(old.status, 202);
+  await Transaction.collection.updateOne({ reference: old.body.reference },
+    { $set: { createdAt: new Date("2026-10-21T00:00:00Z") } });
+  const snapshot = JSON.stringify(await Transaction.collection.findOne({ reference: old.body.reference }));
+  const blocked = await invoke(user, purchaseBody(user), { idempotencyKey: "new-unacknowledged-request" });
+  assert.equal(blocked.status, 409);
+  assert.equal(blocked.body.requiresPendingAcknowledgement, true);
+  assert.equal(await User.findById(user._id).then(r => r.walletBalance), 400);
+  providerDataResponse = (url, config) => ({
+    status: 200, data: { RequestID: config.params.RequestID, status: "SUCCESSFUL" },
+  });
+  const results = await Promise.all(Array.from({ length: 4 }, () => invoke(user,
+    { ...purchaseBody(user), acknowledgePendingPurchase: true },
+    { idempotencyKey: "new-acknowledged-request" })));
+  assert.ok(results.some(r => r.status === 200));
+  const fresh = await Transaction.findOne({ idempotencyKey: "new-acknowledged-request" }).lean();
+  assert.notEqual(fresh.reference, old.body.reference);
+  assert.equal(fresh.status, "SUCCESSFUL");
+  assert.equal(dataRequestCount, 2);
+  assert.equal(await User.findById(user._id).then(r => r.walletBalance), 300);
+  assert.equal(await LedgerEntry.countDocuments({ user: user._id, direction: "DEBIT" }), 2);
+  assert.equal(await LedgerEntry.countDocuments({ user: user._id, direction: "CREDIT" }), 0);
+  assert.equal(JSON.stringify(await Transaction.collection.findOne({ reference: old.body.reference })), snapshot);
+});
+
 test("timeout stays pending and a retry never resends or refunds", async () => {
   const user = await makeUser();
   const timeout = new Error("socket timed out");

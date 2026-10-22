@@ -1235,8 +1235,8 @@ exports.buyData = async (req, res) => {
         }
 
         // The customer write above serializes competing admissions. Abort the
-        // entire debit if a different key would repeat the same unresolved
-        // recipient/network/plan. Other recipients or plans remain independent.
+        // entire debit unless the customer explicitly acknowledged that this
+        // is a separately charged purchase. Same-key idempotency still applies.
         const conflict = await Transaction.findOne({
           customerId: customer._id, serviceType: "DATA",
           $or: [
@@ -1248,7 +1248,7 @@ exports.buyData = async (req, res) => {
           "providerResponse.network": networkCode,
           "providerResponse.planCode": selectedPlan,
         }).session(session).lean();
-        if (conflict) {
+        if (conflict && req.body.acknowledgePendingPurchase !== true) {
           throw Object.assign(new Error("DATA_PURCHASE_CONFLICT"), {
             code: "DATA_PURCHASE_CONFLICT", conflict,
           });
@@ -1321,7 +1321,8 @@ exports.buyData = async (req, res) => {
           success: false, code: "DATA_PURCHASE_CONFLICT", status: "PENDING",
           pending: true, reference: original.reference,
           newRequestNotAdmitted: true, walletDebitHeld: false,
-          message: "An earlier purchase for this number and plan is unresolved. No new debit or purchase was made. Check the original transaction status.",
+          requiresPendingAcknowledgement: true,
+          message: "An earlier purchase for this number and plan is unresolved. No new debit or purchase was made. Acknowledge the warning to authorise a separate purchase.",
         });
       }
       if (admissionError.code === 11000) {
