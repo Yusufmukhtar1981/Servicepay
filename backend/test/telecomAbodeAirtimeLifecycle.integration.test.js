@@ -46,6 +46,27 @@ const fixture = async ({ mode = "success", markupBps = 0 } = {}) => {
     customerSellingPrice: priceFor(50, markupBps), idempotencyKey: `ta-mock-request-${n}` };
   return { customer, lifecycle, calls, input, config };
 };
+test("historical Airtime recovery and outcome writes leave records and wallet untouched", async () => {
+  const { customer, lifecycle, input, calls } = await fixture({ mode: "timeout" });
+  await lifecycle.executePurchase(input);
+  const tx = await Transaction.findOne({ customerId: customer._id, serviceType: "AIRTIME" });
+  assert.ok(tx);
+  await Transaction.collection.updateOne({ _id: tx._id }, {
+    $set: { createdAt: new Date("2026-10-21T08:19:58.891Z") },
+  });
+  const before = JSON.stringify(await Transaction.findById(tx._id).lean());
+  const balance = (await User.findById(customer._id)).walletBalance;
+  const ledgers = await LedgerEntry.countDocuments();
+  const requestCount = calls.length;
+  const recovered = await lifecycle.reconcilePendingPurchase({ transactionId: tx._id });
+  assert.equal(recovered.status, "PENDING");
+  await lifecycle.markUnknown(tx._id);
+  assert.equal(calls.length, requestCount);
+  assert.equal((await User.findById(customer._id)).walletBalance, balance);
+  assert.equal(await LedgerEntry.countDocuments(), ledgers);
+  assert.equal(JSON.stringify(await Transaction.findById(tx._id).lean()), before);
+});
+
 test("international phone formats validate at quote boundary without a wallet debit or purchase dispatch", async () => {
   const f = await fixture();
   for (const phone of ["08012345678", "2348012345678", "+2348012345678"]) {

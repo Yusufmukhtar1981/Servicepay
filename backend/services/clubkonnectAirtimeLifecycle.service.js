@@ -1,5 +1,6 @@
 const crypto = require("crypto");
 const mongoose = require("mongoose");
+const { isHistoricalBillManualReview } = require("./historicalBillManualReview.service");
 
 const User = require("../models/user.model");
 const Transaction = require("../models/transaction.model");
@@ -497,6 +498,7 @@ const createClubKonnectAirtimeLifecycleService = ({
         if (!transaction) {
           throw buildError("Airtime transaction was not found.", 404, "AIRTIME_TRANSACTION_NOT_FOUND");
         }
+        if (isHistoricalBillManualReview(transaction)) return transaction;
         await requireVersionOneDebitCustody(transaction, session);
         if (source === "INITIAL_REQUEST" && !transaction.dispatchStartedAt) {
           throw buildError(
@@ -905,6 +907,7 @@ const createClubKonnectAirtimeLifecycleService = ({
     if (!transaction) {
       throw buildError("A pending ClubKonnect Airtime transaction was not found.", 404, "AIRTIME_TRANSACTION_NOT_PENDING");
     }
+    if (isHistoricalBillManualReview(transaction)) return transaction;
     await requireVersionOneDebitCustody(transaction);
     if (!transaction.dispatchStartedAt) {
       throw buildError(

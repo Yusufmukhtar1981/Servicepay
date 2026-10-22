@@ -1,4 +1,5 @@
 const Transaction = require("../models/transaction.model");
+const { isHistoricalBillManualReview } = require("./historicalBillManualReview.service");
 const telecomAbode = require("./telecomAbode.service");
 const {
   settleTelecomAbodeDataOutcome,
@@ -19,6 +20,12 @@ const createTelecomAbodeDataReconciliationService = ({
     const transaction = await transactionModel.findOne({ reference }).lean();
     if (!transaction) {
       return { httpStatus: 404, body: { outcome: "NOT_FOUND" } };
+    }
+    if (isHistoricalBillManualReview(transaction)) {
+      return { httpStatus: 202, body: {
+        ...UNKNOWN_RESULT, manualReviewRequired: true,
+        providerLookup: "MANUAL_REVIEW_REQUIRED",
+      } };
     }
 
     if (

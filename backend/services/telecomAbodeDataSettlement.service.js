@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { isHistoricalBillManualReview } = require("./historicalBillManualReview.service");
 
 const Transaction = require("../models/transaction.model");
 const User = require("../models/user.model");
@@ -136,6 +137,9 @@ const createTelecomAbodeDataSettlementService = ({
     const initial = lookup.transaction;
     if (initial.status !== "PENDING") {
       return { status: "ALREADY_TERMINAL", transaction: initial };
+    }
+    if (isHistoricalBillManualReview(initial)) {
+      return { status: "MANUAL_REVIEW_REQUIRED", transaction: initial };
     }
 
     const suppliedAmount = evidence.amount === undefined || evidence.amount === null

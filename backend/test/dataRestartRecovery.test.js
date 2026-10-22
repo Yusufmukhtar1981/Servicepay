@@ -5,7 +5,7 @@ const { createTelecomAbodeReconciliationWorker } =
 const fs = require("node:fs");
 const path = require("node:path");
 
-const date = new Date("2026-10-20T12:00:00Z");
+const date = new Date("2026-10-23T12:00:00Z");
 function fixture({ dispatchStatus = "SENDING", concurrentSettlement = false } = {}) {
   let claimed = false;
   let lookups = 0;
@@ -25,13 +25,13 @@ function fixture({ dispatchStatus = "SENDING", concurrentSettlement = false } = 
           assert.equal(filter.dispatchStatus, "SENDING");
           assert.equal(filter.reference, tx.providerRequestId);
           assert.equal(filter.dispatchClaimedAt.$lte.toISOString(),
-            "2026-10-20T11:58:00.000Z");
+            "2026-10-23T11:58:00.000Z");
           return { lean: async () => concurrentSettlement ? null :
             { ...tx, dispatchStatus: "UNKNOWN" } };
         }
         assert.deepEqual(filter.$and[0].$or[1], {
           dispatchStatus: "SENDING",
-          dispatchClaimedAt: { $lte: new Date("2026-10-20T11:58:00Z") },
+          dispatchClaimedAt: { $lte: new Date("2026-10-23T11:58:00Z") },
         });
         return { lean: async () => {
           if (claimed) return null;
