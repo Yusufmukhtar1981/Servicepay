@@ -1,5 +1,6 @@
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
+const { billPurchaseState } = require("./billPurchaseState.service");
 
 const getDefaultModels = () => {
   return {
@@ -219,6 +220,7 @@ const toTransactionItem = (transaction) => {
     ),
     fee: asAmount(details.fee || details.transferFee) || null,
     status: normalizeStatus(transaction.status || transaction.paymentStatus),
+    ...billPurchaseState(transaction),
     description: transactionDescription(transaction),
     counterparty: transactionCounterparty(transaction),
     createdAt,

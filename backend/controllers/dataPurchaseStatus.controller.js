@@ -1,6 +1,7 @@
 const Transaction = require("../models/transaction.model");
 const User = require("../models/user.model");
 const mongoose = require("mongoose");
+const { billPurchaseState } = require("../services/billPurchaseState.service");
 const { createTelecomAbodeDataReconciliationService } =
   require("../services/telecomAbodeDataReconciliation.service");
 const reconciliation = createTelecomAbodeDataReconciliationService();
@@ -61,6 +62,7 @@ function createDataPurchaseStatus({ lookup = query => Transaction.findOne(query)
         (tx.status === "FAILED" && tx.dispatchStatus !== "REFUNDED"));
       const meta = tx.providerResponse || {};
       return res.json({ success: tx.status === "SUCCESSFUL",
+        ...billPurchaseState(tx),
         status: review ? "UNKNOWN" : tx.status,
         pending: tx.status === "PENDING" || review,
         manualReviewRequired: review,
@@ -76,8 +78,8 @@ function createDataPurchaseStatus({ lookup = query => Transaction.findOne(query)
         planName: meta.planName || meta.dataPlanName || meta.productName,
         message: tx.status === "SUCCESSFUL" ? "Data purchase successful." :
           tx.dispatchStatus === "REFUNDED" ? "Data purchase failed. Wallet refund confirmed." :
-            review ? "The earlier request remains unresolved and retained for review. Its funds remain held. You may explicitly start a separate purchase; the original will not be resent." :
-            "The original DATA request is awaiting confirmation. Do not submit again." });
+            review ? "Your transaction is being verified. Please do not repeat this purchase. Its funds remain held. You may explicitly start a separate purchase; the original will not be resent." :
+            "Your transaction is being verified. Please do not repeat this purchase." });
     } catch (_) {
       return res.status(503).json({ success: false, pending: true,
         message: "Status unavailable. Retain the original request; do not submit again." });
