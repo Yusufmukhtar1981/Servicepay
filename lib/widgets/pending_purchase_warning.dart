@@ -19,7 +19,9 @@ Future<bool?> acknowledgeNewBillPurchase(
   bool matching = false;
   try {
     final result = await load({
-      'serviceType': service, 'phone': phone, 'network': network,
+      'serviceType': service,
+      'phone': phone,
+      'network': network,
       if (planCode != null) 'planCode': planCode,
     }).timeout(const Duration(seconds: 6));
     if (result['httpStatus'] == 401 || result['httpStatus'] == 403) {
@@ -39,7 +41,7 @@ Future<bool?> acknowledgeNewBillPurchase(
   return await showDialog<bool>(
     context: context,
     builder: (dialogContext) => AlertDialog(
-      title: const Text('Earlier purchase awaiting confirmation'),
+      title: const Text('Confirm a new purchase'),
       content: Text(
         '${uncertain ? "We could not check all earlier requests. " : ""}'
         '${matching ? "An earlier purchase for this same number${service == "DATA" ? " and plan" : ""} is still awaiting confirmation. " : "An earlier purchase may still complete. "}'
@@ -48,17 +50,19 @@ Future<bool?> acknowledgeNewBillPurchase(
         'separate wallet charge. Both purchases could be delivered.',
       ),
       actions: [
-        TextButton(onPressed: () {
-          if (completed) return;
-          completed = true;
-          Navigator.pop(dialogContext);
-        },
+        TextButton(
+            onPressed: () {
+              if (completed) return;
+              completed = true;
+              Navigator.pop(dialogContext);
+            },
             child: const Text('Cancel')),
-        FilledButton(onPressed: () {
-          if (completed) return;
-          completed = true;
-          Navigator.pop(dialogContext, true);
-        },
+        FilledButton(
+            onPressed: () {
+              if (completed) return;
+              completed = true;
+              Navigator.pop(dialogContext, true);
+            },
             child: const Text('I understand — new purchase')),
       ],
     ),

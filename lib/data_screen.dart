@@ -1,15 +1,12 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'widgets/pending_purchase_warning.dart';
 
 import 'services/api_service.dart';
 import 'services/data_purchase_intent.dart';
 import 'services/data_phone.dart';
-import 'services/purchase_session_recovery.dart';
 import 'receipt_screen.dart';
 import 'widgets/saved_beneficiaries.dart';
 import 'widgets/purchase_processing.dart';
-import 'dart:convert';
 
 class DataScreen extends StatefulWidget {
   const DataScreen(
@@ -17,9 +14,7 @@ class DataScreen extends StatefulWidget {
       this.purchaseIntent,
       this.loadPlans,
       this.purchase,
-      this.statusQuery,
-      this.retireRequest,
-    this.pendingContext,
+      this.pendingContext,
       this.loadBeneficiaries,
       this.saveBeneficiary});
   final BeneficiaryLoader? loadBeneficiaries;
@@ -28,8 +23,6 @@ class DataScreen extends StatefulWidget {
   final Future<Map<String, dynamic>> Function(String network)? loadPlans;
   final Future<Map<String, dynamic>> Function(Map<String, dynamic> input)?
       purchase;
-  final Future<Map<String, dynamic>> Function(String key)? statusQuery;
-  final Future<Map<String, dynamic>> Function(String key)? retireRequest;
   final PendingPurchaseContextLoader? pendingContext;
 
   @override
@@ -62,15 +55,6 @@ class _DataScreenState extends State<DataScreen> {
   late final DataPurchaseIntent _purchaseIntent;
   PurchasePhase _phase = PurchasePhase.idle;
   String? _pendingKey;
-  String _pendingMessage = '';
-  bool _restoring = true;
-  bool _checkingStatus = false;
-  bool _canStartSeparate = false;
-  bool _canRetireUnrecorded = false;
-  bool _authenticationRequired = false;
-  List<Map<String, dynamic>> _retainedRequests = [];
-  Timer? _statusTimer;
-  int _retainedCursor = 0;
 
   String plansError = '';
 
@@ -79,250 +63,36 @@ class _DataScreenState extends State<DataScreen> {
     super.initState();
     _purchaseIntent = widget.purchaseIntent ?? DataPurchaseIntent();
     loadDataPlans();
-    _restorePurchase();
-    _statusTimer = Timer.periodic(const Duration(seconds: 15), (_) {
-      if (!mounted || _restoring || isBuyingData || _authenticationRequired ||
-          WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed ||
-          ModalRoute.of(context)?.isCurrent != true) return;
-      if (_phase == PurchasePhase.pending && _pendingKey?.isNotEmpty == true) {
-        unawaited(_checkPurchase(automatic: true));
-      } else if (_retainedRequests.isNotEmpty) {
-        final request = _retainedRequests[
-            _retainedCursor++ % _retainedRequests.length];
-        unawaited(_checkPurchase(retained: request, automatic: true));
-      }
-    });
   }
 
   @override
   void dispose() {
-    _statusTimer?.cancel();
     phoneController.dispose();
     _phoneFocus.dispose();
     super.dispose();
   }
 
-  bool get isBusy =>
-      isLoadingPlans || isBuyingData || _restoring;
-
-  Future<void> _restorePurchase() async {
-    try {
-      final pending = await _purchaseIntent.pending();
-      final retained = await _purchaseIntent.retained();
-      if (!mounted) return;
-      setState(() => _retainedRequests = retained);
-      if (pending != null) {
-        setState(() {
-          _pendingKey = pending['key'] as String;
-          _phase = PurchasePhase.pending;
-          _pendingMessage =
-              'An earlier DATA purchase is awaiting confirmation. '
-              'Check its status; no new purchase will be sent.';
-        });
-        await _checkPurchase();
-      }
-    } catch (_) {
-      if (mounted)
-        setState(() {
-          _pendingMessage = 'Cannot safely recover the previous request. '
-              'Check Transactions before making another purchase.';
-          _pendingKey = '';
-          _phase = PurchasePhase.pending;
-        });
-    } finally {
-      if (mounted)
-        setState(() {
-          _restoring = false;
-        });
-    }
-  }
-
-  Future<void> _checkPurchase({
-    Map<String, dynamic>? retained,
-    bool automatic = false,
-  }) async {
-    final key = retained?['key'] as String? ?? _pendingKey;
-    if (isBuyingData || _checkingStatus || key == null || key.isEmpty) return;
-    setState(() {
-      _checkingStatus = true;
-    });
-    try {
-      final pending = retained ?? await _purchaseIntent.pending();
-      if (pending == null || !mounted) return;
-      final parts = jsonDecode(pending['fingerprint'] as String) as List;
-      final result =
-          await (widget.statusQuery ?? ApiService.dataPurchaseStatus)(
-              pending['statusReference']?.toString() ?? key)
-              .timeout(const Duration(seconds: 8));
-      if (!mounted) return;
-      if (retained == null && (isBuyingData || _pendingKey != key)) return;
-      if (result['authenticationRequired'] == true ||
-          result['httpStatus'] == 401) {
-        setState(() {
-          _authenticationRequired = true;
-          _canStartSeparate = false;
-          _canRetireUnrecorded = false;
-          _pendingMessage = 'Your session has expired. Sign in again to check '
-              'the original request. No purchase has been resent.';
-        });
-        return;
-      }
-      setState(() => _authenticationRequired = false);
-      if (retained != null) {
-        final outcome = purchaseOutcome(result);
-        if (outcome == PurchasePhase.success ||
-            outcome == PurchasePhase.failed) {
-          await _purchaseIntent.finishRetained(key);
-          final remaining = await _purchaseIntent.retained();
-          if (mounted) setState(() => _retainedRequests = remaining);
-        }
-        if (!automatic || outcome == PurchasePhase.success ||
-            outcome == PurchasePhase.failed) {
-          showMessage(result['message']?.toString() ??
-              'This earlier request is still awaiting confirmation.');
-        }
-        return;
-      }
-      setState(() => _canStartSeparate =
-          result['pending'] == true ||
-              result['status'] == 'UNKNOWN' || result['status'] == 'PENDING');
-      setState(() =>
-          _canRetireUnrecorded = result['canRetireUnrecordedRequest'] == true);
-      await _presentDataResult(result,
-          network: parts[0].toString(),
-          phone: parts[1].toString(),
-          code: parts[2].toString(),
-          name: pending['planName']?.toString() ?? parts[2].toString(),
-          price: double.parse(parts[3].toString()),
-          automatic: automatic);
-    } catch (error) {
-      if (retained != null) {
-        if (mounted && !automatic) showMessage('The earlier request remains unconfirmed.');
-        return;
-      }
-      if (_pendingKey != key || isBuyingData) return;
-      if (mounted) {
-        setState(() {
-          _phase = PurchasePhase.pending;
-          _authenticationRequired = error is PurchaseAuthenticationRequired;
-          _canStartSeparate = !_authenticationRequired && key.isNotEmpty;
-          _canRetireUnrecorded = false;
-          _pendingMessage = _authenticationRequired
-              ? 'Your session has expired. Sign in again to check the original request.'
-              : 'Status is unavailable. The original request is retained. Do not submit again.';
-        });
-      }
-    } finally {
-      if (mounted)
-        setState(() {
-          _checkingStatus = false;
-        });
-    }
-  }
-
-  Future<void> _startSeparatePurchase() async {
-    if (!_canStartSeparate || isBuyingData) return;
-    final acknowledged = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Start a separate purchase?'),
-        content: const Text(
-          'The earlier purchase is unresolved and its funds remain held. '
-          'It will be retained for status checks, not resent or automatically '
-          'refunded. A separate purchase uses a new request key and can charge '
-          'your wallet separately. Check your balance and Transactions first.',
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel')),
-          FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Start separate purchase')),
-        ],
-      ),
-    );
-    if (acknowledged != true || !mounted || isBuyingData) return;
-    setState(() => isBuyingData = true);
-    try {
-      await _purchaseIntent.retainForSeparatePurchase(_pendingKey!);
-      final retained = await _purchaseIntent.retained();
-      if (!mounted) return;
-      setState(() {
-        _retainedRequests = retained;
-        _pendingKey = null;
-        _pendingMessage = '';
-        _canStartSeparate = false;
-        _phase = PurchasePhase.idle;
-      });
-      _phoneFocus.requestFocus();
-    } catch (_) {
-      showMessage(
-          'The earlier request could not be safely retained. No new purchase was started.',
-          isError: true);
-    } finally {
-      if (mounted) setState(() => isBuyingData = false);
-    }
-  }
-
-  Future<void> _retireUnrecordedPurchase() async {
-    if (!_canRetireUnrecorded || isBuyingData || _pendingKey == null) return;
-    final acknowledged = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Resolve unrecorded request?'),
-        content: const Text(
-            'The server will check whether the original request '
-            'was admitted. Only if no purchase exists will it permanently block '
-            'that old key before letting you buy again. No provider request or '
-            'automatic refund will be made.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel')),
-          FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Resolve request')),
-        ],
-      ),
-    );
-    if (acknowledged != true || !mounted || isBuyingData) return;
-    setState(() => isBuyingData = true);
-    try {
-      final result = await (widget.retireRequest ??
-          ApiService.retireUnrecordedDataRequest)(_pendingKey!);
-      if (result['requestRetired'] == true && result['status'] == 'FAILED') {
-        await _purchaseIntent.finish(_pendingKey!);
-        if (!mounted) return;
-        setState(() {
-          _pendingKey = null;
-          _pendingMessage = '';
-          _canRetireUnrecorded = false;
-          _canStartSeparate = false;
-          _phase = PurchasePhase.idle;
-        });
-      }
-      showMessage(
-          result['message']?.toString() ?? 'Check the original request again.');
-    } catch (_) {
-      showMessage('Recovery is unavailable. The original key is retained.',
-          isError: true);
-    } finally {
-      if (mounted) setState(() => isBuyingData = false);
-    }
-  }
+  bool get isBusy => isLoadingPlans || isBuyingData;
 
   int comparePlans(Map<String, dynamic> a, Map<String, dynamic> b) {
     double volume(Map<String, dynamic> plan) {
-      final match = RegExp(r'(\d+(?:\.\d+)?)\s*(MB|GB|TB)', caseSensitive: false)
-          .firstMatch(getPlanName(plan));
+      final match =
+          RegExp(r'(\d+(?:\.\d+)?)\s*(MB|GB|TB)', caseSensitive: false)
+              .firstMatch(getPlanName(plan));
       if (match == null) return double.infinity;
       final size = double.parse(match.group(1)!);
-      return size * (match.group(2)!.toUpperCase() == 'TB'
-          ? 1024 * 1024 : match.group(2)!.toUpperCase() == 'GB' ? 1024 : 1);
+      return size *
+          (match.group(2)!.toUpperCase() == 'TB'
+              ? 1024 * 1024
+              : match.group(2)!.toUpperCase() == 'GB'
+                  ? 1024
+                  : 1);
     }
+
     final byVolume = volume(a).compareTo(volume(b));
-    return byVolume != 0 ? byVolume : parseAmount(a['price']).compareTo(parseAmount(b['price']));
+    return byVolume != 0
+        ? byVolume
+        : parseAmount(a['price']).compareTo(parseAmount(b['price']));
   }
 
   double parseAmount(dynamic amount) {
@@ -515,13 +285,6 @@ class _DataScreenState extends State<DataScreen> {
 
       if (result['success'] != true) {
         setState(() {
-          if (result['httpStatus'] == 401) {
-            _authenticationRequired = true;
-            _canStartSeparate = false;
-            _canRetireUnrecorded = false;
-            _pendingMessage = 'Your session has expired. Sign in again to load '
-                'DATA plans and check your earlier requests.';
-          }
           plansError =
               result['message']?.toString() ?? 'Unable to load data plans.';
         });
@@ -618,21 +381,13 @@ class _DataScreenState extends State<DataScreen> {
       final retained = await _purchaseIntent.retained();
       if (!mounted) return;
       final acknowledged = await acknowledgeNewBillPurchase(context,
-        load: widget.pendingContext ?? ApiService.pendingPurchaseContext,
-        service: 'DATA', phone: phone, network: network, planCode: code,
-        localPending: old != null || retained.isNotEmpty);
+          load: widget.pendingContext ?? ApiService.pendingPurchaseContext,
+          service: 'DATA',
+          phone: phone,
+          network: network,
+          planCode: code,
+          localPending: old != null || retained.isNotEmpty);
       if (acknowledged == null || !mounted) return;
-      if (old != null) {
-        await _purchaseIntent.retainForSeparatePurchase(old['key'] as String);
-        final remaining = await _purchaseIntent.retained();
-        if (!mounted) return;
-        setState(() {
-          _retainedRequests = remaining;
-          _pendingKey = null;
-          _pendingMessage = '';
-          _canStartSeparate = false;
-        });
-      }
       bool confirmationSubmitted = false;
       final bool? confirmed = await showDialog<bool>(
         context: context,
@@ -694,18 +449,6 @@ class _DataScreenState extends State<DataScreen> {
       );
 
       if (confirmed != true || !mounted) return;
-      // Bind the confirmed intent before PIN; never create a second key later.
-      final String idempotencyKey = await _purchaseIntent.keyForSubmission(
-        network: network,
-        phone: phone,
-        planCode: code,
-        price: price,
-        productQuote: productQuote,
-        planName: name,
-        preparedOnly: true,
-      );
-      preparedKey = idempotencyKey;
-      if (!mounted) return;
       String transactionPin = '';
       final TextEditingController transactionPinController =
           TextEditingController();
@@ -777,6 +520,22 @@ class _DataScreenState extends State<DataScreen> {
         return;
       }
 
+      // Archive only after the second confirmation (PIN), immediately before
+      // reserving the new purchase identity.
+      if (old != null) {
+        await _purchaseIntent.retainForSeparatePurchase(old['key'] as String);
+        if (!mounted) return;
+      }
+      final String idempotencyKey = await _purchaseIntent.keyForSubmission(
+        network: network,
+        phone: phone,
+        planCode: code,
+        price: price,
+        productQuote: productQuote,
+        planName: name,
+        preparedOnly: true,
+      );
+      preparedKey = idempotencyKey;
       await _purchaseIntent.markSubmitted(idempotencyKey);
       if (!mounted) return;
       setState(() => _pendingKey = idempotencyKey);
@@ -813,14 +572,12 @@ class _DataScreenState extends State<DataScreen> {
           _phase = _pendingKey == null
               ? PurchasePhase.failed
               : PurchasePhase.pending;
-          _pendingMessage = _pendingKey == null
-              ? ''
-              : 'The original request is awaiting confirmation. Check status; do not submit again.';
         });
       showMessage(
           _pendingKey == null
-              ? error.toString().replaceFirst('Exception: ', '')
-              : _pendingMessage,
+              ? '${error.toString().replaceFirst('Exception: ', '')} '
+                  'No new purchase was started.'
+              : 'The request is not confirmed. It remains available in Transactions.',
           isError: _pendingKey == null);
     } finally {
       try {
@@ -852,7 +609,6 @@ class _DataScreenState extends State<DataScreen> {
       setState(() {
         _pendingKey = null;
         _phase = PurchasePhase.idle;
-        _pendingMessage = '';
       });
       showMessage(result['message']?.toString() ??
           'No new purchase was admitted. Acknowledge the earlier purchase warning to continue.');
@@ -878,7 +634,8 @@ class _DataScreenState extends State<DataScreen> {
 
     final String status = result['status']?.toString().toUpperCase() ?? '';
     if (outcome == PurchasePhase.pending &&
-        _pendingKey != null && reference.isNotEmpty) {
+        _pendingKey != null &&
+        reference.isNotEmpty) {
       await _purchaseIntent.rememberReference(_pendingKey!, reference);
     }
     if (outcome == PurchasePhase.success || outcome == PurchasePhase.failed) {
@@ -886,23 +643,13 @@ class _DataScreenState extends State<DataScreen> {
       if (mounted)
         setState(() {
           _pendingKey = null;
-          _pendingMessage = '';
         });
     }
     if (!mounted) return;
 
     if (outcome == PurchasePhase.pending) {
-      message = result['status'] == 'UNKNOWN' &&
-              result['manualReviewRequired'] == true
-          ? 'The earlier request remains unconfirmed and retained for review. '
-              'Use the available recovery action; do not resend the original request.'
-          : 'This purchase is awaiting confirmation. Do not resend it. '
-              'You may acknowledge the warning to authorise a separately charged new purchase.';
-      setState(() {
-        _pendingMessage = reference.isNotEmpty
-            ? '$message Reference: $reference'
-            : '$message Request ID: ${_pendingKey ?? "unavailable"}';
-      });
+      message =
+          'We’re verifying this purchase. You can check its status in Transactions.';
     }
     if (!success && (status == 'REFUNDED' || status == 'REVERSED')) {
       message = '$message Your wallet has been refunded.';
@@ -915,7 +662,7 @@ class _DataScreenState extends State<DataScreen> {
     if (!automatic || outcome != PurchasePhase.pending) {
       showMessage(
         message,
-        isError: !success,
+        isError: !success && outcome != PurchasePhase.pending,
       );
     }
 
@@ -1258,48 +1005,6 @@ class _DataScreenState extends State<DataScreen> {
               slivers: <Widget>[
                 SliverToBoxAdapter(
                     child: Column(children: [
-                  if (_pendingMessage.isNotEmpty)
-                    MaterialBanner(
-                      content: Text(
-                          '${_authenticationRequired ? 'Sign in required' : 'Earlier purchase awaiting confirmation'}\n$_pendingMessage'),
-                      actions: [
-                        if (_authenticationRequired)
-                          TextButton(
-                            onPressed: isBuyingData
-                                ? null
-                                : () => signInForPurchaseRecovery(context),
-                            child: const Text('Sign in again'),
-                          ),
-                        TextButton(
-                            onPressed:
-                                isBuyingData ? null : () => _checkPurchase(),
-                            child: const Text('Check Status')),
-                        if (_canStartSeparate)
-                          TextButton(
-                            onPressed:
-                                isBuyingData ? null : _startSeparatePurchase,
-                            child: const Text('Start a separate purchase'),
-                          ),
-                        if (_canRetireUnrecorded)
-                          TextButton(
-                            onPressed:
-                                isBuyingData ? null : _retireUnrecordedPurchase,
-                            child: const Text('Resolve unrecorded request'),
-                          ),
-                      ],
-                    ),
-                  for (final request in _retainedRequests)
-                    ListTile(
-                      title: const Text(
-                          'Earlier DATA request retained for review'),
-                      subtitle: Text('Request ID: ${request['key']}'),
-                      trailing: TextButton(
-                        onPressed: isBuyingData
-                            ? null
-                            : () => _checkPurchase(retained: request),
-                            child: const Text('Check Status'),
-                      ),
-                    ),
                   Container(
                     width: double.infinity,
                     color: Colors.white,

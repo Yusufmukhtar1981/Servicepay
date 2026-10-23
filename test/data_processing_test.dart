@@ -2,8 +2,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:servicepay_app/data_screen.dart';
+import 'package:servicepay_app/airtime_screen.dart';
 import 'package:servicepay_app/services/data_purchase_intent.dart';
 import 'package:servicepay_app/widgets/purchase_processing.dart';
+import 'package:servicepay_app/widgets/bill_purchase_recovery.dart';
 
 class MemoryIntent implements DataPurchaseIntentStorage {
   final entries = <String, String>{};
@@ -20,8 +22,25 @@ class MemoryIntent implements DataPurchaseIntentStorage {
   }
 }
 
+class MemoryAirtimeIntent implements AirtimePurchaseIntentStorage {
+  final entries = <String, String>{};
+  @override
+  Future<String?> read(String key) async => entries[key];
+  @override
+  Future<void> write(String key, String value) async {
+    entries[key] = value;
+  }
+
+  @override
+  Future<void> delete(String key) async {
+    entries.remove(key);
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  setUp(() => TestWidgetsFlutterBinding.ensureInitialized()
+      .handleAppLifecycleStateChanged(AppLifecycleState.resumed));
   for (final width in <double>[320, 360, 390]) {
     testWidgets(
         'processing stays visible after scrolling on ${width.toInt()}px mobile',
@@ -134,8 +153,8 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('Buy Data').last);
       await tester.pumpAndSettle();
-      final confirmedKey = storage.entries.values.single;
-      expect(confirmedKey, contains('"submitted":false'));
+      expect(storage.entries, isEmpty,
+          reason: 'No new identity is reserved before PIN admission.');
       await tester.enterText(find.byType(TextField).last, '0000');
       await tester.tap(find.text('Confirm'));
       await tester.tap(find.text('Confirm'), warnIfMissed: false);
@@ -149,7 +168,8 @@ void main() {
               'progress is enabled on the first frame, before the API completes');
       await tester.pump(const Duration(milliseconds: 400));
       expect(submits, 1);
-      expect(confirmedKey, contains(submittedKey!));
+      expect(storage.entries.values.single, contains(submittedKey!));
+      expect(storage.entries.values.single, contains('"submitted":true'));
       expect(find.text('Processing your transaction. Please wait.'),
           findsOneWidget);
       final progressBounds = tester
@@ -184,22 +204,23 @@ void main() {
       if (finalStatus == 'PENDING' || finalStatus == 'UNKNOWN') {
         await tester.pumpWidget(const SizedBox());
         await tester.pumpWidget(MaterialApp(
-            home: DataScreen(
-          pendingContext: (_) async => {'success': true, 'pendingCount': 0},
-          loadBeneficiaries: () async => [],
-          purchaseIntent: DataPurchaseIntent(
-              storage: storage, accountId: () async => 'test-customer'),
-          loadPlans: (_) async => {'success': true, 'plans': []},
-          purchase: (_) async {
-            submits++;
-            return {};
-          },
-          statusQuery: (_) async =>
-              {'success': true, 'status': 'PENDING', 'reference': 'DATA-proof'},
+            home: Scaffold(
+          body: BillPurchaseRecovery(
+            isActive: true,
+            dataIntent: DataPurchaseIntent(
+                storage: storage, accountId: () async => 'test-customer'),
+            airtimeIntent:
+                AirtimePurchaseIntent(storage: MemoryAirtimeIntent()),
+            dataStatusQuery: (_) async => {
+              'success': true,
+              'status': 'PENDING',
+              'reference': 'DATA-proof'
+            },
+          ),
         )));
         await tester.pumpAndSettle();
-        expect(find.textContaining('Earlier purchase awaiting confirmation'), findsOneWidget);
-        await tester.tap(find.text('Check Status'));
+        expect(find.textContaining('Still verifying'), findsOneWidget);
+        await tester.tap(find.byTooltip('Check request'));
         await tester.pumpAndSettle();
         expect(submits, 1,
             reason: 'reopening and checking status never purchases again');

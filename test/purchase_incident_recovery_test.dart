@@ -2,11 +2,42 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:servicepay_app/airtime_screen.dart';
-import 'package:servicepay_app/data_screen.dart';
 import 'package:servicepay_app/services/data_purchase_intent.dart';
-import 'data_phone_pending_test.dart' show IntentStorage;
+import 'package:servicepay_app/widgets/bill_purchase_recovery.dart';
+
+class _DataStorage implements DataPurchaseIntentStorage {
+  final values = <String, String>{};
+  @override
+  Future<String?> read(String key) async => values[key];
+  @override
+  Future<void> write(String key, String value) async {
+    values[key] = value;
+  }
+
+  @override
+  Future<void> delete(String key) async {
+    values.remove(key);
+  }
+}
+
+class _AirtimeStorage implements AirtimePurchaseIntentStorage {
+  final values = <String, String>{};
+  @override
+  Future<String?> read(String key) async => values[key];
+  @override
+  Future<void> write(String key, String value) async {
+    values[key] = value;
+  }
+
+  @override
+  Future<void> delete(String key) async {
+    values.remove(key);
+  }
+}
 
 void main() {
+  setUp(() => TestWidgetsFlutterBinding.ensureInitialized()
+      .handleAppLifecycleStateChanged(AppLifecycleState.resumed));
   testWidgets(
       'Airtime keeps waiting for a verified catalogue beyond four seconds',
       (tester) async {
@@ -50,43 +81,36 @@ void main() {
   });
 
   testWidgets(
-      'expired DATA status retains the old key and denies independent spend',
+      'expired DATA status is handled in History and retains the old key',
       (tester) async {
     tester.view.physicalSize = const Size(1000, 1400);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     final intent = DataPurchaseIntent(
-        storage: IntentStorage(), accountId: () async => 'customer');
+        storage: _DataStorage(), accountId: () async => 'customer');
     final key = await intent.keyForSubmission(
         network: 'MTN', phone: '08012345678', planCode: 'x', price: 100);
-    int purchases = 0;
     await tester.pumpWidget(MaterialApp(
-        home: DataScreen(
-      purchaseIntent: intent,
-      loadBeneficiaries: () async => [],
-      loadPlans: (_) async => {
-        'success': true,
-        'plans': [
-          {'code': 'x', 'name': '1GB', 'price': 100},
-        ]
-      },
-      statusQuery: (_) async =>
-          {'httpStatus': 401, 'authenticationRequired': true, 'pending': true},
-      purchase: (_) async {
-        purchases++;
-        return {};
-      },
-    )));
+      home: Scaffold(
+        body: BillPurchaseRecovery(
+          isActive: true,
+          dataIntent: intent,
+          airtimeIntent: AirtimePurchaseIntent(
+            storage: _AirtimeStorage(),
+          ),
+          dataStatusQuery: (_) async => {
+            'httpStatus': 401,
+            'authenticationRequired': true,
+            'pending': true,
+          },
+        ),
+      ),
+    ));
     await tester.pumpAndSettle();
     expect(find.text('Sign in again'), findsOneWidget);
-    expect(find.textContaining('Sign in required'), findsOneWidget);
+    expect(find.textContaining('Its key remains saved'), findsOneWidget);
     expect(find.text('Start a separate purchase'), findsNothing);
     expect((await intent.pending())!['key'], key);
-    expect(purchases, 0);
-    await tester.enterText(find.byType(TextField).first, '+2348012345678');
-    expect(
-        tester.widget<TextField>(find.byType(TextField).first).controller!.text,
-        '+2348012345678');
   });
 }

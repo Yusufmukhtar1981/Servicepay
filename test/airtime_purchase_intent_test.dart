@@ -364,6 +364,116 @@ void main() {
   });
 
   testWidgets(
+    'same AIRTIME product Buy acknowledges a separate charge and uses a fresh key',
+    (tester) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'auth_token': 'test-session-token',
+      });
+      final storage = _MemoryIntentStorage();
+      final intent = createIntent(storage);
+      final oldKey = await intent.keyForSubmission(
+        network: 'MTN',
+        phone: '08012345678',
+        amount: '50',
+      );
+      await intent.submit(
+        network: 'MTN',
+        phone: '08012345678',
+        amount: '50',
+        dispatch: (_) async => unresolvedResult(),
+      );
+      final requests = <http.Request>[];
+      await http.runWithClient(
+        () async {
+          await tester.pumpWidget(MaterialApp(
+            home: AirtimeScreen(
+              purchaseIntent: intent,
+              pendingContext: (_) async => {
+                'success': true,
+                'pendingCount': 1,
+                'matchingPendingCount': 1,
+              },
+              loadNetworks: () async => {
+                'success': true,
+                'data': [
+                  {'displayName': 'MTN', 'networkId': 1}
+                ],
+              },
+            ),
+          ));
+          await tester.pumpAndSettle();
+          await tester.enterText(find.byType(TextField).first, '08012345678');
+          await tester.enterText(find.byType(TextField).last, '50');
+          await tester.tap(find.widgetWithText(ElevatedButton, 'Buy Airtime'));
+          await tester.pumpAndSettle();
+          expect(find.text('Confirm a new purchase'), findsOneWidget,
+              reason: tester
+                  .widgetList<Text>(find.byType(Text))
+                  .map((text) => text.data)
+                  .join(' | '));
+          expect(
+            requests.where((r) => r.url.path.endsWith('/clubkonnect/airtime')),
+            isEmpty,
+          );
+
+          await tester.tap(find.text('I understand — new purchase'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Confirm').last);
+          await tester.pumpAndSettle();
+          await tester.enterText(find.byType(TextField).last, '0000');
+          await tester.tap(find.text('Confirm').last);
+          await tester.pumpAndSettle();
+
+          final purchaseRequests = requests
+              .where((r) => r.url.path.endsWith('/clubkonnect/airtime'))
+              .toList();
+          expect(purchaseRequests, hasLength(1));
+          final freshKey = purchaseRequests.single.headers['idempotency-key']!;
+          expect(freshKey, isNot(oldKey));
+          expect(
+            jsonDecode(
+                purchaseRequests.single.body)['acknowledgePendingPurchase'],
+            true,
+          );
+          expect(await intent.pendingKey(), freshKey);
+          expect(await intent.retainedKeys(), contains(oldKey));
+          expect(
+            requests.where(
+                (r) => r.url.path.endsWith('/clubkonnect/airtime/requery')),
+            isEmpty,
+          );
+        },
+        () => http_testing.MockClient((request) async {
+          requests.add(request);
+          if (request.url.path.endsWith('/clubkonnect/airtime/quote')) {
+            return http.Response(
+              jsonEncode(<String, dynamic>{
+                'success': true,
+                'data': {
+                  'customerSellingPrice': '46.25',
+                  'normalizedPhone': '08012345678',
+                },
+              }),
+              200,
+            );
+          }
+          if (request.url.path.endsWith('/clubkonnect/airtime')) {
+            return http.Response(
+              jsonEncode(<String, dynamic>{
+                'success': false,
+                'status': 'PENDING',
+                'message': 'Still processing',
+              }),
+              202,
+            );
+          }
+          return http.Response('{}', 500);
+        }),
+      );
+    },
+  );
+
+  testWidgets(
     'status check explicitly requeries a pending key and retains HTTP 202',
     (tester) async {
       SharedPreferences.setMockInitialValues(<String, Object>{
@@ -390,8 +500,10 @@ void main() {
         () async {
           await tester.pumpWidget(
             MaterialApp(
-              home: AirtimeScreen(purchaseIntent: intent,
-                pendingContext: (_) async => {'success': true, 'pendingCount': 0}),
+              home: AirtimeScreen(
+                  purchaseIntent: intent,
+                  pendingContext: (_) async =>
+                      {'success': true, 'pendingCount': 0}),
             ),
           );
           await tester.pumpAndSettle();
@@ -403,26 +515,11 @@ void main() {
               ),
             ),
             isEmpty,
-            reason: 'A pending purchase must not trigger an automatic requery.',
+            reason: 'Buy screens never query historical requests.',
           );
-          expect(find.text('Check previous request'), findsOneWidget);
-
-          await tester.tap(find.text('Check previous request'));
-          await tester.pumpAndSettle();
-
-          final requeryRequests = requests
-              .where(
-                (request) => request.url.path.endsWith(
-                  '/clubkonnect/airtime/requery',
-                ),
-              )
-              .toList();
-          expect(requeryRequests, hasLength(1));
-          expect(requeryRequests.single.method, 'POST');
-          expect(
-            jsonDecode(requeryRequests.single.body),
-            <String, dynamic>{'idempotencyKey': pendingKey},
-          );
+          expect(find.text('Check previous request'), findsNothing);
+          expect(find.text('Start a separate purchase'), findsNothing);
+          expect(find.text('08012345678'), findsNothing);
           expect(
             requests.where(
               (request) => request.url.path.endsWith('/clubkonnect/airtime'),
@@ -432,7 +529,6 @@ void main() {
           );
           expect(purchaseDispatches, 1);
           expect(await intent.pendingKey(), pendingKey);
-          expect(find.textContaining('not confirmed yet'), findsOneWidget);
         },
         () => http_testing.MockClient((request) async {
           requests.add(request);
@@ -495,13 +591,16 @@ void main() {
         () async {
           await tester.pumpWidget(
             MaterialApp(
-              home: AirtimeScreen(purchaseIntent: intent,
-                pendingContext: (_) async => {'success': true, 'pendingCount': 0}),
+              home: AirtimeScreen(
+                  purchaseIntent: intent,
+                  pendingContext: (_) async =>
+                      {'success': true, 'pendingCount': 0}),
             ),
           );
           await tester.pumpAndSettle();
 
-          expect(find.text('Check previous request'), findsOneWidget);
+          expect(find.text('Check previous request'), findsNothing);
+          expect(find.textContaining('Still verifying'), findsNothing);
           expect(
             requests.where(
               (request) => request.url.path.endsWith(
@@ -511,21 +610,7 @@ void main() {
             isEmpty,
           );
 
-          await tester.tap(find.text('Check previous request'));
-          await tester.pumpAndSettle();
-
-          final requeryRequests = requests
-              .where(
-                (request) => request.url.path.endsWith(
-                  '/clubkonnect/airtime/requery',
-                ),
-              )
-              .toList();
-          expect(requeryRequests, hasLength(1));
-          expect(
-            jsonDecode(requeryRequests.single.body),
-            <String, dynamic>{'idempotencyKey': pendingKey},
-          );
+          expect(await intent.pendingKey(), pendingKey);
           expect(
             requests.where(
               (request) => request.url.path.endsWith('/clubkonnect/airtime'),
@@ -534,12 +619,6 @@ void main() {
             reason: 'Accounting recovery must not buy airtime again.',
           );
           expect(purchaseDispatches, 1);
-          expect(await intent.pendingKey(), isNull);
-          expect(find.text('Check previous request'), findsNothing);
-          expect(
-            find.textContaining('Amount charged: ₦93.75'),
-            findsOneWidget,
-          );
         },
         () => http_testing.MockClient((request) async {
           requests.add(request);

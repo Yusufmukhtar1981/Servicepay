@@ -12,11 +12,28 @@ import 'services/support_api_service.dart';
 import 'transaction_presentation.dart';
 import 'servicepay_theme.dart';
 import 'servicepay_ui.dart';
+import 'services/data_purchase_intent.dart';
+import 'airtime_screen.dart' show AirtimePurchaseIntent;
+import 'widgets/bill_purchase_recovery.dart';
 
 class TransactionsScreen extends StatefulWidget {
-  const TransactionsScreen({super.key, this.isActive = true});
+  const TransactionsScreen({
+    super.key,
+    this.isActive = true,
+    this.dataIntent,
+    this.airtimeIntent,
+    this.dataStatusQuery,
+    this.dataRetireRequest,
+    this.airtimeStatusQuery,
+  });
 
   final bool isActive;
+  final DataPurchaseIntent? dataIntent;
+  final AirtimePurchaseIntent? airtimeIntent;
+  final Future<Map<String, dynamic>> Function(String reference)?
+      dataStatusQuery;
+  final Future<Map<String, dynamic>> Function(String key)? dataRetireRequest;
+  final Future<Map<String, dynamic>> Function(String key)? airtimeStatusQuery;
 
   @override
   State<TransactionsScreen> createState() => _TransactionsScreenState();
@@ -97,6 +114,16 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     searchController.dispose();
     scrollController.dispose();
     super.dispose();
+  }
+
+  void _refreshAfterBillVerification() {
+    if (!mounted ||
+        !widget.isActive ||
+        isLoading ||
+        isRefreshing ||
+        isLoadingMore ||
+        (scrollController.hasClients && scrollController.offset > 100)) return;
+    unawaited(loadTransactions(showRefreshLoader: true));
   }
 
   void _loadMoreWhenNeeded() {
@@ -1012,6 +1039,16 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                       30,
                     ),
                     children: [
+                      BillPurchaseRecovery(
+                        isActive: widget.isActive,
+                        dataIntent: widget.dataIntent,
+                        airtimeIntent: widget.airtimeIntent,
+                        dataStatusQuery: widget.dataStatusQuery,
+                        dataRetireRequest: widget.dataRetireRequest,
+                        airtimeStatusQuery: widget.airtimeStatusQuery,
+                        onTerminalStatusConfirmed:
+                            _refreshAfterBillVerification,
+                      ),
                       TextField(
                         controller: searchController,
                         onChanged: (value) {
