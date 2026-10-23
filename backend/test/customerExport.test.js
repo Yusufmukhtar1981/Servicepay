@@ -156,7 +156,7 @@ test("all-customer CSV is complete beyond the first page and audited without PII
 });
 test("filtered export applies name/phone/email search; selected export rejects out-of-scope IDs", async () => {
   assert.equal((await request({ scope: "filtered", query: "a+b" })).status, 200);
-  assert.equal(queries.at(-1).$and.at(-1).$or.length, 3);
+  assert.equal(queries.at(-1).$and.at(-1).$or.length, 6);
   assert.equal(queries.at(-1).$and.at(-1).$or[1].phone.$regex, "a\\+b");
   assert.equal((await request({ scope: "selected", ids: [] })).status, 400);
   assert.equal((await request({ scope: "selected", ids: [id(1), id(9999)] })).status, 403);
@@ -173,6 +173,15 @@ test("scoped downloads exclude other zones, including forged selected IDs", asyn
   assert.ok(csv.includes(rows[0].email));
   assert.ok(!csv.includes(rows[1].email));
   assert.equal((await request({ scope: "selected", ids: [id(1), id(2)] }, "Bearer scoped")).status, 403);
+});
+test("filtered export matches the existing Users location search without exporting locations", async () => {
+  const response = await request({ scope: "filtered", query: "North" });
+  assert.equal(response.status, 200);
+  const csv = await response.text();
+  assert.equal(csv.trim().split("\r\n").length, rows.filter(row => row.zone === "North").length + 1);
+  assert.ok(!csv.includes('"North"'));
+  assert.ok(!csv.includes('"South"'));
+  assert.ok(!csv.includes(rows[1].email));
 });
 test("XLSX contains every row, keeps phone numbers as text, never creates formulas", async () => {
   const response = await request({ format: "xlsx", action: "share" });

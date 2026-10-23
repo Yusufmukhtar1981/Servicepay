@@ -40,7 +40,9 @@ function baseFilter(req, query = "") {
   if (typeof query !== "string" || query.length > 200) throw reject(400, "Search must be at most 200 characters.");
   const parts = [{ role: "CUSTOMER", isDeleted: { $ne: true } }, scopeFilter(req)];
   const q = query.trim();
-  if (q) parts.push({ $or: ["fullName", "phone", "email"].map((field) =>
+  // Match the existing Users search, including its legacy location filters.
+  // Location fields are predicates only, never part of the exported projection.
+  if (q) parts.push({ $or: ["fullName", "phone", "email", "state", "zone", "lga"].map((field) =>
     ({ [field]: { $regex: escapeRegex(q), $options: "i" } })) });
   return { $and: parts };
 }
