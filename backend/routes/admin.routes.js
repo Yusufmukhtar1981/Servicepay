@@ -3,6 +3,7 @@ const adminTransactionRequeryController = require("../controllers/adminTransacti
 const adminBankReconciliationController = require("../controllers/adminBankReconciliation.controller");
 const transactionIntelligenceController = require("../controllers/adminTransactionIntelligence.controller");
 const fraudRiskController = require("../controllers/adminFraudRisk.controller");
+const customerExportController = require("../controllers/adminCustomerExport.controller");
 
 const {
   getAdminDashboard,
@@ -64,6 +65,10 @@ const {
 } = require("../controllers/adminWalletAdjustment.controller");
 
 const router = express.Router();
+const customerExportAccess = [protect, loadStaffRole, requirePermission(P.USERS_VIEW),
+  requirePermission(P.CUSTOMERS_EXPORT)];
+router.get("/customer-exports/customers", ...customerExportAccess, customerExportController.listCustomers);
+router.post("/customer-exports/download", ...customerExportAccess, customerExportController.download);
 function requireExactWalletPermission(req, res, next) {
   const permissions = req.staffRole?.permissions || [];
   if (!permissions.includes(P.WALLETS_ADJUST) && !permissions.includes("wallets.adjust")) {

@@ -17,6 +17,7 @@ const STAFF_PERMISSION_CATALOG = Object.freeze([
   permission("ROLES_ENABLE", "roles.enable", "ROLES", "Enable or disable roles", "Change whether a role can be assigned.", "PRIVILEGED"),
   permission("USERS_CREATE", "users.create", "USERS", "Create managed users", "Create users allowed by the actor hierarchy.", "PRIVILEGED"),
   permission("USERS_VIEW", "users.view", "USERS", "View users", "View users within the actor data scope."),
+  permission("CUSTOMERS_EXPORT", "customers.export", "USERS", "Export customer contacts", "Download, share or print customer names, phone numbers and emails within the actor data scope.", "PRIVILEGED"),
   permission("USERS_UPDATE", "users.update", "USERS", "Update users", "Update users within the actor data scope.", "PRIVILEGED"),
   permission("USERS_SUSPEND", "users.suspend", "USERS", "Suspend users", "Suspend or reactivate users within scope.", "PRIVILEGED"),
   permission("USERS_BLOCK", "users.block", "USERS", "Block users", "Block users within scope.", "CRITICAL"),
