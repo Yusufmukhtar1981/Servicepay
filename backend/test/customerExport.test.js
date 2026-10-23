@@ -13,6 +13,15 @@ const { requirePermission } = require("../middleware/staffPermission.middleware"
 const { STAFF_PERMISSIONS: P, validateStaffPermissions } = require("../config/staffPermissions");
 
 const id = (i) => i.toString(16).padStart(24, "0");
+test("the Render backend root declares and locks both runtime export libraries", () => {
+  const manifest = require("../package.json");
+  const lock = require("../package-lock.json");
+  for (const name of ["exceljs", "pdfkit"]) {
+    assert.ok(manifest.dependencies[name], `${name} must be installed from backend/`);
+    assert.equal(lock.packages[""].dependencies[name], manifest.dependencies[name]);
+    assert.ok(lock.packages[`node_modules/${name}`]?.integrity);
+  }
+});
 const rows = Array.from({ length: 2501 }, (_, i) => ({
   _id: id(i + 1), fullName: `Customer ${i} — Àmina`,
   phone: `080${String(i).padStart(8, "0")}`, email: `customer${i}@example.invalid`,
