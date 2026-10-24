@@ -8,7 +8,11 @@ const adminAuditLogSchema =
           mongoose.Schema.Types
             .ObjectId,
         ref: "User",
-        required: true,
+        required: function () {
+          return !(this.actorRole === "SYSTEM" &&
+            ["REVENUE_RECOGNIZED", "REVENUE_REVERSED", "REVENUE_ADJUSTED"].includes(this.action) &&
+            this.metadata?.revenueLedger === true);
+        },
         index: true,
       },
 
@@ -49,6 +53,9 @@ const adminAuditLogSchema =
         enum: [
           "USER_PROFILE_UPDATED",
           "USER_STATUS_UPDATED",
+          "REVENUE_RECOGNIZED",
+          "REVENUE_REVERSED",
+          "REVENUE_ADJUSTED",
           "USER_ROLE_UPDATED",
           "TRANSACTION_PIN_RESET",
           "PASSWORD_RESET_REQUESTED",

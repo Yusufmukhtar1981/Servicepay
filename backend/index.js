@@ -314,6 +314,7 @@ app.use(
 );
 app.use("/api/calls", callRoutes);
 
+app.use("/api/admin/revenue", require("./routes/adminRevenue.routes"));
 app.use(
   "/api/admin",
   adminRoutes
@@ -503,6 +504,7 @@ async function startServer() {
     server.listen(PORT, "0.0.0.0", resolve);
   });
   console.log(`ServicePay API listening on 0.0.0.0:${PORT}`);
+  require("./services/revenueAccount.service").startWorker();
   require("./services/telecomAbodeReconciliationWorker.service").startTelecomAbodeReconciliationWorker();
   logFirebaseConfigurationStatus();
 
