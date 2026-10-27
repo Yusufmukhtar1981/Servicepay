@@ -270,3 +270,108 @@ test("read-only snapshot prevents new records bypassing the provider-evidence sc
   svc.clearCache();
   assert.equal((await report()).me.count, 2);
 });
+
+test("name consent defaults off, records an explicit boolean and never changes money or history", async () => {
+  const id = customers[0]._id;
+  const before = await User.collection.findOne({ _id: id });
+  assert.equal(before.championsShowFullName, undefined);
+  assert.deepEqual(await svc.privacy(id), { showFullName: false });
+  assert.deepEqual(await svc.updatePrivacy(id, { showFullName: true }), { showFullName: true });
+  let saved = await User.collection.findOne({ _id: id });
+  assert.ok(saved.championsNameConsentUpdatedAt instanceof Date);
+  assert.equal(saved.walletBalance, before.walletBalance);
+  assert.equal(await Transaction.countDocuments({}), 0);
+  assert.deepEqual(await svc.updatePrivacy(id, { showFullName: false }), { showFullName: false });
+  assert.deepEqual(await svc.privacy(id), { showFullName: false });
+});
+
+test("opt-in and opt-out use fresh consent even with cached rankings; metrics and ranks stay identical", async () => {
+  const owner = customers[13];
+  await User.collection.updateOne({ _id: owner._id }, { $set: { fullName: "Aisha Mariam Bello" } });
+  const purchases = customers.flatMap((customer, i) =>
+    Array.from({ length: i + 1 }, () => tx(customer, { amount: i + 10 })));
+  await Transaction.collection.insertMany(purchases);
+  const options = { month, admin: true, sort: "value", limit: 100 };
+  const before = await svc.report(options);
+  const metrics = data => JSON.stringify({
+    rows: data.rows.map(({ displayName, ...rest }) => rest),
+    count: data.countTop.map(({ displayName, ...rest }) => rest),
+    value: data.valueTop.map(({ displayName, ...rest }) => rest),
+    total: data.totalCustomers,
+  });
+  const expected = metrics(before);
+  assert.equal(before.rows[0].displayName, "A*** M***");
+  await svc.updatePrivacy(owner._id, { showFullName: true });
+  const consented = await svc.report(options);
+  assert.equal(consented.calculatedAt, before.calculatedAt);
+  assert.equal(consented.rows[0].displayName, "Aisha Mariam Bello");
+  assert.equal(consented.countTop[0].displayName, "Aisha Mariam Bello");
+  assert.equal(consented.valueTop[0].displayName, "Aisha Mariam Bello");
+  assert.equal(metrics(consented), expected);
+  const publicReport = await report();
+  assert.equal(publicReport.countTop[0].displayName, "Aisha Mariam Bello");
+  await svc.updatePrivacy(owner._id, { showFullName: false });
+  const optedOut = await svc.report(options);
+  assert.equal(optedOut.calculatedAt, before.calculatedAt);
+  assert.equal(optedOut.rows[0].displayName, "A*** M***");
+  assert.equal(metrics(optedOut), expected);
+  assert.ok(!JSON.stringify(optedOut).includes("Aisha Mariam Bello"));
+  assert.equal(await Transaction.countDocuments({}), purchases.length);
+});
+
+test("privacy HTTP controls are self-only, strict, authenticated and work while Champions is disabled", async () => {
+  await Settings.collection.updateOne({ key: "GLOBAL_SETTINGS" },
+    { $set: { "customerLeaderboard.enabled": false } });
+  assert.equal((await request("/privacy", null)).status, 401);
+  const get = await request("/privacy");
+  assert.equal(get.status, 200);
+  assert.equal(get.headers.get("cache-control"), "private, no-store");
+  assert.deepEqual((await get.json()).data, { showFullName: false });
+  for (const body of [null, [], {}, { showFullName: "true" }, { showFullName: 1 },
+    { showFullName: true, customerId: String(customers[1]._id) }]) {
+    assert.equal((await request("/privacy", customers[0], {
+      method: "PATCH", body: JSON.stringify(body),
+    })).status, 400);
+  }
+  assert.equal((await request("/privacy?customerId=other")).status, 400);
+  assert.equal((await request("/privacy", customers[0], {
+    method: "PATCH", body: '{"showFullName":true}',
+  })).status, 200);
+  assert.deepEqual(await svc.privacy(customers[1]._id), { showFullName: false });
+  const ho = { ...customers[2], role: "HEAD_OFFICE", isStaff: true };
+  await User.collection.updateOne({ _id: ho._id }, { $set: { role: ho.role, isStaff: true } });
+  assert.equal((await request("/privacy", ho)).status, 403);
+  assert.equal((await request("/privacy", ho, {
+    method: "PATCH", body: '{"showFullName":true}',
+  })).status, 403);
+});
+
+test("consent never exposes contact-like registered fields or unrelated personal information", async () => {
+  for (const name of ["Customer user@example.invalid", "Customer 08033226766",
+    "Customer +234 (803) 322-6766", "Customer 1234 5678 90", "Customer ٠٨٠٣٣٢٢٦٧٦٦", "https://example.invalid"]) {
+    assert.equal(svc.consentedName(name, true), svc.maskedName(name));
+  }
+  assert.equal(svc.consentedName("Aisha Mariam Bello", "true"), "A*** M***");
+  assert.equal(svc.consentedName("Aisha Mariam Bello", true), "Aisha Mariam Bello");
+  await Transaction.collection.insertOne(tx());
+  await svc.updatePrivacy(customers[0]._id, { showFullName: true });
+  const json = JSON.stringify(await report());
+  for (const secret of [customers[0].email, customers[0].phone,
+    String(customers[0]._id), "walletBalance", "championsShowFullName", "championsNameConsentUpdatedAt"]) {
+    assert.ok(!json.includes(secret));
+  }
+});
+
+test("CSV respects current name consent and neutralizes formula-like full names", async () => {
+  const ho = { ...customers[1], role: "HEAD_OFFICE", isStaff: true };
+  await User.collection.updateOne({ _id: ho._id }, { $set: { role: ho.role, isStaff: true } });
+  await User.collection.updateOne({ _id: customers[0]._id }, { $set: { fullName: "=SUM(1,2)" } });
+  await Transaction.collection.insertOne(tx());
+  await svc.updatePrivacy(customers[0]._id, { showFullName: true });
+  let csv = await (await request(`/admin/export?month=${month}&limit=100`, ho)).text();
+  assert.ok(csv.includes(`"'=SUM(1,2)"`));
+  await svc.updatePrivacy(customers[0]._id, { showFullName: false });
+  csv = await (await request(`/admin/export?month=${month}&limit=100`, ho)).text();
+  assert.ok(!csv.includes("=SUM"));
+  assert.match(csv, /S\*\*\*/);
+});

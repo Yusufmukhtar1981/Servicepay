@@ -247,6 +247,15 @@ const userSchema = new mongoose.Schema(
     /*
      * Main ServicePay role
      */
+    // Champions names remain masked unless this customer explicitly consents.
+    championsShowFullName: {
+      type: Boolean,
+      default: false,
+    },
+    championsNameConsentUpdatedAt: {
+      type: Date,
+    },
+
     role: {
       type: String,
       enum: [

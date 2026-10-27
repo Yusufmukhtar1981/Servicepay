@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const Transaction = require("../models/transaction.model");
 const Settings = require("../models/appSettings.model");
 const Audit = require("../models/adminAuditLog.model");
+const User = require("../models/user.model");
 
 // Independent of announcement qualifications and every money-moving path.
 const SERVICES = Object.freeze([
@@ -128,6 +129,46 @@ function maskedName(name) {
   // Only single initials: no numbers, phones, e-mails, full surnames or IDs.
   return words.length ? `${words[0][0].toLocaleUpperCase()}***${words[1] ? " " + words[1][0].toLocaleUpperCase() + "***" : ""}` : "Customer ***";
 }
+function consentedName(name, consent) {
+  const full = typeof name === "string" ? name.trim() : "";
+  // Consent is for a registered name, never contact data entered in that field.
+  if (consent !== true || !full || /@|https?:\/\/|www\.|(?:\p{N}[\s()+.-]*){6}/iu.test(full)) {
+    return maskedName(full);
+  }
+  return full;
+}
+async function privacy(customerId) {
+  const user = await User.findOne({ _id: customerId, role: "CUSTOMER", status: "ACTIVE",
+    isDeleted: { $ne: true }, activationPending: { $ne: true } })
+    .select("championsShowFullName -_id").read("primary").lean().maxTimeMS(3000);
+  if (!user) throw failure("Customer account is unavailable.", 404);
+  return { showFullName: user.championsShowFullName === true };
+}
+async function updatePrivacy(customerId, body) {
+  if (!body || Array.isArray(body) || typeof body !== "object" ||
+      Object.keys(body).length !== 1 || typeof body.showFullName !== "boolean") {
+    throw failure("Provide only showFullName as true or false.");
+  }
+  const user = await User.findOneAndUpdate({ _id: customerId, role: "CUSTOMER", status: "ACTIVE",
+    isDeleted: { $ne: true }, activationPending: { $ne: true } },
+  { $set: { championsShowFullName: body.showFullName, championsNameConsentUpdatedAt: new Date() } },
+  { returnDocument: "after", runValidators: true }).select("championsShowFullName -_id").lean().maxTimeMS(3000);
+  if (!user) throw failure("Customer account is unavailable.", 404);
+  // Never invalidate/recalculate rankings for a display-only preference.
+  return { showFullName: user.championsShowFullName === true };
+}
+async function currentNames(result, admin, limit, sort) {
+  const ids = result.rows.filter(row => row.countRank <= 10 || row.valueRank <= 10 ||
+    (admin && row[`${sort}Rank`] <= limit)).map(row => row.id);
+  if (!ids.length) return new Map();
+  const users = await User.find({ _id: { $in: ids }, role: "CUSTOMER", status: "ACTIVE",
+    isDeleted: { $ne: true }, activationPending: { $ne: true } })
+    .select("fullName championsShowFullName").read("primary").lean().maxTimeMS(3000);
+  // Read consent on every response, outside the numerical ranking cache.
+  // Opt-out must not wait for a cache TTL or a different server's invalidation.
+  return new Map(users.map(user => [String(user._id),
+    consentedName(user.fullName, user.championsShowFullName)]));
+}
 function pipeline(p, config, excluded) {
   const stages = [{ $match: { ...matchFor(p, config), _id: { $nin: excluded } } },
     { $project: { _id: 1, customerId: 1, serviceType: 1, provider: 1, reference: 1,
@@ -218,9 +259,9 @@ async function rankings(month, config) {
   catch (error) { cache.set(key, { until: Date.now() + 10000, error: true }); throw error; }
   finally { building = false; }
 }
-function view(result, customerId, limit = 10, sort = "count") {
+function view(result, customerId, limit = 10, sort = "count", names = new Map()) {
   const id = String(customerId || ""), { rows } = result;
-  const safe = (row, metric) => ({ rank: row[`${metric}Rank`], displayName: row.displayName,
+  const safe = (row, metric) => ({ rank: row[`${metric}Rank`], displayName: names.get(row.id) ?? row.displayName,
     count: row.count, value: row.value, isMe: row.id === id });
   const ordered = metric => rows.slice().sort((a, b) => a[`${metric}Rank`] - b[`${metric}Rank`]);
   const mine = rows.find(x => x.id === id);
@@ -240,7 +281,8 @@ async function report({ month, customerId, limit = 10, sort = "count", admin = f
   const config = await settings(), p = period(month);
   if (!config.enabled && !admin) return { enabled: false, period: p, countTop: [], valueTop: [],
     me: { countRank: null, valueRank: null, count: 0, value: 0, transactionsNeededToTop10: 0 } };
-  const data = view(await rankings(p.month, config), customerId, limit, sort);
+  const result = await rankings(p.month, config);
+  const data = view(result, customerId, limit, sort, await currentNames(result, admin, limit, sort));
   data.enabled = config.enabled;
   data.rules = { eligibleServices: config.eligibleServices, minAmount: config.minAmount,
     periodBasis: "createdAt", historyUsesCurrentRules: true,
@@ -249,4 +291,5 @@ async function report({ month, customerId, limit = 10, sort = "count", admin = f
 }
 module.exports = { SERVICES, period, currentMonth, settings, validateSettings, updateSettings,
   report, view, pipeline, matchFor, maskedName, confirmed, invalidEvidence,
+  privacy, updatePrivacy, consentedName,
   clearCache: () => cache.clear() };

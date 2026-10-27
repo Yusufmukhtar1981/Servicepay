@@ -28,6 +28,14 @@ function query(req) {
   }
   return { month, limit, sort, admin: true };
 }
+router.get("/privacy", protect, customerOnly, guarded(async (req, res) => {
+  if (Object.keys(req.query).length) throw Object.assign(new Error("Unsupported privacy filter."), { status: 400 });
+  res.json({ success: true, data: await service.privacy(req.user._id) });
+}));
+router.patch("/privacy", protect, customerOnly, guarded(async (req, res) => {
+  if (Object.keys(req.query).length) throw Object.assign(new Error("Unsupported privacy filter."), { status: 400 });
+  res.json({ success: true, data: await service.updatePrivacy(req.user._id, req.body) });
+}));
 router.get("/admin/settings", ...headOffice("settings.view"), guarded(async (req, res) =>
   res.json({ success: true, data: await service.settings() })));
 router.patch("/admin/settings", ...headOffice("settings.update"), guarded(async (req, res) =>
@@ -42,9 +50,15 @@ router.get("/admin/history", ...headOffice("settings.view"), guarded(async (req,
 }));
 router.get("/admin/export", ...headOffice("settings.view"), guarded(async (req, res) => {
   const data = await service.report(query(req));
-  const lines = ["Month,Ranking,Position,Masked customer,Successful transactions,Transaction value NGN",
+  const cell = value => {
+    const text = String(value);
+    // Full registered names are untrusted spreadsheet input, even with consent.
+    const safe = /^[\s\u0000-\u001f]*[=+\-@]/u.test(text) ? "'" + text : text;
+    return `"${safe.replace(/"/g, '""')}"`;
+  };
+  const lines = ["Month,Ranking,Position,Customer display name,Successful transactions,Transaction value NGN",
     ...data.rows.map(row => [data.period.month, req.query.sort || "count", row.rank,
-      row.displayName, row.count, row.value.toFixed(2)].map(x => `"${String(x).replace(/"/g, '""')}"`).join(","))];
+      row.displayName, row.count, row.value.toFixed(2)].map(cell).join(","))];
   res.type("text/csv").set("Content-Disposition", `attachment; filename="Servicepay-Champions-${data.period.month}-${req.query.sort || "count"}.csv"`)
     .send("\uFEFF" + lines.join("\r\n"));
 }));
