@@ -144,14 +144,15 @@ test("registration attributes a valid referrer only at account creation", async 
     });
   };
   User.create = async (payload) => {
-    createdPayload = payload;
-    return {
-      ...payload,
+    createdPayload = Array.isArray(payload) ? payload[0] : payload;
+    const created = {
+      ...createdPayload,
       _id: "new-customer-id",
       authTokenVersion: 0,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
+    return Array.isArray(payload) ? [created] : created;
   };
   AppSettings.findOne = () => settingsQueryValue(true);
 
@@ -194,14 +195,15 @@ test("invalid referral does not block normal registration or add attribution", a
     return queryValue(null);
   };
   User.create = async (payload) => {
-    createdPayload = payload;
-    return {
-      ...payload,
+    createdPayload = Array.isArray(payload) ? payload[0] : payload;
+    const created = {
+      ...createdPayload,
       _id: "new-customer-id",
       authTokenVersion: 0,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
+    return Array.isArray(payload) ? [created] : created;
   };
   AppSettings.findOne = () => settingsQueryValue(true);
 

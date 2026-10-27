@@ -176,6 +176,10 @@ const idVerificationSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    // New NIN requests only. Legacy history and BVN records remain unchanged.
+    activeNinKey: { type: String, select: false },
+    providerOutcome: { type: String, enum: ["UNKNOWN", "SUCCESSFUL", "FAILED"] },
+    providerAttemptedAt: { type: Date },
   },
   {
     timestamps: true,

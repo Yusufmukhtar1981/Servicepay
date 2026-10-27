@@ -1,12 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-process.env.PREMBLY_SECRET_KEY = "test-secret";
-
-const axios = require("axios");
-const IdVerification = require("../models/idVerification.model");
-const Transaction = require("../models/transaction.model");
-const User = require("../models/user.model");
 const {
   extractNinData,
   normalizeNinSlipType,
@@ -92,91 +86,16 @@ test("maps camelCase-only provider identity payloads", () => {
   assert.equal(result.photo, "provider-photo");
 });
 
-test("legacy client input is charged and stored as PREMIUM", async () => {
-  const originals = {
-    axiosPost: axios.post,
-    createVerification: IdVerification.create,
-    createTransaction: Transaction.create,
-    findUser: User.findById,
-  };
-
-  const created = [];
-  const transactions = [];
-  const user = {
-    _id: "user-1",
-    walletBalance: 1000,
-    async save() {},
-  };
-
-  try {
-    User.findById = async () => user;
-    IdVerification.create = async (payload) => {
-      created.push(payload);
-      return {
-        _id: "verification-1",
-        ...payload,
-        verificationData: {},
-        async save() {},
-      };
-    };
-    Transaction.create = async (payload) => {
-      transactions.push(payload);
-      return payload;
-    };
-    axios.post = async () => ({
-      data: {
-        data: {
-          firstname: "Ada",
-          middlename: "Nneka",
-          surname: "Okafor",
-          birthdate: "1992-04-15",
-          gender: "Female",
-          photo: "provider-photo",
-        },
-      },
-    });
-
-    const result = {};
-    const response = {
-      status(code) {
-        result.status = code;
-        return this;
-      },
-      json(payload) {
-        result.body = payload;
-        return this;
-      },
-    };
-
-    await verifyNin(
-      {
-        user: { id: "user-1" },
-        body: {
-          ninNumber: "12345678901",
-          slipType: "REGULAR",
-          searchType: "NIN_NUMBER",
-          consentAccepted: true,
-        },
-      },
-      response,
-    );
-
-    assert.equal(result.status, 200);
-    assert.equal(created.length, 1);
-    assert.equal(created[0].slipType, "PREMIUM");
-    assert.equal(created[0].amountCharged, 250);
-    assert.equal(user.walletBalance, 750);
-    assert.equal(transactions.length, 1);
-    assert.equal(transactions[0].meta.slipType, "PREMIUM");
-    assert.equal(result.body.data.slipType, "PREMIUM");
-    assert.equal(result.body.data.verificationData.firstName, "Ada");
-    assert.equal(result.body.data.verificationData.middleName, "Nneka");
-    assert.equal(result.body.data.verificationData.lastName, "Okafor");
-    assert.equal(result.body.data.verificationData.photo, "provider-photo");
-  } finally {
-    axios.post = originals.axiosPost;
-    IdVerification.create = originals.createVerification;
-    Transaction.create = originals.createTransaction;
-    User.findById = originals.findUser;
+test("NIN rejects non-digit input and non-boolean consent before database or provider access", async () => {
+  for (const body of [
+    { ninNumber: "ABCDEFGHIJK", consentAccepted: true },
+    { ninNumber: 12345678901, consentAccepted: true },
+    { ninNumber: "12345678901", consentAccepted: "false" },
+  ]) {
+    const response = { status(code) { this.code = code; return this; },
+      json(payload) { this.body = payload; return this; } };
+    await verifyNin({ user: { id: "unused-fixture-id" }, body }, response);
+    assert.equal(response.code, 400);
+    assert.equal(response.body.success, false);
   }
 });

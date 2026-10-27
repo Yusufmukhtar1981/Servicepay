@@ -176,195 +176,10 @@ const createWalletTransaction = async ({
   }
 };
 
-exports.verifyNin = async (req, res) => {
-  try {
-    const userId = req.user?._id || req.user?.id;
-
-    const ninNumber = req.body.ninNumber || req.body.idNumber;
-
-    const slipType = req.body.slipType || "PREMIUM";
-
-    const searchType = req.body.searchType || "NIN_NUMBER";
-
-    const consentAccepted =
-      req.body.consentAccepted ?? req.body.consent ?? false;
-
-    if (!userId) {
-      return res.status(401).json({
-        success: false,
-        message: "Unauthorized.",
-      });
-    }
-
-    if (!ninNumber || String(ninNumber).trim().length !== 11) {
-      return res.status(400).json({
-        success: false,
-        message: "Please enter a valid 11-digit NIN.",
-      });
-    }
-
-    if (!consentAccepted) {
-      return res.status(400).json({
-        success: false,
-        message: "Consent confirmation is required before verification.",
-      });
-    }
-
-    const normalizedSlipType = normalizeSlipType(slipType);
-    const normalizedSearchType = normalizeSearchType(searchType);
-
-    const amount = verificationFees.PREMIUM;
-
-    const user = await User.findById(userId);
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found.",
-      });
-    }
-
-    if (Number(user.walletBalance || 0) < Number(amount)) {
-      return res.status(400).json({
-        success: false,
-        message: "Insufficient wallet balance for NIN verification.",
-      });
-    }
-
-    if (!PREMBLY_SECRET_KEY) {
-      return res.status(500).json({
-        success: false,
-        message: "Prembly secret key is missing on the server.",
-      });
-    }
-
-    const reference = generateReference("NIN");
-    const maskedNin = maskIdNumber(ninNumber);
-
-    const verification = await IdVerification.create({
-      userId: user._id,
-      idType: "NIN",
-      searchType: normalizedSearchType,
-      slipType: normalizedSlipType,
-      reference,
-      amountCharged: amount,
-      status: "PENDING",
-      ninNumberMasked: maskedNin,
-      consentAccepted: true,
-    });
-
-    let premblyResponse;
-
-    try {
-      premblyResponse = await axios.post(
-        `${PREMBLY_BASE_URL}/verification/vnin-basic`,
-        {
-          number: String(ninNumber).trim(),
-        },
-        {
-          headers: getPremblyHeaders(),
-          timeout: 45000,
-        },
-      );
-    } catch (error) {
-      verification.status = "FAILED";
-      verification.failureReason =
-        error?.response?.data?.message ||
-        error?.message ||
-        "Verification request failed.";
-      verification.rawResponse = error?.response?.data || {};
-      await verification.save();
-
-      return res.status(400).json({
-        success: false,
-        message: verification.failureReason || "NIN verification failed.",
-      });
-    }
-
-    const responseData = premblyResponse?.data || {};
-    const ninData = extractNinData(responseData);
-
-    if (!ninData.fullName) {
-      verification.status = "FAILED";
-      verification.failureReason =
-        responseData?.message || "No valid NIN data returned from provider.";
-      verification.rawResponse = responseData;
-      await verification.save();
-
-      return res.status(400).json({
-        success: false,
-        message:
-          verification.failureReason ||
-          "Verification failed. No data returned.",
-      });
-    }
-
-    const previousBalance = Number(user.walletBalance || 0);
-
-    user.walletBalance = previousBalance - Number(amount);
-    await user.save();
-
-    verification.status = "SUCCESSFUL";
-    verification.verificationData = {
-      ...ninData,
-      nin: String(ninNumber).trim(),
-    };
-    verification.rawResponse = responseData;
-    await verification.save();
-
-    await createWalletTransaction({
-      user,
-      amount,
-      reference,
-      description: `NIN verification (${normalizedSlipType})`,
-      verificationId: verification._id,
-      slipType: normalizedSlipType,
-      maskedNin,
-    });
-
-    const cleanVerificationData = verification.verificationData?.toObject
-      ? verification.verificationData.toObject()
-      : verification.verificationData || {};
-
-    return res.status(200).json({
-      success: true,
-      message: "NIN verified successfully.",
-
-      // Compatibility for both the old and new ServicePay APK.
-      verification: {
-        ...cleanVerificationData,
-        status: "Verified",
-        reference: verification.reference,
-        amountCharged: verification.amountCharged,
-        walletBalance: user.walletBalance,
-        createdAt: verification.createdAt,
-        maskedIdNumber: verification.ninNumberMasked,
-      },
-
-      data: {
-        ...cleanVerificationData,
-        verificationId: verification._id,
-        reference: verification.reference,
-        searchType: verification.searchType,
-        slipType: verification.slipType,
-        amountCharged: verification.amountCharged,
-        walletBalance: user.walletBalance,
-        verificationData: cleanVerificationData,
-        status: "Verified",
-        maskedIdNumber: verification.ninNumberMasked,
-        createdAt: verification.createdAt,
-      },
-    });
-  } catch (error) {
-    console.error("verifyNin error:", error.message);
-
-    return res.status(500).json({
-      success: false,
-      message: "Server error while verifying NIN.",
-      error: error.message,
-    });
-  }
-};
+exports.verifyNin = require("../services/ninVerification.service").createNinHandler({
+  extract: extractNinData,
+  getConfig: () => ({ baseUrl: PREMBLY_BASE_URL, key: PREMBLY_SECRET_KEY }),
+});
 
 exports.normalizeNinSlipType = normalizeSlipType;
 exports.extractNinData = extractNinData;
@@ -377,15 +192,17 @@ exports.getNinVerificationHistory = async (req, res) => {
       userId,
       idType: "NIN",
     })
+      .select("-rawResponse")
       .sort({ createdAt: -1 })
       .limit(50);
 
     return res.status(200).json({
       success: true,
-      data: verifications,
+      data: verifications.map(record => ({ ...record.toObject(),
+        status: record.status === "SUCCESS" ? "SUCCESSFUL" : record.status })),
     });
   } catch (error) {
-    console.error("getNinVerificationHistory error:", error.message);
+    console.error("getNinVerificationHistory failed.");
 
     return res.status(500).json({
       success: false,
@@ -403,7 +220,7 @@ exports.getSingleNinVerification = async (req, res) => {
       _id: id,
       userId,
       idType: "NIN",
-    });
+    }).select("-rawResponse");
 
     if (!verification) {
       return res.status(404).json({
@@ -414,10 +231,11 @@ exports.getSingleNinVerification = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      data: verification,
+      data: { ...verification.toObject(),
+        status: verification.status === "SUCCESS" ? "SUCCESSFUL" : verification.status },
     });
   } catch (error) {
-    console.error("getSingleNinVerification error:", error.message);
+    console.error("getSingleNinVerification failed.");
 
     return res.status(500).json({
       success: false,
