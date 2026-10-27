@@ -703,6 +703,7 @@ const appSettingsSchema =
       // Independent bill-service settings reuse this existing singleton when
       // Atlas has no capacity for a new provider-management collection.
       billProviderManagement: { type: mongoose.Schema.Types.Mixed, default: undefined },
+      customerLeaderboard: { type: mongoose.Schema.Types.Mixed, default: undefined },
       dataProviderManagement: {
         type: mongoose.Schema.Types.Mixed,
         default: undefined,

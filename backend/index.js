@@ -378,6 +378,7 @@ app.use(
 // ServicePay Fintech Control Enforcement
 app.use('/api/marketplace', marketplaceRoutes);
 app.use("/api/settings", appSettingsRoutes);
+app.use("/api/customer-leaderboard", require("./routes/customerLeaderboard.routes"));
 app.use("/api/feature-control", featureControlRoutes);
 app.use("/api/edupay", edupayRoutes);
 app.use("/api/edupay/activity-center", edupayActivityRoutes);
