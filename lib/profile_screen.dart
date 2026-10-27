@@ -19,6 +19,8 @@ import 'kyc_screen.dart';
 import 'servicepay_theme.dart';
 import 'voice_call_screen.dart';
 import 'biometric_settings_screen.dart';
+import 'customer_leaderboard_privacy_preference.dart';
+import 'services/customer_leaderboard_api.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key, this.client});
@@ -78,12 +80,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final ImagePicker imagePicker = ImagePicker();
   late final http.Client _client;
   late final bool _ownsClient;
+  late final CustomerLeaderboardApi _leaderboardApi;
 
   @override
   void initState() {
     super.initState();
     _ownsClient = widget.client == null;
     _client = widget.client ?? http.Client();
+    _leaderboardApi = CustomerLeaderboardApi(
+      client: _client,
+      baseUrl: baseUrl,
+    );
     loadProfile();
     loadKycSummary();
   }
@@ -684,7 +691,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       final SharedPreferences prefs = await SharedPreferences.getInstance();
 
-      await PinSessionClient.revoke(_client, Uri.parse('$baseUrl/auth/refresh/revoke'));
+      await PinSessionClient.revoke(
+          _client, Uri.parse('$baseUrl/auth/refresh/revoke'));
       await SessionStore.clear();
       await prefs.remove(
         'auth_token',
@@ -896,6 +904,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ],
                       ),
                       const SizedBox(height: 18),
+                      if (user['role']?.toString().trim().toUpperCase() ==
+                          'CUSTOMER') ...[
+                        const _ProfileSectionTitle(
+                          title: 'Privacy',
+                        ),
+                        const SizedBox(height: 10),
+                        _ProfileInfoCard(
+                          children: [
+                            CustomerLeaderboardPrivacyPreference(
+                              api: _leaderboardApi,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 18),
+                      ],
                       const _ProfileSectionTitle(
                         title: 'Location Information',
                       ),
@@ -967,8 +990,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             subtitle: 'Manage biometric login and approvals',
                             onTap: () => Navigator.of(context).push(
                               MaterialPageRoute(
-                                builder: (_) =>
-                                    const BiometricSettingsScreen(),
+                                builder: (_) => const BiometricSettingsScreen(),
                               ),
                             ),
                           ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'customer_leaderboard_screen.dart';
 import 'customer_leaderboard_report_panel.dart';
+import 'customer_leaderboard_privacy_preference.dart';
 import 'services/customer_leaderboard_api.dart';
 
 class CustomerChampionsDashboardEntry extends StatefulWidget {
@@ -15,11 +16,11 @@ class CustomerChampionsDashboardEntry extends StatefulWidget {
   final CustomerLeaderboardApi? api;
 
   @override
-  State<CustomerChampionsDashboardEntry> createState() =>
-      _CustomerChampionsDashboardEntryState();
+  CustomerChampionsDashboardEntryState createState() =>
+      CustomerChampionsDashboardEntryState();
 }
 
-class _CustomerChampionsDashboardEntryState
+class CustomerChampionsDashboardEntryState
     extends State<CustomerChampionsDashboardEntry> with WidgetsBindingObserver {
   late final CustomerLeaderboardApi _api;
   bool _loading = true;
@@ -33,6 +34,11 @@ class _CustomerChampionsDashboardEntryState
     super.initState();
     _api = widget.api ?? CustomerLeaderboardApi();
     WidgetsBinding.instance.addObserver(this);
+    customerLeaderboardPrivacyChanged.addListener(_onPrivacyChanged);
+    _check();
+  }
+
+  void _onPrivacyChanged() {
     _check();
   }
 
@@ -50,6 +56,7 @@ class _CustomerChampionsDashboardEntryState
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    customerLeaderboardPrivacyChanged.removeListener(_onPrivacyChanged);
     super.dispose();
   }
 
@@ -86,6 +93,8 @@ class _CustomerChampionsDashboardEntryState
       }
     }
   }
+
+  Future<void> refreshReport() => _check();
 
   @override
   Widget build(BuildContext context) {
@@ -180,7 +189,7 @@ class _CustomerChampionsDashboardEntryState
             ),
             const SizedBox(height: 7),
             const Text(
-              'A clear record of everyday service use. No rewards; customer names stay masked.',
+              'A clear record of everyday transactions. No rewards; names stay masked unless you opt in.',
               style: TextStyle(
                   color: Color(0xFF526A5D), fontSize: 11, height: 1.4),
             ),
@@ -193,11 +202,14 @@ class _CustomerChampionsDashboardEntryState
             Align(
               alignment: Alignment.centerRight,
               child: TextButton.icon(
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const CustomerLeaderboardScreen(),
-                  ),
-                ),
+                onPressed: () async {
+                  await Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => CustomerLeaderboardScreen(api: _api),
+                    ),
+                  );
+                  if (mounted) await _check();
+                },
                 icon: const Icon(Icons.open_in_new_rounded, size: 17),
                 label: const Text('Open full monthly report'),
               ),

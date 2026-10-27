@@ -121,4 +121,61 @@ class CustomerLeaderboardApi {
     return CustomerLeaderboardReport.fromJson(
         Map<String, dynamic>.from(decoded));
   }
+
+  Future<bool> loadShowFullName() async {
+    final token = await _readToken();
+    final response = await _client.get(
+      Uri.parse('$baseUrl/customer-leaderboard/privacy'),
+      headers: {'Accept': 'application/json', 'Authorization': 'Bearer $token'},
+    ).timeout(const Duration(seconds: 20));
+    return _parsePrivacyResponse(response);
+  }
+
+  Future<bool> updateShowFullName(bool showFullName) async {
+    final token = await _readToken();
+    final response = await _client
+        .patch(
+          Uri.parse('$baseUrl/customer-leaderboard/privacy'),
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer $token',
+          },
+          body: jsonEncode({'showFullName': showFullName}),
+        )
+        .timeout(const Duration(seconds: 20));
+    return _parsePrivacyResponse(response);
+  }
+
+  Future<String> _readToken() async {
+    final token = await SessionStore.readToken();
+    if (token == null || token.trim().isEmpty) {
+      throw const FormatException(
+          'Your session has expired. Please sign in again.');
+    }
+    return token;
+  }
+
+  bool _parsePrivacyResponse(http.Response response) {
+    dynamic decoded;
+    try {
+      decoded = jsonDecode(response.body);
+    } catch (_) {
+      decoded = null;
+    }
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw FormatException(decoded is Map
+          ? decoded['message']?.toString() ??
+              'Could not update Champions privacy preference.'
+          : 'Could not update Champions privacy preference.');
+    }
+    if (decoded is! Map ||
+        decoded['success'] != true ||
+        decoded['data'] is! Map ||
+        decoded['data']['showFullName'] is! bool) {
+      throw const FormatException(
+          'Champions privacy preference could not be confirmed.');
+    }
+    return decoded['data']['showFullName'] as bool;
+  }
 }

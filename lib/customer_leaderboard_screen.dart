@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'customer_leaderboard_report_panel.dart';
+import 'customer_leaderboard_privacy_preference.dart';
 import 'services/customer_leaderboard_api.dart';
 
 class CustomerLeaderboardScreen extends StatefulWidget {
@@ -16,6 +17,7 @@ class _CustomerLeaderboardScreenState extends State<CustomerLeaderboardScreen> {
   CustomerLeaderboardReport? _report;
   bool _loading = true;
   String? _error;
+  int _requestVersion = 0;
   DateTime _month = DateTime.now().toUtc().add(const Duration(hours: 1));
   static const ink = Color(0xFF18382F);
   static const green = Color(0xFF08783E);
@@ -30,20 +32,21 @@ class _CustomerLeaderboardScreenState extends State<CustomerLeaderboardScreen> {
   }
 
   Future<void> _load() async {
+    final requestVersion = ++_requestVersion;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
       final value = await _api.load(_monthKey);
-      if (mounted) {
+      if (mounted && requestVersion == _requestVersion) {
         setState(() {
           _report = value;
           _loading = false;
         });
       }
     } catch (error) {
-      if (mounted) {
+      if (mounted && requestVersion == _requestVersion) {
         setState(() {
           _error = error.toString().replaceFirst('FormatException: ', '');
           _loading = false;
@@ -129,7 +132,7 @@ class _CustomerLeaderboardScreenState extends State<CustomerLeaderboardScreen> {
                             fontWeight: FontWeight.w800)),
                     const SizedBox(height: 6),
                     Text(
-                        'A private, monthly view of real completed services. No rewards. No identities.',
+                        'A private monthly view of completed transactions. Your name stays masked unless you opt in.',
                         style: TextStyle(
                             color: Colors.white.withValues(alpha: .78),
                             height: 1.45)),
@@ -172,6 +175,11 @@ class _CustomerLeaderboardScreenState extends State<CustomerLeaderboardScreen> {
                   ]),
             ),
             const SizedBox(height: 16),
+            CustomerLeaderboardPrivacyPreference(
+              api: _api,
+              onChanged: _load,
+            ),
+            const SizedBox(height: 14),
             if (_loading) ...[
               const LinearProgressIndicator(
                 color: green,

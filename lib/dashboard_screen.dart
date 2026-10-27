@@ -148,6 +148,8 @@ class _DashboardScreenState extends State<DashboardScreen>
   bool isLoadingRecentActivity = true;
   bool isLoadingServiceStatuses = false;
   int _championsRefreshVersion = 0;
+  final GlobalKey<CustomerChampionsDashboardEntryState> _championsEntryKey =
+      GlobalKey<CustomerChampionsDashboardEntryState>();
 
   String searchQuery = '';
   String recentActivityError = '';
@@ -1425,12 +1427,19 @@ class _DashboardScreenState extends State<DashboardScreen>
     Widget screen, {
     String? routeName,
   }) {
-    Navigator.of(context).push(
+    final route = Navigator.of(context).push(
       MaterialPageRoute<void>(
         settings: RouteSettings(name: routeName),
         builder: (_) => screen,
       ),
     );
+    if (screen is ProfileScreen) {
+      route.whenComplete(() {
+        if (mounted) {
+          _championsEntryKey.currentState?.refreshReport();
+        }
+      });
+    }
   }
 
   List<_DashboardService> popularServices() {
@@ -5792,6 +5801,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                   buildPremiumBalanceCard(),
                   const SizedBox(height: 11),
                   CustomerChampionsDashboardEntry(
+                    key: _championsEntryKey,
                     refreshVersion: _championsRefreshVersion,
                   ),
                   buildFundingAccountCard(),

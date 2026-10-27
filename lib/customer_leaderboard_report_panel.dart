@@ -2,6 +2,13 @@ import 'package:flutter/material.dart';
 
 import 'services/customer_leaderboard_api.dart';
 
+String formatLeaderboardNaira(num amount) {
+  final parts = amount.toStringAsFixed(2).split('.');
+  final whole = parts[0].replaceAllMapped(
+      RegExp(r'(\d)(?=(\d{3})+(?!\d))'), (match) => '${match[1]},');
+  return '₦$whole${amount == amount.truncate() ? '' : '.${parts[1]}'}';
+}
+
 /// The same report surface is used in the dashboard and on the full report page.
 /// Dashboard mode bounds the ranking viewport so the surrounding dashboard
 /// remains a single, predictable scroll surface while all ten rows stay reachable.
@@ -46,12 +53,7 @@ class _CustomerLeaderboardReportPanelState
   }
 
   String _money(num amount) {
-    final whole = amount.truncate().toString().replaceAllMapped(
-        RegExp(r'(\d)(?=(\d{3})+(?!\d))'), (match) => '${match[1]},');
-    final fraction = amount % 1 == 0
-        ? ''
-        : amount.abs().remainder(1).toStringAsFixed(2).substring(1);
-    return '₦$whole$fraction';
+    return formatLeaderboardNaira(amount);
   }
 
   @override
@@ -153,7 +155,8 @@ class _CustomerLeaderboardReportPanelState
           Row(
             children: [
               Expanded(
-                child: _metric('Successful services', '${me['count'] ?? 0}'),
+                child:
+                    _metric('Successful Transactions', '${me['count'] ?? 0}'),
               ),
               Expanded(
                 child:
@@ -255,7 +258,8 @@ class _CustomerLeaderboardReportPanelState
       separatorBuilder: (_, __) => const SizedBox(height: 7),
       itemBuilder: (context, index) {
         final row = rows[index];
-        final metric = byCount ? '${row.count} services' : _money(row.value);
+        final metric =
+            byCount ? '${row.count} Transactions' : _money(row.value);
         return Semantics(
           label: 'Rank ${row.rank}, ${row.displayName}, $metric',
           child: Container(
@@ -284,8 +288,7 @@ class _CustomerLeaderboardReportPanelState
                 ),
                 Expanded(
                   child: Text(row.displayName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                      softWrap: true,
                       style: const TextStyle(
                           color: _ink, fontWeight: FontWeight.w700)),
                 ),
