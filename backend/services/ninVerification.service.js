@@ -21,11 +21,14 @@ function createNinHandler({ extract, getConfig, post = (...args) => axios.post(.
   };
   const respond = (res, record, balance) => {
     const successful = ["SUCCESSFUL", "SUCCESS"].includes(record.status);
+    const paymentPending = record.status === "PENDING" && record.providerOutcome === "SUCCESSFUL";
     const data = record.verificationData?.toObject?.() || record.verificationData || {};
     if (!successful) return res.status(record.status === "FAILED" ? 400 : 202).json({
       success: false, status: record.status, reference: record.reference,
       verificationId: record._id, amountCharged: record.amountCharged || 0,
+      awaitingPayment: paymentPending, retrySafe: paymentPending,
       message: record.status === "FAILED" ? "The provider could not verify this NIN. No wallet charge was made."
+        : paymentPending ? "NIN verification is confirmed, but wallet payment is pending. Fund your wallet and retry the same NIN; the provider check will not be repeated."
         : "Verification is pending. Check Verification History; do not submit this NIN again.",
     });
     const result = { ...data, status: "Verified", reference: record.reference,

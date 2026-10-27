@@ -63,7 +63,9 @@ test("concurrent duplicate submissions dispatch once and debit/record/ledger onc
 test("timeout stays pending, uncharged, and cannot redispatch", async () => {
   let calls = 0;
   const f = await fixture(async () => { calls++; throw Error("mock-private-detail"); });
-  assert.equal((await f.run()).code, 202);
+  const result = await f.run();
+  assert.equal(result.code, 202);
+  assert.equal(result.body.retrySafe, false);
   assert.equal((await f.run()).code, 202);
   assert.equal(calls, 1);
   assert.equal(await balance(f.id), 1000);
@@ -155,7 +157,11 @@ test("concurrent external spending cannot make the wallet negative or reverify",
     await User.updateOne({ _id: f.id }, { $set: { walletBalance: 100 } });
     return success();
   });
-  assert.equal((await f.run()).code, 202);
+  const pending = await f.run();
+  assert.equal(pending.code, 202);
+  assert.equal(pending.body.awaitingPayment, true);
+  assert.equal(pending.body.retrySafe, true);
+  assert.match(pending.body.message, /provider check will not be repeated/);
   assert.equal(await balance(f.id), 100);
   await User.updateOne({ _id: f.id }, { $set: { walletBalance: 500 } });
   assert.equal((await f.run()).code, 200);
