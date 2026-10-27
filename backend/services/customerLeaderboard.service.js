@@ -157,9 +157,9 @@ async function updatePrivacy(customerId, body) {
   // Never invalidate/recalculate rankings for a display-only preference.
   return { showFullName: user.championsShowFullName === true };
 }
-async function currentNames(result, admin, limit, sort) {
-  const ids = result.rows.filter(row => row.countRank <= 10 || row.valueRank <= 10 ||
-    (admin && row[`${sort}Rank`] <= limit)).map(row => row.id);
+async function currentNames(result) {
+  const ids = result.rows.filter(row => row.countRank <= 10 || row.valueRank <= 10)
+    .map(row => row.id);
   if (!ids.length) return new Map();
   const users = await User.find({ _id: { $in: ids }, role: "CUSTOMER", status: "ACTIVE",
     isDeleted: { $ne: true }, activationPending: { $ne: true } })
@@ -282,7 +282,8 @@ async function report({ month, customerId, limit = 10, sort = "count", admin = f
   if (!config.enabled && !admin) return { enabled: false, period: p, countTop: [], valueTop: [],
     me: { countRank: null, valueRank: null, count: 0, value: 0, transactionsNeededToTop10: 0 } };
   const result = await rankings(p.month, config);
-  const data = view(result, customerId, limit, sort, await currentNames(result, admin, limit, sort));
+  const names = admin ? new Map() : await currentNames(result);
+  const data = view(result, customerId, limit, sort, names);
   data.enabled = config.enabled;
   data.rules = { eligibleServices: config.eligibleServices, minAmount: config.minAmount,
     periodBasis: "createdAt", historyUsesCurrentRules: true,

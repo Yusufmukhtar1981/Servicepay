@@ -292,6 +292,7 @@ test("opt-in and opt-out use fresh consent even with cached rankings; metrics an
     Array.from({ length: i + 1 }, () => tx(customer, { amount: i + 10 })));
   await Transaction.collection.insertMany(purchases);
   const options = { month, admin: true, sort: "value", limit: 100 };
+  const publicOptions = { month, customerId: owner._id };
   const before = await svc.report(options);
   const metrics = data => JSON.stringify({
     rows: data.rows.map(({ displayName, ...rest }) => rest),
@@ -301,19 +302,21 @@ test("opt-in and opt-out use fresh consent even with cached rankings; metrics an
   });
   const expected = metrics(before);
   assert.equal(before.rows[0].displayName, "A*** M***");
+  assert.equal((await svc.report(publicOptions)).countTop[0].displayName, "A*** M***");
   await svc.updatePrivacy(owner._id, { showFullName: true });
   const consented = await svc.report(options);
   assert.equal(consented.calculatedAt, before.calculatedAt);
-  assert.equal(consented.rows[0].displayName, "Aisha Mariam Bello");
-  assert.equal(consented.countTop[0].displayName, "Aisha Mariam Bello");
-  assert.equal(consented.valueTop[0].displayName, "Aisha Mariam Bello");
+  assert.equal(consented.rows[0].displayName, "A*** M***");
+  assert.equal(consented.countTop[0].displayName, "A*** M***");
+  assert.equal((await svc.report(publicOptions)).countTop[0].displayName, "Aisha Mariam Bello");
+  assert.equal((await svc.report(publicOptions)).valueTop[0].displayName, "Aisha Mariam Bello");
   assert.equal(metrics(consented), expected);
-  const publicReport = await report();
-  assert.equal(publicReport.countTop[0].displayName, "Aisha Mariam Bello");
   await svc.updatePrivacy(owner._id, { showFullName: false });
+  const publicReport = await svc.report(publicOptions);
   const optedOut = await svc.report(options);
   assert.equal(optedOut.calculatedAt, before.calculatedAt);
   assert.equal(optedOut.rows[0].displayName, "A*** M***");
+  assert.equal(publicReport.countTop[0].displayName, "A*** M***");
   assert.equal(metrics(optedOut), expected);
   assert.ok(!JSON.stringify(optedOut).includes("Aisha Mariam Bello"));
   assert.equal(await Transaction.countDocuments({}), purchases.length);
@@ -362,16 +365,17 @@ test("consent never exposes contact-like registered fields or unrelated personal
   }
 });
 
-test("CSV respects current name consent and neutralizes formula-like full names", async () => {
+test("Head Office reports and CSV remain masked regardless of customer consent", async () => {
   const ho = { ...customers[1], role: "HEAD_OFFICE", isStaff: true };
   await User.collection.updateOne({ _id: ho._id }, { $set: { role: ho.role, isStaff: true } });
   await User.collection.updateOne({ _id: customers[0]._id }, { $set: { fullName: "=SUM(1,2)" } });
   await Transaction.collection.insertOne(tx());
   await svc.updatePrivacy(customers[0]._id, { showFullName: true });
   let csv = await (await request(`/admin/export?month=${month}&limit=100`, ho)).text();
-  assert.ok(csv.includes(`"'=SUM(1,2)"`));
-  await svc.updatePrivacy(customers[0]._id, { showFullName: false });
-  csv = await (await request(`/admin/export?month=${month}&limit=100`, ho)).text();
-  assert.ok(!csv.includes("=SUM"));
+  assert.match(csv, /Month,Ranking,Position,Masked customer,Successful transactions/);
   assert.match(csv, /S\*\*\*/);
+  assert.ok(!csv.includes("=SUM"));
+  await svc.updatePrivacy(customers[0]._id, { showFullName: false });
+  const optedOutCsv = await (await request(`/admin/export?month=${month}&limit=100`, ho)).text();
+  assert.equal(optedOutCsv, csv);
 });
