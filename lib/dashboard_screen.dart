@@ -58,6 +58,7 @@ import 'marketplace/marketplace_screen.dart';
 import 'marketplace/marketplace_my_orders_screen.dart';
 import 'trust/trust_dashboard_entry.dart';
 import 'trust/trust_search_screen.dart';
+import 'customer_champions_dashboard_entry.dart';
 import 'voice_call_screen.dart';
 import 'organizations/organizations_screen.dart';
 import 'servicepay_theme.dart';
@@ -146,6 +147,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   bool hideBalance = false;
   bool isLoadingRecentActivity = true;
   bool isLoadingServiceStatuses = false;
+  int _championsRefreshVersion = 0;
 
   String searchQuery = '';
   String recentActivityError = '';
@@ -1202,6 +1204,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       return;
     }
 
+    setState(() => _championsRefreshVersion++);
     _refreshController.repeat();
     final bool refreshed = await loadDashboard(refreshing: true);
     _refreshController.stop();
@@ -3070,9 +3073,9 @@ class _DashboardScreenState extends State<DashboardScreen>
               crossAxisCount: 3,
               mainAxisExtent: 84 +
                   math.max(
-                    0,
-                    MediaQuery.textScalerOf(context).scale(13) - 13,
-                  ) *
+                        0,
+                        MediaQuery.textScalerOf(context).scale(13) - 13,
+                      ) *
                       2,
               crossAxisSpacing: 8,
               mainAxisSpacing: 5,
@@ -5788,6 +5791,9 @@ class _DashboardScreenState extends State<DashboardScreen>
                   if (isLoading) const SizedBox(height: 10),
                   buildPremiumBalanceCard(),
                   const SizedBox(height: 11),
+                  CustomerChampionsDashboardEntry(
+                    refreshVersion: _championsRefreshVersion,
+                  ),
                   buildFundingAccountCard(),
                   if (fundingAccountNumber.isNotEmpty)
                     const SizedBox(height: 15),
@@ -6552,7 +6558,8 @@ class _ServicePayAllServicesScreenState
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: 4,
             mainAxisExtent: 104 +
-                math.max(0, MediaQuery.textScalerOf(context).scale(14) - 14) * 3,
+                math.max(0, MediaQuery.textScalerOf(context).scale(14) - 14) *
+                    3,
             crossAxisSpacing: 8,
             mainAxisSpacing: 12,
           ),
