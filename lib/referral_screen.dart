@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:share_plus/share_plus.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'services/session_store.dart';
 
 import 'referral_service.dart';
 
@@ -52,21 +52,11 @@ class _ReferralScreenState extends State<ReferralScreen> {
   }
 
   Future<String?> getToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    for (final key in [
-      'auth_token',
-      'token',
-      'access_token',
-      'accessToken',
-      'jwt_token',
-      'jwt',
-    ]) {
-      final value = prefs.getString(key)?.trim();
-      if (value != null && value.isNotEmpty) {
-        return value.replaceFirst('Bearer ', '');
-      }
-    }
-    return null;
+    final saved = await SessionStore.readToken();
+    final token = saved?.replaceFirst(
+      RegExp(r'^Bearer\s+', caseSensitive: false), '',
+    ).trim();
+    return token == null || token.isEmpty ? null : token;
   }
 
   Future<void> loadReferral() async {

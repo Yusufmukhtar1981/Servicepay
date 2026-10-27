@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:screenshot/screenshot.dart';
 import 'package:gal/gal.dart';
+import 'services/session_store.dart';
 
 class IdVerificationScreen extends StatefulWidget {
   final String initialIdType;
@@ -102,43 +103,11 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
   Future<String?> getSavedAuthToken(
     SharedPreferences preferences,
   ) async {
-    const List<String> tokenKeys = [
-      'auth_token',
-      'token',
-      'access_token',
-      'accessToken',
-      'jwt_token',
-      'jwt',
-    ];
-
-    for (final String key in tokenKeys) {
-      final String? saved = preferences.getString(key);
-
-      if (saved == null || saved.trim().isEmpty) {
-        continue;
-      }
-
-      String token = saved.trim();
-
-      if (token.toLowerCase().startsWith(
-            'bearer ',
-          )) {
-        token = token.substring(7).trim();
-      }
-
-      if (token.isEmpty) {
-        continue;
-      }
-
-      await preferences.setString(
-        'auth_token',
-        token,
-      );
-
-      return token;
-    }
-
-    return null;
+    final saved = await SessionStore.readToken();
+    final token = saved?.replaceFirst(
+      RegExp(r'^Bearer\s+', caseSensitive: false), '',
+    ).trim();
+    return token == null || token.isEmpty ? null : token;
   }
 
   String? validateNin(String? value) {
