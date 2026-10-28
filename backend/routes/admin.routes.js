@@ -67,6 +67,9 @@ const {
 const router = express.Router();
 const customerProfile = require("../controllers/customerProfile.controller");
 const contactProposal = require("../controllers/customerContactProposal.controller");
+const adminVirtualAccount = require("../controllers/adminVirtualAccount.controller");
+router.get("/users/:id/virtual-account", protect, loadStaffRole, requirePermission(P.USERS_VIEW), adminVirtualAccount.get);
+router.post("/users/:id/virtual-account", protect, loadStaffRole, requirePermission(P.USERS_UPDATE), adminVirtualAccount.generate);
 router.get("/users/:id/profile/contact-proposal", protect, loadStaffRole, requirePermission(P.USERS_VIEW), contactProposal.get);
 router.put("/users/:id/profile/contact-proposal", protect, loadStaffRole, requirePermission(P.USERS_UPDATE), contactProposal.put);
 router.delete("/users/:id/profile/contact-proposal", protect, loadStaffRole, requirePermission(P.USERS_UPDATE), contactProposal.withdraw);

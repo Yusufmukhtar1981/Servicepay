@@ -352,7 +352,7 @@ exports.generateVirtualAccount = async (
       });
     }
 
-    if (customer.status !== "ACTIVE") {
+    if (customer.status !== "ACTIVE" || customer.isDeleted || customer.deletedAt) {
       return res.status(403).json({
         success: false,
         message:
@@ -455,6 +455,8 @@ exports.generateVirtualAccount = async (
         _id: authenticatedUserId,
         role: "CUSTOMER",
         status: "ACTIVE",
+        isDeleted: { $ne: true },
+        deletedAt: null,
         $and: [
           { $or: [
             { "virtualAccount.accountNumber": { $exists: false } },

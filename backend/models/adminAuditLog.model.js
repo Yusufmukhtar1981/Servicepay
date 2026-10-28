@@ -52,6 +52,8 @@ const adminAuditLogSchema =
         index: true,
         enum: [
           "USER_PROFILE_UPDATED",
+          "VIRTUAL_ACCOUNT_GENERATION_REQUESTED",
+          "VIRTUAL_ACCOUNT_GENERATION_RESULT",
           "PROFILE_CONTACT_PROPOSED",
           "PROFILE_CONTACT_WITHDRAWN",
           "PROFILE_CONTACT_NOTICE",
