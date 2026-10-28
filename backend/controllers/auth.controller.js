@@ -1827,10 +1827,10 @@ exports.forgotPassword = async (req, res) => {
     const user = await User.findOne({
       email,
     }).select(
-      "+passwordResetToken +passwordResetExpires"
+      "+passwordResetToken +passwordResetExpires +profileRecoveryBlocked"
     );
 
-    if (!user) {
+    if (!user || user.profileRecoveryBlocked?.email === true) {
       return res.status(200).json({
         success: true,
         message: genericMessage,
@@ -2105,6 +2105,7 @@ exports.resetPassword = async (req, res) => {
 
     const user = await User.findOne({
       passwordResetToken: hashedToken,
+      "profileRecoveryBlocked.email": { $ne: true },
       passwordResetExpires: {
         $gt: Date.now(),
       },

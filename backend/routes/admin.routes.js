@@ -74,6 +74,7 @@ router.get("/users/:id/profile/contact-proposal", protect, loadStaffRole, requir
 router.put("/users/:id/profile/contact-proposal", protect, loadStaffRole, requirePermission(P.USERS_UPDATE), contactProposal.put);
 router.delete("/users/:id/profile/contact-proposal", protect, loadStaffRole, requirePermission(P.USERS_UPDATE), contactProposal.withdraw);
 router.put("/users/:id/profile", protect, loadStaffRole, requirePermission(P.USERS_UPDATE), customerProfile.updateAdmin);
+router.get("/users/:id/profile/contact-correction", protect, loadStaffRole, requirePermission(P.USERS_VIEW), customerProfile.contactCorrectionAccess);
 router.post("/users/:id/profile/contact/request", protect, loadStaffRole, requirePermission(P.USERS_UPDATE), customerProfile.requestAdminContact);
 router.get("/users/:id/profile/history", protect, loadStaffRole, requirePermission(P.USERS_VIEW), customerProfile.history);
 const customerExportAccess = [protect, loadStaffRole, requirePermission(P.USERS_VIEW),

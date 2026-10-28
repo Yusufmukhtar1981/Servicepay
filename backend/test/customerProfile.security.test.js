@@ -167,14 +167,12 @@ test("existing email and equivalent international phone aliases cannot be claime
   }
   assert.equal(sent.length, 0);
 });
-test("admin must use their own password and prove customer old-contact ownership", async () => {
+test("legacy administrator OTP proofs cannot bypass direct correction safeguards", async () => {
   const v = await challenge("email", "changed@example.invalid", admin);
   assert.equal(sent[1].to, customer.email);
   const body = { email: "changed@example.invalid", reason: "Customer approved correction", contactVerifications: { email: v } };
-  assert.equal((await invoke("updateAdmin", body, admin)).code, 200);
-  const log = await Audit.findOne({});
-  assert.equal(String(log.actorId), String(admin._id));
-  assert.equal(log.actorRole, "HEAD_OFFICE");
+  assert.equal((await invoke("updateAdmin", body, admin)).code, 400);
+  assert.equal(await Audit.countDocuments(), 0);
 });
 test("another actor cannot use a customer's valid challenge", async () => {
   const v = await challenge();
@@ -329,10 +327,10 @@ test("phase one permits name and address saves with unchanged contacts", async (
   assert.equal(await Audit.countDocuments({}), 2);
   assert.equal((await User.findById(customer._id)).address, "24 Sandbox Avenue");
 });
-test("phase one rejects Head Office contact mutation, including combined basic edits", async () => {
+test("Head Office contact mutation requires direct correction credentials even when OTP is unavailable", async () => {
   delete process.env.SERVICEPAY_PROFILE_CONTACT_CHANGES_ENABLED;
   const r = await invoke("updateAdmin", { fullName: "Must Not Persist", phone: "08060000010", reason: "Forbidden contact change" }, admin);
-  assert.equal(r.code, 503);
+  assert.equal(r.code, 400);
   const stored = await User.findById(customer._id);
   assert.equal(stored.phone, customer.phone);
   assert.equal(stored.fullName, customer.fullName);

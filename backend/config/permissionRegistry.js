@@ -19,6 +19,7 @@ const STAFF_PERMISSION_CATALOG = Object.freeze([
   permission("USERS_VIEW", "users.view", "USERS", "View users", "View users within the actor data scope."),
   permission("CUSTOMERS_EXPORT", "customers.export", "USERS", "Export customer contacts", "Download, share or print customer names, phone numbers and emails within the actor data scope.", "PRIVILEGED"),
   permission("USERS_UPDATE", "users.update", "USERS", "Update users", "Update users within the actor data scope.", "PRIVILEGED"),
+  permission("USERS_CONTACT_CORRECT", "users.contacts.correct", "USERS", "Correct customer contacts", "Directly correct customer contacts as unverified after administrator reauthentication. Requires explicit assignment.", "CRITICAL"),
   permission("USERS_SUSPEND", "users.suspend", "USERS", "Suspend users", "Suspend or reactivate users within scope.", "PRIVILEGED"),
   permission("USERS_BLOCK", "users.block", "USERS", "Block users", "Block users within scope.", "CRITICAL"),
   permission("USERS_DELETE", "users.delete", "USERS", "Safely delete users", "Disable an account while preserving financial records.", "CRITICAL"),

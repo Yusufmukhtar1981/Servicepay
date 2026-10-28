@@ -42,6 +42,13 @@ const userSchema = new mongoose.Schema(
     },
     address: { type: String, trim: true, maxlength: 500, default: "" },
     emailVerified: { type: Boolean, default: false },
+    // Only direct administrative corrections set these fences. Legacy/new
+    // registration behavior is unchanged; unverified corrections cannot become
+    // trusted recovery destinations merely because their identifier changed.
+    profileRecoveryBlocked: {
+      type: new mongoose.Schema({ email: Boolean, phone: Boolean }, { _id: false }),
+      default: undefined, select: false,
+    },
     phoneVerified: { type: Boolean, default: false },
     // Private, customer-bound contact verification; no new Atlas collection.
     profileContactChallenge: { type: mongoose.Schema.Types.Mixed, select: false },
