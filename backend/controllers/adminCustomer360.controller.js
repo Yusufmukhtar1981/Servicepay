@@ -21,6 +21,7 @@ const SAFE_PROFILE_FIELDS = [
   "phone",
   "email",
   "profilePhotoUrl",
+  "address",
   "accountNumber",
   "status",
   "kycVerified",
@@ -445,6 +446,7 @@ exports.getCustomerOverview = async (req, res) => {
           fullName: clean(customer.fullName),
           phone: clean(customer.phone),
           email: clean(customer.email),
+          address: clean(customer.address, 500),
           avatarUrl: clean(customer.profilePhotoUrl, 1000),
           status: clean(customer.status, 40) || "UNKNOWN",
           kycStatus:

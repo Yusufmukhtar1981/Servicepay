@@ -27,6 +27,8 @@ const {
 } = require("../middleware/referralValidationRateLimit.middleware");
 
 const router = express.Router();
+const customerProfile = require("../controllers/customerProfile.controller");
+router.post("/profile/contact/request", protect, customerProfile.requestSelfContact);
 
 const profilePhotoUpload = multer({
   storage: multer.memoryStorage(),

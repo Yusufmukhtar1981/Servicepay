@@ -65,6 +65,10 @@ const {
 } = require("../controllers/adminWalletAdjustment.controller");
 
 const router = express.Router();
+const customerProfile = require("../controllers/customerProfile.controller");
+router.put("/users/:id/profile", protect, loadStaffRole, requirePermission(P.USERS_UPDATE), customerProfile.updateAdmin);
+router.post("/users/:id/profile/contact/request", protect, loadStaffRole, requirePermission(P.USERS_UPDATE), customerProfile.requestAdminContact);
+router.get("/users/:id/profile/history", protect, loadStaffRole, requirePermission(P.USERS_VIEW), customerProfile.history);
 const customerExportAccess = [protect, loadStaffRole, requirePermission(P.USERS_VIEW),
   requirePermission(P.CUSTOMERS_EXPORT)];
 router.get("/customer-exports/customers", ...customerExportAccess, customerExportController.listCustomers);

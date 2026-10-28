@@ -412,7 +412,7 @@ const loginIsRestricted = async (user) => {
   return Boolean(restriction || blacklist);
 };
 
-const formatUser = (user) => {
+const formatUser = exports.formatUser = (user) => {
   return {
     id: user._id,
     _id: user._id,
@@ -427,6 +427,7 @@ const formatUser = (user) => {
     zone: user.zone,
     state: user.state,
     lga: user.lga,
+    address: user.address || "",
       dateOfBirth: user.dateOfBirth || null,
       gender: user.gender || "",
 
@@ -1435,6 +1436,9 @@ exports.updateProfile = async (
   req,
   res
 ) => {
+  if (req.user?.role === "CUSTOMER") {
+    return require("./customerProfile.controller").updateSelf(req, res);
+  }
   try {
     const userId =
       req.user?._id ||

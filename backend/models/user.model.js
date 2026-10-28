@@ -40,6 +40,12 @@ const userSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    address: { type: String, trim: true, maxlength: 500, default: "" },
+    emailVerified: { type: Boolean, default: false },
+    phoneVerified: { type: Boolean, default: false },
+    // Private, customer-bound contact verification; no new Atlas collection.
+    profileContactChallenge: { type: mongoose.Schema.Types.Mixed, select: false },
+    profileContactRate: { type: mongoose.Schema.Types.Mixed, select: false },
 
     phone: {
       type: String,
