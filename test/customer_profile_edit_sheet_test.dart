@@ -24,6 +24,7 @@ void main() {
     WidgetTester tester,
     http.Client client, {
     Completer<Object?>? result,
+    bool contactChangesEnabled = false,
   }) async {
     tester.view.physicalSize = const Size(800, 1400);
     tester.view.devicePixelRatio = 1;
@@ -42,6 +43,7 @@ void main() {
                   user: user,
                   client: client,
                   baseUrl: 'https://unit.test/api',
+                  contactChangesEnabled: contactChangesEnabled,
                 ),
               ).then((value) {
                 if (result != null && !result.isCompleted) {
@@ -94,7 +96,7 @@ void main() {
       );
     });
     final result = Completer<Object?>();
-    await harness(tester, client, result: result);
+    await harness(tester, client, result: result, contactChangesEnabled: true);
     await tester.tap(find.text('Launch'));
     await tester.pumpAndSettle();
     await tester.enterText(
@@ -157,7 +159,7 @@ void main() {
       return http.Response(
           '{"success":false,"message":"Approval code expired."}', 400);
     });
-    await harness(tester, client);
+    await harness(tester, client, contactChangesEnabled: true);
     await tester.tap(find.text('Launch'));
     await tester.pumpAndSettle();
     await tester.enterText(
@@ -192,8 +194,10 @@ void main() {
 
   testWidgets('successful profile save returns refresh signal to caller',
       (tester) async {
+    Map<String, dynamic>? saved;
     final client = MockClient((request) async {
       expect(request.method, 'PUT');
+      saved = jsonDecode(request.body) as Map<String, dynamic>;
       return http.Response(
         jsonEncode({
           'success': true,
@@ -206,6 +210,42 @@ void main() {
     await harness(tester, client, result: result);
     await tester.tap(find.text('Launch'));
     await tester.pumpAndSettle();
+    expect(
+      find.text(
+        'Phone and email changes are temporarily unavailable while secure verification is configured.',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<TextField>(find.widgetWithText(TextField, 'Full Name'))
+          .controller!
+          .text,
+      'Ada Okafor',
+    );
+    expect(
+      tester
+          .widget<TextField>(
+            find.widgetWithText(TextField, 'Phone Number'),
+          )
+          .readOnly,
+      isTrue,
+    );
+    expect(
+      tester
+          .widget<TextField>(find.widgetWithText(TextField, 'Email Address'))
+          .controller!
+          .text,
+      'ada@example.test',
+    );
+    expect(
+      tester
+          .widget<TextField>(
+            find.widgetWithText(TextField, 'State'),
+          )
+          .readOnly,
+      isTrue,
+    );
     await tester.enterText(
       find.widgetWithText(TextField, 'Residential Address'),
       '18 Palm Avenue',
@@ -214,6 +254,11 @@ void main() {
     await tester.tap(find.text('Save changes'));
     await tester.pumpAndSettle();
     expect(await result.future, true);
+    expect(saved!['fullName'], 'Ada Okafor');
+    expect(saved!['address'], '18 Palm Avenue');
+    expect(saved!['phone'], user['phone']);
+    expect(saved!['email'], user['email']);
+    expect(saved!['state'], user['state']);
     client.close();
   });
 

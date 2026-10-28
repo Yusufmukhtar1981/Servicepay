@@ -12,11 +12,23 @@ class CustomerProfileEditSheet extends StatefulWidget {
     required this.user,
     required this.client,
     required this.baseUrl,
+    this.contactChangesEnabled,
   });
+
+  static const bool _releaseContactChangesEnabled = bool.fromEnvironment(
+    'SERVICEPAY_PROFILE_CONTACT_CHANGES_ENABLED',
+    defaultValue: false,
+  );
 
   final Map<String, dynamic> user;
   final http.Client client;
   final String baseUrl;
+
+  /// Optional test seam; release behavior is controlled by the compile-time flag.
+  final bool? contactChangesEnabled;
+
+  bool get contactsEnabled =>
+      contactChangesEnabled ?? _releaseContactChangesEnabled;
 
   @override
   State<CustomerProfileEditSheet> createState() =>
@@ -126,6 +138,11 @@ class _CustomerProfileEditSheetState extends State<CustomerProfileEditSheet> {
   }
 
   Future<void> _requestCode(String field) async {
+    if (!widget.contactsEnabled) {
+      setState(() => _error =
+          'Phone and email changes are temporarily unavailable while secure verification is configured.');
+      return;
+    }
     final other = field == 'email' ? 'phone' : 'email';
     if (_changed(other)) {
       setState(() => _error =
@@ -202,6 +219,11 @@ class _CustomerProfileEditSheetState extends State<CustomerProfileEditSheet> {
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
+    if (!widget.contactsEnabled && (_changed('email') || _changed('phone'))) {
+      setState(() => _error =
+          'Phone and email changes are temporarily unavailable while secure verification is configured.');
+      return;
+    }
     if (_changed('email') && _changed('phone')) {
       setState(() => _error =
           'Change and save one contact method at a time. Save either phone or email, then edit the other.');
@@ -292,12 +314,14 @@ class _CustomerProfileEditSheetState extends State<CustomerProfileEditSheet> {
 
   Widget _textField(String key, String label, IconData icon,
       {TextInputType keyboard = TextInputType.text,
+      bool readOnly = false,
       String? Function(String?)? validator}) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: TextFormField(
         controller: _fields[key],
         keyboardType: keyboard,
+        readOnly: readOnly,
         textCapitalization:
             key == 'email' ? TextCapitalization.none : TextCapitalization.words,
         decoration: InputDecoration(
@@ -311,7 +335,9 @@ class _CustomerProfileEditSheetState extends State<CustomerProfileEditSheet> {
   }
 
   Widget _contactVerification(String field) {
-    if (!_changed(field)) return const SizedBox.shrink();
+    if (!widget.contactsEnabled || !_changed(field)) {
+      return const SizedBox.shrink();
+    }
     final requested = _challengeIds.containsKey(field);
     final label = field == 'email' ? 'email address' : 'phone number';
     return Container(
@@ -398,7 +424,21 @@ class _CustomerProfileEditSheetState extends State<CustomerProfileEditSheet> {
                     const Text(
                         'Your wallet and verified identity details stay protected.',
                         style: TextStyle(color: Color(0xFF65736A))),
-                    if (_changed('email') && _changed('phone')) ...[
+                    if (!widget.contactsEnabled)
+                      const Padding(
+                        padding: EdgeInsets.only(top: 12),
+                        child: Text(
+                          'Phone and email changes are temporarily unavailable while secure verification is configured.',
+                          key: Key('profile-contact-changes-disabled'),
+                          style: TextStyle(
+                            color: Color(0xFF8A5A00),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    if (widget.contactsEnabled &&
+                        _changed('email') &&
+                        _changed('phone')) ...[
                       const SizedBox(height: 12),
                       Container(
                         width: double.infinity,
@@ -412,7 +452,8 @@ class _CustomerProfileEditSheetState extends State<CustomerProfileEditSheet> {
                         ),
                       ),
                     ],
-                    if (_changed('email') || _changed('phone')) ...[
+                    if (widget.contactsEnabled &&
+                        (_changed('email') || _changed('phone'))) ...[
                       const SizedBox(height: 12),
                       TextField(
                         controller: _password,
@@ -436,6 +477,7 @@ class _CustomerProfileEditSheetState extends State<CustomerProfileEditSheet> {
                                 : null),
                     _textField('phone', 'Phone Number', Icons.phone_outlined,
                         keyboard: TextInputType.phone,
+                        readOnly: !widget.contactsEnabled,
                         validator: (value) =>
                             value == null || value.trim().length < 10
                                 ? 'Enter a valid phone number.'
@@ -443,6 +485,7 @@ class _CustomerProfileEditSheetState extends State<CustomerProfileEditSheet> {
                     _contactVerification('phone'),
                     _textField('email', 'Email Address', Icons.email_outlined,
                         keyboard: TextInputType.emailAddress,
+                        readOnly: !widget.contactsEnabled,
                         validator: (value) => value != null &&
                                 value.isNotEmpty &&
                                 !RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
@@ -452,9 +495,12 @@ class _CustomerProfileEditSheetState extends State<CustomerProfileEditSheet> {
                     _contactVerification('email'),
                     _textField(
                         'address', 'Residential Address', Icons.home_outlined),
-                    _textField('state', 'State', Icons.location_city_outlined),
-                    _textField('lga', 'LGA', Icons.location_on_outlined),
-                    _textField('zone', 'Zone', Icons.map_outlined),
+                    _textField('state', 'State', Icons.location_city_outlined,
+                        readOnly: true),
+                    _textField('lga', 'LGA', Icons.location_on_outlined,
+                        readOnly: true),
+                    _textField('zone', 'Zone', Icons.map_outlined,
+                        readOnly: true),
                     if (_error != null)
                       Container(
                         width: double.infinity,
