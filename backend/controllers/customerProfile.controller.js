@@ -2,6 +2,8 @@ const mongoose = require("mongoose");
 const User = require("../models/user.model");
 const Audit = require("../models/adminAuditLog.model");
 const contacts = require("../services/profileContact.service");
+const CONTACT_UNAVAILABLE = "Phone and email changes are temporarily unavailable while secure verification is configured.";
+const contactChangesEnabled = () => process.env.SERVICEPAY_PROFILE_CONTACT_CHANGES_ENABLED === "true";
 const allowed = new Set(["fullName", "address", "state", "lga", "zone", "email", "phone", "reason", "contactVerifications"]);
 const visible = u => ({ id: u._id, _id: u._id, fullName: u.fullName, phone: u.phone,
   email: u.email || "", address: u.address || "", zone: u.zone || "", state: u.state || "",
@@ -36,13 +38,14 @@ const reasonFor = (req, admin) => {
 };
 function errorResponse(res, error) {
   const status = error?.code === 11000 ? 409 : error.statusCode || 500;
-  return res.status(status).json({ success: false, message: error?.code === 11000
+  return res.status(status).json({ success: false, ...(error.code === "CONTACT_VERIFICATION_UNAVAILABLE" ? { code: error.code } : {}), message: error?.code === 11000
     ? "Another account already uses this contact information."
     : status < 500 ? error.message : error.statusCode === 503 ? error.message : "Unable to update the profile. Please try again." });
 }
 const requestContact = admin => async (req, res) => {
   try {
     const targetId = authorize(req, admin);
+    if (!contactChangesEnabled()) throw Object.assign(contacts.fail(503, CONTACT_UNAVAILABLE), { code: "CONTACT_VERIFICATION_UNAVAILABLE" });
     limitPasswordChecks(id(req));
     const reason = reasonFor(req, admin);
     const data = await contacts.request({ actorId: id(req), targetId, field: req.body.field,
@@ -84,6 +87,9 @@ const update = admin => async (req, res) => {
       const contactChanges = ["email", "phone"].filter(f => desired[f] !== undefined &&
         desired[f] !== (user[f] || ""));
       contactChanged = contactChanges.length > 0;
+      if (contactChanged && !contactChangesEnabled()) {
+        throw Object.assign(contacts.fail(503, CONTACT_UNAVAILABLE), { code: "CONTACT_VERIFICATION_UNAVAILABLE" });
+      }
       // One contact at a time prevents one approval code from authorizing two
       // independent changes, and keeps possession of an old recovery contact.
       if (contactChanges.length > 1) throw contacts.fail(400, "Verify and save one contact change at a time.");

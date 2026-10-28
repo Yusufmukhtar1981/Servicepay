@@ -40,6 +40,8 @@ test.before(async () => {
 });
 test.after(async () => { await mongoose.disconnect(); await mongo?.stop(); });
 test.beforeEach(async () => {
+  // Explicit opt-in exercises the preserved future OTP flow in isolation only.
+  process.env.SERVICEPAY_PROFILE_CONTACT_CHANGES_ENABLED = "true";
   // Only the isolated disposable replica; production audit model stays immutable.
   await Promise.all([User.deleteMany({}), Audit.collection.deleteMany({})]); sent = []; deliver = true;
   [customer, admin, other] = await User.create([
@@ -264,4 +266,70 @@ test("concurrent verified claims cannot give two customers the same email", asyn
   ]);
   assert.deepEqual(results.map(r => r.code).sort(), [200, 409]);
   assert.equal(await User.countDocuments({ email: "shared@example.invalid" }), 1);
+});
+test("phase one blocks OTP dispatch for both Customer and Head Office", async () => {
+  delete process.env.SERVICEPAY_PROFILE_CONTACT_CHANGES_ENABLED;
+  for (const actor of [customer, admin]) {
+    const response = await invoke(actor.role === "CUSTOMER" ? "requestSelfContact" : "requestAdminContact",
+      { field: "email", value: "unverified@example.invalid", currentPassword: password, reason: "Support verification check" }, actor);
+    assert.equal(response.code, 503);
+    assert.equal(response.body.code, "CONTACT_VERIFICATION_UNAVAILABLE");
+    assert.match(response.body.message, /temporarily unavailable/);
+  }
+  assert.equal(sent.length, 0);
+});
+test("phase one refuses a previously valid OTP proof without modifying the customer", async () => {
+  const verification = await challenge();
+  process.env.SERVICEPAY_PROFILE_CONTACT_CHANGES_ENABLED = "false";
+  const response = await invoke("updateSelf", { email: "changed@example.invalid", contactVerifications: { email: verification } });
+  assert.equal(response.code, 503);
+  assert.equal(response.body.code, "CONTACT_VERIFICATION_UNAVAILABLE");
+  assert.equal((await User.findById(customer._id)).email, customer.email);
+  assert.equal(await Audit.countDocuments({}), 0);
+});
+test("phase one permits name and address saves with unchanged contacts", async () => {
+  delete process.env.SERVICEPAY_PROFILE_CONTACT_CHANGES_ENABLED;
+  for (const actor of [customer, admin]) {
+    const response = await invoke(actor.role === "CUSTOMER" ? "updateSelf" : "updateAdmin",
+      { fullName: "Phase One Customer", address: "24 Sandbox Avenue", phone: customer.phone,
+        email: customer.email, reason: "Customer requested address correction" }, actor);
+    assert.equal(response.code, 200);
+  }
+  assert.equal(sent.length, 0);
+  assert.equal(await Audit.countDocuments({}), 2);
+  assert.equal((await User.findById(customer._id)).address, "24 Sandbox Avenue");
+});
+test("phase one rejects Head Office contact mutation, including combined basic edits", async () => {
+  delete process.env.SERVICEPAY_PROFILE_CONTACT_CHANGES_ENABLED;
+  const r = await invoke("updateAdmin", { fullName: "Must Not Persist", phone: "08060000010", reason: "Forbidden contact change" }, admin);
+  assert.equal(r.code, 503);
+  const stored = await User.findById(customer._id);
+  assert.equal(stored.phone, customer.phone);
+  assert.equal(stored.fullName, customer.fullName);
+});
+test("profile picture upload remains available without contact verification and preserves account data", async () => {
+  delete process.env.SERVICEPAY_PROFILE_CONTACT_CHANGES_ENABLED;
+  const cloudinary = require("cloudinary").v2;
+  const original = cloudinary.uploader.upload_stream;
+  const keys = ["CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_KEY", "CLOUDINARY_API_SECRET"];
+  const previous = Object.fromEntries(keys.map(k => [k, process.env[k]]));
+  keys.forEach(k => { process.env[k] = "sandbox-not-production"; });
+  cloudinary.uploader.upload_stream = (options, callback) => ({
+    end(buffer) {
+      assert.equal(options.public_id, `user_${customer._id}`);
+      assert.equal(options.resource_type, "image");
+      assert.ok(Buffer.isBuffer(buffer));
+      callback(null, { secure_url: "https://example.invalid/avatar.png", public_id: options.public_id });
+    },
+  });
+  const res = { code: 200, status(n) { this.code = n; return this; }, json(body) { this.body = body; return this; } };
+  try {
+    await auth.updateProfilePhoto({ user: { _id: customer._id }, file: { mimetype: "image/png", buffer: Buffer.from("sandbox-image") } }, res);
+    assert.equal(res.code, 200);
+    assert.equal((await User.findById(customer._id)).profilePhotoUrl, "https://example.invalid/avatar.png");
+    assert.equal(sent.length, 0);
+  } finally {
+    cloudinary.uploader.upload_stream = original;
+    keys.forEach(k => { if (previous[k] === undefined) delete process.env[k]; else process.env[k] = previous[k]; });
+  }
 });
