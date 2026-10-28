@@ -21,6 +21,7 @@ import 'voice_call_screen.dart';
 import 'biometric_settings_screen.dart';
 import 'customer_leaderboard_privacy_preference.dart';
 import 'services/customer_leaderboard_api.dart';
+import 'customer_profile_edit_sheet.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key, this.client});
@@ -570,18 +571,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> openEditProfile() async {
-    final bool? updated = await showModalBottomSheet<bool>(
+    final Object? updated = await showModalBottomSheet<Object?>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) {
-        return _EditProfileSheet(
-          currentUser: user,
+        return CustomerProfileEditSheet(
+          user: user,
+          client: _client,
+          baseUrl: baseUrl,
         );
       },
     );
 
-    if (updated == true) {
+    if (updated == 'requiresLogin') {
+      await SessionStore.clear();
+      if (!mounted) return;
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (route) => false,
+      );
+    } else if (updated == true) {
       await loadProfile(
         showRefreshLoader: true,
       );
