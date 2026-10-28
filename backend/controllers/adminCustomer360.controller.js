@@ -447,6 +447,9 @@ exports.getCustomerOverview = async (req, res) => {
           phone: clean(customer.phone),
           email: clean(customer.email),
           address: clean(customer.address, 500),
+          state: clean(customer.state, 120),
+          lga: clean(customer.lga, 120),
+          zone: clean(customer.zone, 120),
           avatarUrl: clean(customer.profilePhotoUrl, 1000),
           status: clean(customer.status, 40) || "UNKNOWN",
           kycStatus:

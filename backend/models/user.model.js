@@ -46,6 +46,9 @@ const userSchema = new mongoose.Schema(
     // Private, customer-bound contact verification; no new Atlas collection.
     profileContactChallenge: { type: mongoose.Schema.Types.Mixed, select: false },
     profileContactRate: { type: mongoose.Schema.Types.Mixed, select: false },
+    // Administrative proposals never replace the active login/recovery contacts.
+    profileContactProposal: { type: mongoose.Schema.Types.Mixed, select: false },
+    profileContactProposalRate: { type: mongoose.Schema.Types.Mixed, select: false },
 
     phone: {
       type: String,

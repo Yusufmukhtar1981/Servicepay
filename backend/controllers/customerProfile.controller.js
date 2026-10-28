@@ -82,7 +82,13 @@ const update = admin => async (req, res) => {
         // Legacy optional/invalid contacts that the form merely echoes must
         // not prevent an unrelated name/address edit or create empty uniques.
         if (desired[field] === (user[field] || "")) delete desired[field];
-        else desired[field] = contacts.normalize(field, desired[field]);
+        else {
+          desired[field] = contacts.normalize(field, desired[field]);
+          // Equivalent legacy formatting/casing is not a contact mutation.
+          try {
+            if (desired[field] === contacts.normalize(field, user[field] || "")) delete desired[field];
+          } catch (_) { /* A genuinely different new contact still needs OTP. */ }
+        }
       }
       const contactChanges = ["email", "phone"].filter(f => desired[f] !== undefined &&
         desired[f] !== (user[f] || ""));
@@ -128,11 +134,23 @@ exports.history = async (req, res) => {
     const targetId = authorize(req, true, false);
     if (!await User.exists({ _id: targetId, role: "CUSTOMER" })) throw contacts.fail(404, "Customer account not found.");
     const page = Math.max(1, Math.min(10000, parseInt(req.query.page, 10) || 1));
-    const filter = { targetUserId: targetId, action: "USER_PROFILE_UPDATED" };
+    const filter = { targetUserId: targetId, action: { $in: [
+      "USER_PROFILE_UPDATED", "PROFILE_CONTACT_PROPOSED", "PROFILE_CONTACT_WITHDRAWN",
+    ] } };
     const [history, total] = await Promise.all([
-      Audit.find(filter).select("actorName actorRole createdAt reason previousData newData").sort({ createdAt: -1, _id: -1 }).skip((page - 1) * 20).limit(20).lean(),
+      Audit.find(filter).select("actorName actorRole createdAt reason previousData newData action metadata").sort({ createdAt: -1, _id: -1 }).skip((page - 1) * 20).limit(20).lean(),
       Audit.countDocuments(filter),
     ]);
-    return res.json({ success: true, data: { history: history.map(row => ({ ...row, id: row._id })), page, total, pages: Math.ceil(total / 20) } });
+    const rows = history.map(row => {
+      // Legacy metadata is not a public DTO: expose only the proposal fields
+      // needed by this protected history screen, never arbitrary audit metadata.
+      const pending = row.metadata?.pendingContact;
+      const safeMetadata = pending ? { pendingContact: Object.fromEntries(
+        ["id", "status", "proposedPhone", "proposedEmail", "requestedAt", "requestedByName", "reason"]
+          .filter(key => pending[key] !== undefined).map(key => [key, pending[key]]),
+      ) } : {};
+      return { ...row, id: row._id, metadata: safeMetadata };
+    });
+    return res.json({ success: true, data: { history: rows, page, total, pages: Math.ceil(total / 20) } });
   } catch (error) { return errorResponse(res, error); }
 };

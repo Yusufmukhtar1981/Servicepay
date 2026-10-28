@@ -245,6 +245,36 @@ test("actual authenticated Customer and Admin routes enforce ownership and persi
     const history = await http(`${path}/history`, "GET", null, admin);
     assert.equal(history.code, 200); assert.equal(history.body.data.total, 1);
     assert.equal((await http(path, "PUT", { phone: "08060000010", reason: "Unverified phone" }, admin)).code, 400);
+    const pendingPath = `${path}/contact-proposal`;
+    assert.equal((await http(pendingPath, "GET")).code, 401);
+    assert.equal((await http(pendingPath, "GET", null, customer)).code, 403);
+    const proposed = await http(pendingPath, "PUT", {
+      email: "pending.http@example.invalid", currentPassword: password,
+      reason: "Record a pending contact correction", expectedProposalId: null,
+    }, admin);
+    assert.equal(proposed.code, 200, JSON.stringify(proposed.body));
+    assert.equal(proposed.body.data.proposal.status, "PENDING_VERIFICATION");
+    // Simulate unrelated legacy audit metadata only inside the disposable replica.
+    await Audit.collection.updateOne({ action: "PROFILE_CONTACT_PROPOSED" }, { $set: {
+      "metadata.internalNote": "private-metadata-marker",
+      "metadata.pendingContact.internalNote": "private-metadata-marker",
+    } });
+    const pendingRead = await http(pendingPath, "GET", null, admin);
+    assert.equal(pendingRead.body.data.proposal.id, proposed.body.data.proposal.id);
+    const unchanged = await http("/api/auth/profile", "GET", null, customer);
+    assert.equal(unchanged.body.user.email, customer.email);
+    assert.equal(unchanged.body.user.profileContactProposal, undefined);
+    const withdrawn = await http(pendingPath, "DELETE", {
+      currentPassword: password, reason: "Withdraw the sandbox correction",
+      expectedProposalId: proposed.body.data.proposal.id,
+    }, admin);
+    assert.equal(withdrawn.code, 200, JSON.stringify(withdrawn.body));
+    assert.equal(withdrawn.body.data.proposal, null);
+    const expandedHistory = await http(`${path}/history`, "GET", null, admin);
+    assert.equal(expandedHistory.body.data.total, 3);
+    assert.equal(expandedHistory.body.data.history[0].action, "PROFILE_CONTACT_WITHDRAWN");
+    assert.equal(JSON.stringify(expandedHistory.body).includes("private-metadata-marker"), false);
+    assert.equal((await http(`${path}/history`, "GET", null, customer)).code, 403);
   } finally { await new Promise(resolve => server.close(resolve)); }
 });
 test("unchanged legacy contacts and absent email do not block a basic profile edit", async () => {
