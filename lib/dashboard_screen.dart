@@ -1581,7 +1581,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       ),
       _DashboardService(
         title: 'AI Support',
-        subtitle: 'Ask ServicePay',
+        subtitle: 'AI Smart Support and secure human replies',
         icon: Icons.support_agent_rounded,
         iconColor: const Color(0xFF08783E),
         backgroundColor: const Color(0xFFE5F5EA),

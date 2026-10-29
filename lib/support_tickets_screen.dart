@@ -111,8 +111,9 @@ class _SupportTicketsScreenState extends State<SupportTicketsScreen> {
                                   ? 'All'
                                   : value == 'IN_REVIEW'
                                       ? 'In Review'
-                                      : value == 'WAITING_ON_CUSTOMER'
-                                          ? 'Awaiting Customer'
+                                      : value == 'WAITING_ON_CUSTOMER' ||
+                                              value == 'WAITING_FOR_CUSTOMER'
+                                          ? 'Waiting for you'
                                           : value[0] +
                                               value.substring(1).toLowerCase()),
                               selected: _status == value,
@@ -530,7 +531,7 @@ class _TicketTimeline extends StatelessWidget {
     final current = switch (status) {
       'OPEN' => 0,
       'IN_PROGRESS' || 'IN_REVIEW' => 1,
-      'WAITING_ON_CUSTOMER' => 2,
+      'WAITING_ON_CUSTOMER' || 'WAITING_FOR_CUSTOMER' => 2,
       'RESOLVED' || 'CLOSED' || 'REJECTED' => 3,
       _ => 0,
     };

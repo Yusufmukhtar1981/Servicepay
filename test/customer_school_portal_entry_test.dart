@@ -46,6 +46,16 @@ void main() {
     for (var index = 0; index < 8; index++) {
       await tester.pump(const Duration(milliseconds: 100));
     }
+    // Dashboard sections are lazy-built. Eligibility does not require this card
+    // to start inside the test's small first viewport.
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('customer-school-portal-card')),
+      300,
+      scrollable: find.byWidgetPredicate(
+        (widget) => widget is Scrollable &&
+            widget.axisDirection == AxisDirection.down,
+      ).first,
+    );
     expect(find.byKey(const Key('customer-school-portal-card')), findsOneWidget);
     expect(find.text('SCHOOL PORTAL'), findsOneWidget);
     expect(find.text('Manage your school'), findsOneWidget);

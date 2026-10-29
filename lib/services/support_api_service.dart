@@ -28,7 +28,9 @@ class SupportTicket {
     final supplied = (data['statusLabel'] ?? '').toString().trim();
     if (supplied.isNotEmpty) return supplied;
     if (status == 'IN_PROGRESS' || status == 'IN_REVIEW') return 'IN REVIEW';
-    if (status == 'WAITING_ON_CUSTOMER') return 'AWAITING CUSTOMER';
+    if (status == 'WAITING_ON_CUSTOMER' || status == 'WAITING_FOR_CUSTOMER') {
+      return 'WAITING FOR YOU';
+    }
     if (status == 'REJECTED') return 'CLOSED';
     return status.replaceAll('_', ' ');
   }
@@ -218,7 +220,6 @@ class SupportApiService {
   }
 
   Future<Map<String, String>> _headers(bool json) async {
-    final prefs = await SharedPreferences.getInstance();
     final token = (await SessionStore.readToken())?.trim() ??
         (await SessionStore.readToken())?.trim() ??
         '';

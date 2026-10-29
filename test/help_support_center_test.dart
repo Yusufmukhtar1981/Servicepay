@@ -43,7 +43,7 @@ void main() {
       SupportTicket(
         <String, dynamic>{'status': 'WAITING_ON_CUSTOMER'},
       ).statusLabel,
-      'AWAITING CUSTOMER',
+      'WAITING FOR YOU',
     );
   });
 }
