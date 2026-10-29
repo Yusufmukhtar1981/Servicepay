@@ -418,8 +418,9 @@ test("checkout verifies canonical PIN errors before debiting and upgrades a lega
     headers: { "idempotency-key": "marketplace-pin-required" },
   });
   assert.equal(missingPin.status, 400);
-  assert.equal(missingPin.body.code, "INVALID_TRANSACTION_PIN");
+  assert.equal(missingPin.body.code, "TRANSACTION_AUTH_REQUIRED");
   assert.equal((await User.findById(buyer._id)).walletBalance, 3000);
+  assert.equal((await MarketplaceProduct.findById(product._id)).stock, 4);
 
   await User.collection.updateOne(
     { _id: buyer._id },

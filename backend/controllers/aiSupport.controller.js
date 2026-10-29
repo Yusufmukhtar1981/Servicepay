@@ -40,6 +40,7 @@ const getConversationMessages = (conversation) =>
 const getSafeHistoryMessages = (conversation) =>
   Array.isArray(conversation?.messages)
     ? conversation.messages
+        .map((message, messageIndex) => ({ ...message, messageIndex }))
         .filter(
           (message) =>
             !containsSensitiveCredential(message?.message)
@@ -48,6 +49,8 @@ const getSafeHistoryMessages = (conversation) =>
           role: message.role,
           message: redactSensitiveText(message.message),
           createdAt: message.createdAt,
+          messageIndex: message.messageIndex,
+          language: message.language || "en",
         }))
     : [];
 
@@ -97,6 +100,9 @@ exports.chat = async (req, res) => {
 
     if (settings.aiSupportEnabled === false) {
       return disabledResponse(res);
+    }
+    if (settings.smartSupportEnabled === true) {
+      return require("./smartSupport.controller").smartChat(req, res);
     }
 
     const rawMessage = req.body?.message;
@@ -170,7 +176,7 @@ exports.chat = async (req, res) => {
       escalationRecommended: result.escalationRecommended,
     });
   } catch (error) {
-    console.error("AI Support chat error:", error);
+    console.error("AI Support chat unavailable.");
 
     return res.status(503).json({
       success: false,
@@ -192,19 +198,22 @@ exports.getHistory = async (req, res) => {
     }
 
     const settings = await getSupportSettings();
+    const smartSettings = await require("../services/smartSupport.service").getSettings();
     const conversation = await AISupportConversation.findOne({
       userId,
+      ...(smartSettings.enabled ? { updatedAt: { $gte: new Date(Date.now() - smartSettings.retentionDays * 86400000) } } : {}),
     }).lean();
 
     return res.status(200).json({
       success: true,
       aiSupportEnabled: settings.aiSupportEnabled !== false,
       humanEscalationEnabled: settings.humanEscalationEnabled !== false,
+      capabilities: require("./smartSupport.controller").capabilities(smartSettings),
       conversationId: conversation ? String(conversation._id) : null,
       messages: getSafeHistoryMessages(conversation),
     });
   } catch (error) {
-    console.error("AI Support history error:", error);
+    console.error("AI Support history unavailable.");
 
     return res.status(503).json({
       success: false,
@@ -231,7 +240,7 @@ exports.deleteHistory = async (req, res) => {
       message: "AI Support chat history cleared.",
     });
   } catch (error) {
-    console.error("AI Support history deletion error:", error);
+    console.error("AI Support history deletion unavailable.");
 
     return res.status(503).json({
       success: false,

@@ -35,6 +35,12 @@ test.before(async () => {
   await Promise.all([Shipment, User, Branch, Route, History, Delivery, require("../models/notification.model"), require("../models/adminAuditLog.model"), require("../models/branchAuditLog.model")].map(model => model.init()));
 });
 test.after(async () => { await new Promise(resolve => server.close(resolve)); await mongoose.disconnect(); await mongo.stop(); });
+test.beforeEach(async () => {
+  // Every scenario provisions its own users, routes and parcels. Keep indexes,
+  // but prevent prior scenarios' active routes from changing later admissions.
+  assert.equal(mongoose.connection.name, "interstate-office-isolated");
+  await Promise.all(Object.values(mongoose.models).map(model => model.collection.deleteMany({})));
+});
 const fixture = async () => {
   const admin = await user("HEAD_OFFICE");
   const a = await Branch.create({ code: `ORIGIN${n}`, name: "Origin Office", status: "ACTIVE", createdBy: admin._id });
@@ -104,6 +110,7 @@ test("directional route visibility, simplified pricing and archive preserve all 
     const response = await api(f.admin, `${adminPath}/routes`, "POST", {
       name: `${offices[origin].name} to ${offices[destination].name}`,
       originState: origin, destinationState: destination,
+      originCity: offices[origin].name, destinationCity: offices[destination].name,
       originBranchId: String(offices[origin]._id), destinationBranchId: String(offices[destination]._id),
       baseFare: 2000, maximumWeightKg: 5, pricePerAdditionalKg: 100, weightPricingMode: "EXCESS_OVER_MAXIMUM",
       expressEnabled: true, expressSurcharge: 500, expressDeliveryTime: "1 day",

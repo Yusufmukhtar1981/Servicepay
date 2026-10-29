@@ -222,6 +222,9 @@ app.use("/api/webhooks/telecom-abode", telecomAbodeWebhookRoutes);
  */
 app.use(
   express.json({
+    // Voice has an authenticated, rate-limited and bounded parser on its route.
+    // Preserve the existing raw-body/HMAC behavior for every other endpoint.
+    type: req => !/^\/api\/ai-support\/voice\/(?:transcribe|speech)\/?$/.test(req.path) && req.is("application/json"),
     verify: (req, res, buffer) => {
       req.rawBody = buffer;
     },

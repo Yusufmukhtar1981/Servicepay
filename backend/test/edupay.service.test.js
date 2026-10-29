@@ -44,6 +44,18 @@ let session;
 let term;
 let classLevel;
 let fee;
+// Synthetic credentials configure only this disposable test process. No provider
+// requests are made by the wallet/ledger fixtures; adapter tests stub transport.
+const fixtureEnvironment = {
+  EDUPAY_SQUAD_TRANSFER_ENABLED: "true",
+  EDUPAY_SQUAD_PRODUCTION_ENABLED: "true",
+  EDUPAY_SQUAD_SECRET_KEY: "isolated-fixture-not-a-live-key",
+  EDUPAY_SQUAD_MERCHANT_ID: "isolated-fixture-merchant",
+  EDUPAY_SQUAD_BASE_URL: "https://api.squadco.com",
+  EDUPAY_ACCOUNT_ENCRYPTION_KEY: "isolated-fixture-encryption",
+};
+const priorEnvironment = Object.fromEntries(Object.keys(fixtureEnvironment).map(key => [key, process.env[key]]));
+const priorAxiosAdapter = axios.defaults.adapter;
 const models = [User, School, EduPayAcademicSession, EduPayTerm, EduPayClass, Fee, Child, Plan, Settings, AppSettings, EduLedger, Transaction, CoreLedger, EduPayRepayment, EduPayRepaymentTransaction, EduPaySponsorInvite, EduPaySponsorContribution, Reversal, Audit, Settlement, SettlementAccount, AccountVerificationEvidence, PayoutEvidence, Commission, Command, DutyAssignment];
 
 test("school registration index remains production-compatible", () => {
@@ -56,6 +68,7 @@ test("school registration index remains production-compatible", () => {
 });
 
 test.before(async () => {
+  axios.defaults.adapter = async () => { throw new Error("External HTTP is blocked in the disposable EduPay fixture."); };
   replica = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: "wiredTiger" } });
   await mongoose.connect(replica.getUri(), { dbName: "edupay-tests" });
   await Promise.all(models.map((model) => model.init()));
@@ -63,8 +76,13 @@ test.before(async () => {
 test.after(async () => {
   await mongoose.disconnect();
   await replica.stop();
+  axios.defaults.adapter = priorAxiosAdapter;
+  for (const [key, value] of Object.entries(priorEnvironment)) {
+    if (value === undefined) delete process.env[key]; else process.env[key] = value;
+  }
 });
 test.beforeEach(async () => {
+  Object.assign(process.env, fixtureEnvironment);
   await Promise.all(models.map((model) => model.collection.deleteMany({})));
   parent = new User({ fullName: "EduPay Parent", phone: `080${Date.now()}`, email: `edupay-${Date.now()}@test.invalid`, password: "Password123!", role: "CUSTOMER", status: "ACTIVE", walletBalance: 150000 });
   parent.setTransactionPin("1234");

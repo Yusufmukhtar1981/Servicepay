@@ -114,9 +114,13 @@ test("canonical scopes map safely and deny unsupported domains by default", asyn
 });
 
 test("scope isolation, command metrics, filters and performance use live records", async () => {
-  const customer = await User.create({ fullName: "Lagos Customer", phone: "08000000005", password: "StrongPass1!", state: "Lagos", role: "CUSTOMER" });
   const staff = await User.create({ fullName: "Scoped Staff", phone: "08000000006", password: "StrongPass1!", isStaff: true, department: "OPERATIONS", branchId: branch._id, role: "STAFF" });
-  await Transaction.create({ reference: "SVP-TX-1", customerId: customer._id, agentId: staff._id, branchId: branch._id, serviceType: "AIRTIME", amount: 300, servicepayProfit: 20, status: "SUCCESSFUL" });
+  // Staff filtering uses the recorded agentId. Provision its canonical customer
+  // assignment before creation; do not forge fields replaced by snapshot hooks.
+  const customer = await User.create({ fullName: "Lagos Customer", phone: "08000000005", password: "StrongPass1!", state: "Lagos", role: "CUSTOMER", agentId: staff._id });
+  const scopedTransaction = await Transaction.create({ reference: "SVP-TX-1", customerId: customer._id, branchId: branch._id, serviceType: "AIRTIME", amount: 300, servicepayProfit: 20, status: "SUCCESSFUL" });
+  assert.equal(String(scopedTransaction.agentId), String(staff._id));
+  assert.ok(scopedTransaction.hierarchyCapturedAt instanceof Date);
   await Transaction.create({ reference: "OTHER-TX", customerId: customer._id, serviceType: "DATA", amount: 50, status: "PENDING" });
   assert.equal(first.svpScope.type, "BRANCHES");
   assert.equal(await Transaction.countDocuments(await filterFor(first.svpScope, "transaction")), 1);
@@ -143,11 +147,11 @@ test("auth payload fields, stale token revocation and admin isolation are enforc
 
 test("requested transaction filters can only narrow canonical SVP scopes", async () => {
   const otherBranch = await Branch.create({ code: "SVP02", name: "Other Branch", state: "Abuja", createdBy: ho._id });
-  const outsider = await User.create({ fullName: "Outside Customer", phone: "08000000007", password: "StrongPass1!", state: "Abuja", zone: "North", role: "CUSTOMER" });
   const outsideStaff = await User.create({ fullName: "Outside Staff", phone: "08000000008", password: "StrongPass1!", isStaff: true, department: "FINANCE", branchId: otherBranch._id, role: "STAFF" });
-  const rider = await User.create({ fullName: "Outside Rider", phone: "08000000009", password: "StrongPass1!", state: "Abuja", branchId: otherBranch._id, role: "DELIVERY_RIDER" });
-  await Transaction.create({ reference: "OUTSIDE-TX", customerId: outsider._id, agentId: outsideStaff._id, branchId: otherBranch._id, serviceType: "DATA", amount: 900, status: "SUCCESSFUL" });
-  await Transaction.create({ reference: "RIDER-TX", customerId: rider._id, agentId: outsideStaff._id, branchId: otherBranch._id, serviceType: "DATA", amount: 100, status: "SUCCESSFUL" });
+  const outsider = await User.create({ fullName: "Outside Customer", phone: "08000000007", password: "StrongPass1!", state: "Abuja", zone: "North", role: "CUSTOMER", agentId: outsideStaff._id });
+  const rider = await User.create({ fullName: "Outside Rider", phone: "08000000009", password: "StrongPass1!", state: "Abuja", branchId: otherBranch._id, role: "DELIVERY_RIDER", agentId: outsideStaff._id });
+  await Transaction.create({ reference: "OUTSIDE-TX", customerId: outsider._id, branchId: otherBranch._id, serviceType: "DATA", amount: 900, status: "SUCCESSFUL" });
+  await Transaction.create({ reference: "RIDER-TX", customerId: rider._id, branchId: otherBranch._id, serviceType: "DATA", amount: 100, status: "SUCCESSFUL" });
   const attempts = [
     [{ type: "REGION", region: "West" }, { customer: String(outsider._id) }],
     [{ type: "STATE", state: "Lagos" }, { branch: String(otherBranch._id) }],

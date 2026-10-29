@@ -14,6 +14,7 @@ const aiSupportMessageSchema = new mongoose.Schema(
       trim: true,
       maxlength: 4000,
     },
+    language: { type: String, enum: ["en", "ha"], default: "en" },
 
     createdAt: {
       type: Date,
@@ -38,6 +39,15 @@ const aiSupportConversationSchema = new mongoose.Schema(
     messages: {
       type: [aiSupportMessageSchema],
       default: [],
+    },
+    expiresAt: { type: Date, index: { expires: 0 } },
+    lastResponseMs: { type: Number, min: 0, default: 0 },
+    responseCount: { type: Number, min: 0, default: 0 },
+    responseTotalMs: { type: Number, min: 0, default: 0 },
+    feedback: {
+      rating: { type: Number, min: 1, max: 5 },
+      comment: { type: String, maxlength: 500, default: "" },
+      updatedAt: Date,
     },
   },
   {

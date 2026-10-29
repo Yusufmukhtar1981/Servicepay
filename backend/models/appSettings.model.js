@@ -429,6 +429,23 @@ const transactionLimitsSchema =
 const supportSettingsSchema =
   new mongoose.Schema(
     {
+      aiSupportEnabled: { type: Boolean, default: true },
+      humanEscalationEnabled: { type: Boolean, default: true },
+      smartSupportEnabled: { type: Boolean, default: false },
+      smartSupportRetentionDays: { type: Number, default: 30, min: 1, max: 90 },
+      smartSupportDailyBudgetUsd: { type: Number, default: 0, min: 0, max: 1000 },
+      smartSupportEnglishVoiceEnabled: { type: Boolean, default: false },
+      smartSupportKnowledgeRevision: { type: Number, default: 0 },
+      smartSupportKnowledge: {
+        type: [{
+          id: { type: String, maxlength: 80, required: true },
+          title: { type: String, maxlength: 160, required: true },
+          body: { type: String, maxlength: 2000, required: true },
+          language: { type: String, enum: ["en", "ha"], required: true },
+          approved: { type: Boolean, default: false },
+        }],
+        default: [],
+      },
       /*
        * Legacy fields.
        */

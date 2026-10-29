@@ -223,6 +223,8 @@ exports.pay = async (req, res) => {
       paymentStatus: "UNPAID", $or: [{ status: "AWAITING_PAYMENT" },
         { status: "RECEIVED_AT_ORIGIN_HUB", creationChannel: "OFFICE" }] }).session(session);
     if (!shipment) throw Object.assign(new Error("Shipment is not available for payment."), { status: 404 });
+    const receivedOfficeParcel = shipment.creationChannel === "OFFICE" &&
+      shipment.status === "RECEIVED_AT_ORIGIN_HUB";
     // Admission captured the authoritative total. Subsequent tariff or
     // availability edits cannot change a pending order's agreed price.
     const route = await LogisticsRoute.findById(shipment.routeId).session(session);
@@ -239,8 +241,15 @@ exports.pay = async (req, res) => {
     if (!user) throw Object.assign(new Error("Insufficient wallet balance."), { status: 400 });
     const [transaction] = await Transaction.create([{ reference: ref(), customerId: user._id, branchId: shipment.originBranchId, agentId: user.agentId || null, stateManagerId: user.stateManagerId || null, zonalManagerId: user.zonalManagerId || null, serviceType: "INTERSTATE_LOGISTICS", provider: "SERVICEPAY_LOGISTICS", phone: shipment.receiver.phone, amount: shipment.quote.total, status: "SUCCESSFUL", providerResponse: { shipmentId: shipment._id, trackingNumber: shipment.trackingNumber, paymentMode: "WALLET" } }], { session });
     shipment.paymentTransactionId = transaction._id; await shipment.save({ session });
-    await History.create([{ shipmentId: shipment._id, status: "PAID", actorId: req.user._id, actorRole: req.user.role, branchId: shipment.originBranchId, note: "Wallet payment successful" }, { shipmentId: shipment._id, status: "AWAITING_PICKUP", actorId: req.user._id, actorRole: req.user.role, branchId: shipment.originBranchId }], { session, ordered: true });
-    shipment.status = "AWAITING_PICKUP"; await shipment.save({ session }); await session.commitTransaction();
+    const paymentHistory = receivedOfficeParcel
+      ? [{ status: "RECEIVED_AT_ORIGIN_HUB", note: "Wallet payment successful; parcel remains at origin hub" }]
+      : [{ status: "PAID", note: "Wallet payment successful" }, { status: "AWAITING_PICKUP" }];
+    await History.create(paymentHistory.map(event => ({
+      shipmentId: shipment._id, actorId: req.user._id, actorRole: req.user.role,
+      branchId: shipment.originBranchId, ...event,
+    })), { session, ordered: true });
+    if (!receivedOfficeParcel) shipment.status = "AWAITING_PICKUP";
+    await shipment.save({ session }); await session.commitTransaction();
     await Notification.create({ userId: user._id, title: "Interstate shipment paid", message: `Your shipment ${shipment.trackingNumber} has been paid for.`, type: "DELIVERY", action: "DELIVERY", referenceId: shipment._id, referenceType: "INTERSTATE_SHIPMENT", reference: shipment.trackingNumber, relatedStatus: shipment.status, dedupeKey: `interstate-paid-${shipment._id}` });
     return res.json({ success: true, data: shipment, shipment, transaction, walletBalance: user.walletBalance });
   } catch (e) { if (session.inTransaction()) await session.abortTransaction(); if (e.code === 11000) { const retryKey = String(req.get("Idempotency-Key") || req.body.idempotencyKey || "").trim() || `shipment-payment:${req.params.id}`; const shipment = await Shipment.findOne({ customerId: req.user._id, paymentIdempotencyKey: retryKey }).populate("paymentTransactionId"); if (shipment) return res.json({ success: true, idempotent: true, data: shipment, shipment, transaction: shipment.paymentTransactionId }); } return res.status(e.status || 500).json({ success: false, message: e.message || "Payment failed." }); } finally { session.endSession(); }

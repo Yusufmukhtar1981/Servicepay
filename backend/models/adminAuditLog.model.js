@@ -51,6 +51,10 @@ const adminAuditLogSchema =
         required: true,
         index: true,
         enum: [
+          "SMART_SUPPORT_ESCALATED",
+          "SMART_SUPPORT_SETTINGS_UPDATED",
+          "SMART_SUPPORT_KNOWLEDGE_UPDATED",
+          "SMART_SUPPORT_CONVERSATION_VIEWED",
           "USER_PROFILE_UPDATED",
           "VIRTUAL_ACCOUNT_GENERATION_REQUESTED",
           "VIRTUAL_ACCOUNT_GENERATION_RESULT",

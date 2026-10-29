@@ -77,6 +77,16 @@ const setWallet = (balance, held) => User.updateOne(
   { $set: { walletBalance: balance, walletHeldBalance: held } },
 );
 const wallet = () => User.findById(customer._id).select("walletBalance walletHeldBalance");
+const receivedOfficeShipment = async amount => {
+  const shipment = await payableShipment(amount);
+  // Model a previously registered office parcel in this disposable replica.
+  // Creation-channel immutability remains enforced by the production model.
+  await Shipment.collection.updateOne({ _id: shipment._id }, { $set: {
+    creationChannel: "OFFICE", status: "RECEIVED_AT_ORIGIN_HUB",
+    counter: { receiptReference: "OFFICE-PAYMENT-FIXTURE" },
+  } });
+  return Shipment.findById(shipment._id);
+};
 
 test.before(async () => {
   mongo = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: "wiredTiger" } });
@@ -220,6 +230,70 @@ test("a wallet with no hold permits a full debit and one idempotent retry", asyn
   assert.equal(retry.status, 200, JSON.stringify(retry.body));
   assert.equal(retry.body.idempotent, true);
   assert.equal((await wallet()).walletBalance, 0);
+  assert.equal(await Transaction.countDocuments({ "providerResponse.shipmentId": shipment._id }), 1);
+});
+
+test("received office payment preserves physical receipt, agreed price and exactly-once debit", async () => {
+  const shipment = await receivedOfficeShipment(1000);
+  await setWallet(10000, 4000);
+  const key = `office-pay-${shipment._id}`;
+  const historyBefore = await History.countDocuments({ shipmentId: shipment._id });
+  const paid = await callPayment(controller.pay, shipment, key);
+  assert.equal(paid.status, 200, JSON.stringify(paid.body));
+  assert.equal((await callPayment(controller.pay, shipment, key)).body.idempotent, true);
+  const saved = await Shipment.findById(shipment._id);
+  assert.equal(saved.paymentStatus, "PAID");
+  assert.equal(saved.status, "RECEIVED_AT_ORIGIN_HUB");
+  assert.equal(saved.trackingNumber, shipment.trackingNumber);
+  assert.equal(saved.quote.total, 1000);
+  assert.equal(saved.counter.receiptReference, "OFFICE-PAYMENT-FIXTURE");
+  assert.equal(saved.counter.payment.method, "WALLET");
+  assert.equal(saved.counter.payment.amount, 1000);
+  assert.equal(saved.counter.payment.confirmation, "CUSTOMER_AUTHORIZED_WALLET");
+  assert.equal((await wallet()).walletBalance, 9000);
+  assert.equal((await wallet()).walletHeldBalance, 4000);
+  assert.equal(await Transaction.countDocuments({ "providerResponse.shipmentId": shipment._id }), 1);
+  assert.equal(await History.countDocuments({ shipmentId: shipment._id }), historyBefore + 1);
+  assert.equal(await History.countDocuments({ shipmentId: shipment._id, status: "AWAITING_PICKUP" }), 0);
+});
+
+test("insufficient spendable funds cannot alter received office payment or custody", async () => {
+  const shipment = await receivedOfficeShipment(501);
+  await setWallet(1000, 500);
+  const historyBefore = await History.countDocuments({ shipmentId: shipment._id });
+  const result = await callPayment(controller.pay, shipment, `office-reject-${shipment._id}`);
+  assert.equal(result.status, 400, JSON.stringify(result.body));
+  const saved = await Shipment.findById(shipment._id);
+  assert.equal(saved.paymentStatus, "UNPAID");
+  assert.equal(saved.status, "RECEIVED_AT_ORIGIN_HUB");
+  assert.equal(saved.paymentTransactionId, null);
+  assert.equal(saved.paymentIdempotencyKey, undefined);
+  assert.deepEqual(saved.counter, shipment.counter);
+  assert.equal((await wallet()).walletBalance, 1000);
+  assert.equal((await wallet()).walletHeldBalance, 500);
+  assert.equal(await Transaction.countDocuments({ "providerResponse.shipmentId": shipment._id }), 0);
+  assert.equal(await History.countDocuments({ shipmentId: shipment._id }), historyBefore);
+});
+
+test("office payment audit failure rolls back debit and permits a safe same-key retry", async () => {
+  const shipment = await receivedOfficeShipment(1000);
+  await setWallet(10000, 4000);
+  const key = `office-rollback-${shipment._id}`;
+  const original = History.create;
+  try {
+    History.create = async () => { throw new Error("Disposable payment-history failure"); };
+    assert.equal((await callPayment(controller.pay, shipment, key)).status, 500);
+  } finally { History.create = original; }
+  const rolledBack = await Shipment.findById(shipment._id);
+  assert.equal(rolledBack.paymentStatus, "UNPAID");
+  assert.equal(rolledBack.status, "RECEIVED_AT_ORIGIN_HUB");
+  assert.equal(rolledBack.paymentIdempotencyKey, undefined);
+  assert.equal((await wallet()).walletBalance, 10000);
+  assert.equal((await wallet()).walletHeldBalance, 4000);
+  assert.equal(await Transaction.countDocuments({ "providerResponse.shipmentId": shipment._id }), 0);
+  assert.equal((await callPayment(controller.pay, rolledBack, key)).status, 200);
+  assert.equal((await callPayment(controller.pay, rolledBack, key)).body.idempotent, true);
+  assert.equal((await wallet()).walletBalance, 9000);
   assert.equal(await Transaction.countDocuments({ "providerResponse.shipmentId": shipment._id }), 1);
 });
 

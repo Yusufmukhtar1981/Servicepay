@@ -121,7 +121,8 @@ const createSupportReply = async ({
       };
     }
   } catch (error) {
-    console.error("AI provider unavailable; using fallback:", error.message);
+    // Axios errors can contain Authorization headers; never log provider objects.
+    console.error("AI provider unavailable; using fallback.");
   }
 
   return {

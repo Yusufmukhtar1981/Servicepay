@@ -69,6 +69,8 @@ const fintechCaseSchema = new mongoose.Schema({
     default: "OTHER",
     index: true,
   },
+  aiEscalated: { type: Boolean, default: false },
+  aiIssueHash: { type: String, maxlength: 64 },
   subject: { type: String, required: true, trim: true, maxlength: 200 },
   description: { type: String, required: true, trim: true, maxlength: 5000 },
   transaction: { type: mongoose.Schema.Types.ObjectId, ref: "Transaction", default: null, index: true },

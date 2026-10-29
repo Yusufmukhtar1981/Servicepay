@@ -139,14 +139,20 @@ test("Head Office creates a canonical Zonal Manager and promotion preserves iden
 test("downline transaction totals are full, pages are deterministic, and unrelated detail is denied", async () => {
   const zonal = await User.create({ fullName: "Zonal", phone: "08012345701", email: "zonal2@test.local", password: "secret123", role: "ZONAL_MANAGER", status: "ACTIVE", zone: "WEST" });
   const state = await User.create({ fullName: "State", phone: "08012345702", email: "state2@test.local", password: "secret123", role: "STATE_MANAGER", status: "ACTIVE", zonalManagerId: zonal._id, zone: "WEST" });
-  const agent = await User.create({ fullName: "Agent", phone: "08012345703", email: "agent2@test.local", password: "secret123", role: "AGENT", status: "ACTIVE", stateManagerId: state._id, zone: "WEST" });
-  const customer = await User.create({ fullName: "Downline", phone: "08012345704", email: "downline@test.local", password: "secret123", role: "CUSTOMER", status: "ACTIVE", agentId: agent._id });
+  const agent = await User.create({ fullName: "Agent", phone: "08012345703", email: "agent2@test.local", password: "secret123", role: "AGENT", status: "ACTIVE", stateManagerId: state._id, zonalManagerId: zonal._id, zone: "WEST" });
+  const customer = await User.create({ fullName: "Downline", phone: "08012345704", email: "downline@test.local", password: "secret123", role: "CUSTOMER", status: "ACTIVE", agentId: agent._id, stateManagerId: state._id, zonalManagerId: zonal._id });
   const unrelated = await User.create({ fullName: "Unrelated", phone: "08012345705", email: "unrelated@test.local", password: "secret123", role: "CUSTOMER", status: "ACTIVE", agentId: new mongoose.Types.ObjectId() });
   const txs = await Transaction.create([
     { reference: "PHASE1-TX-1", customerId: customer._id, serviceType: "AIRTIME", amount: 10, status: "SUCCESSFUL" },
     { reference: "PHASE1-TX-2", customerId: customer._id, serviceType: "DATA", amount: 20, status: "SUCCESSFUL" },
     { reference: "PHASE1-TX-3", customerId: unrelated._id, serviceType: "AIRTIME", amount: 99, status: "SUCCESSFUL" },
   ]);
+  for (const transaction of txs.slice(0, 2)) {
+    assert.equal(String(transaction.agentId), String(agent._id));
+    assert.equal(String(transaction.stateManagerId), String(state._id));
+    assert.equal(String(transaction.zonalManagerId), String(zonal._id));
+    assert.ok(transaction.hierarchyCapturedAt instanceof Date);
+  }
   const summary = response();
   await getDownlineSummary({ user: zonal }, summary.res);
   assert.equal(summary.result.body.counts.transactions, 2);

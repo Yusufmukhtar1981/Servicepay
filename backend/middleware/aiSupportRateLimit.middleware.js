@@ -60,7 +60,7 @@ const createAiSupportRateLimit = ({
 
     return next();
   } catch (error) {
-    console.error("AI Support rate limit error:", error);
+    console.error("AI Support rate limiter unavailable.");
 
     return res.status(503).json({
       success: false,

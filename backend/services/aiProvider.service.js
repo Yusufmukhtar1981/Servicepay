@@ -3,10 +3,10 @@ const axios = require("axios");
 const DEFAULT_TIMEOUT_MS = 15000;
 
 const getProviderConfig = () => ({
-  provider: String(process.env.AI_PROVIDER || "")
+  provider: String(process.env.AI_PROVIDER || (process.env.OPENAI_API_KEY ? "openai" : ""))
     .trim()
     .toLowerCase(),
-  apiKey: String(process.env.AI_API_KEY || "").trim(),
+  apiKey: String(process.env.OPENAI_API_KEY || process.env.AI_API_KEY || "").trim(),
   model: String(process.env.AI_MODEL || "gpt-4o-mini").trim(),
   apiUrl: String(
     process.env.AI_API_URL ||
@@ -19,10 +19,11 @@ const getProviderReply = async ({
   message,
   history = [],
   requester = axios,
+  budgetAuthorized = false,
 } = {}) => {
   const config = getProviderConfig();
 
-  if (!config.provider || !config.apiKey) {
+  if (!budgetAuthorized || !config.provider || !config.apiKey) {
     return null;
   }
 
@@ -44,7 +45,7 @@ const getProviderReply = async ({
         .slice(-10)
         .map((item) => ({
           role: item.role === "USER" ? "user" : "assistant",
-          content: item.message,
+          content: item.message.slice(0, 1000),
         }))
     : [];
 
@@ -82,7 +83,7 @@ const getProviderReply = async ({
     throw new Error("AI provider returned an invalid response.");
   }
 
-  return reply;
+  return reply.slice(0, 4000);
 };
 
 module.exports = {
