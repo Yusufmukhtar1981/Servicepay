@@ -53,6 +53,9 @@ String loginRoleFromResponse(
 
 bool isBranchDeliveryStaffAccess(String role, Map<String, dynamic> user) {
   if (normalizeLoginRole(role) != 'STAFF') return false;
+  if (isBranchScopedStaffUser(role, user)) {
+    return branchPermissionsForUser(user).contains('branch.delivery.manage');
+  }
   final dynamic roleReference = user['staffRoleId'] ?? user['staffRole'];
   final Map<String, dynamic> scopedRole = _mapFromDynamic(roleReference);
   final String roleId = roleReference is String
@@ -60,8 +63,7 @@ bool isBranchDeliveryStaffAccess(String role, Map<String, dynamic> user) {
       : '${scopedRole['_id'] ?? scopedRole['id'] ?? ''}'.trim();
   if (roleId.isEmpty) return false;
   final Map<String, dynamic> roleScope = _mapFromDynamic(scopedRole['scope']);
-  final Map<String, dynamic> userScope =
-      _mapFromDynamic(user['accessScope']);
+  final Map<String, dynamic> userScope = _mapFromDynamic(user['accessScope']);
   final String scopeType = normalizeLoginRole(
     scopedRole['scopeType'] ??
         roleScope['type'] ??
@@ -77,17 +79,81 @@ bool isBranchDeliveryStaffAccess(String role, Map<String, dynamic> user) {
   final bool hasBranchScope =
       scopeType == 'BRANCH' || (scopeType.isEmpty && hasBranchAssignment);
   if (!hasBranchScope) return false;
+  return branchPermissionsForUser(user).contains('branch.delivery.manage');
+}
+
+bool isBranchScopedStaffUser(String role, Map<String, dynamic> user) {
+  if (normalizeLoginRole(role) != 'STAFF' || user['isStaff'] != true) {
+    return false;
+  }
+  final dynamic roleReference = user['staffRoleId'] ?? user['staffRole'];
+  final Map<String, dynamic> scopedRole = _mapFromDynamic(roleReference);
+  final Map<String, dynamic> roleScope = _mapFromDynamic(scopedRole['scope']);
+  final Map<String, dynamic> userScope = _mapFromDynamic(user['accessScope']);
+  final String scopeType = normalizeLoginRole(
+    scopedRole['scopeType'] ??
+        roleScope['type'] ??
+        userScope['type'] ??
+        user['scopeType'],
+  );
+  if (scopeType == 'GLOBAL') return false;
+  final dynamic directPermissions = user['branchStaffPermissions'];
+  final bool hasBranchPermissionEvidence = directPermissions is List &&
+      directPermissions.any(
+        (dynamic value) => value.toString().trim().toLowerCase().startsWith(
+              'branch.',
+            ),
+      );
+  if (scopeType != 'BRANCH' && !hasBranchPermissionEvidence) return false;
+  const Set<String> branchJobTitles = <String>{
+    'GENERAL_STAFF',
+    'KYC_OFFICER',
+    'DELIVERY_OFFICER',
+    'SOLAR_OFFICER',
+    'PHONE_FINANCING_OFFICER',
+    'MARKETPLACE_OFFICER',
+    'SUPPORT_OFFICER',
+  };
+  final String jobTitle = normalizeLoginRole(user['jobTitle']);
+  if (!branchJobTitles.contains(jobTitle)) return false;
+  final dynamic assignment =
+      user['branchId'] ?? user['branch_id'] ?? user['branch'];
+  if (assignment is Map) {
+    return '${assignment['_id'] ?? assignment['id'] ?? ''}'.trim().isNotEmpty;
+  }
+  return assignment != null && assignment.toString().trim().isNotEmpty;
+}
+
+List<String> branchPermissionsForUser(Map<String, dynamic> user) {
+  final dynamic roleReference = user['staffRoleId'] ?? user['staffRole'];
+  final Map<String, dynamic> scopedRole = _mapFromDynamic(roleReference);
+  final dynamic directBranchPermissions = user['branchStaffPermissions'];
   final dynamic userPermissions = user['permissions'];
-  final dynamic rawPermissions = userPermissions is List &&
-          userPermissions.isNotEmpty
-      ? userPermissions
-      : scopedRole['permissions'] ??
-          _mapFromDynamic(user['staffRole'])['permissions'];
-  if (rawPermissions is! List) return false;
+  final dynamic rawPermissions =
+      directBranchPermissions is List && directBranchPermissions.isNotEmpty
+          ? directBranchPermissions
+          : userPermissions is List && userPermissions.isNotEmpty
+              ? userPermissions
+              : scopedRole['permissions'] ??
+                  _mapFromDynamic(user['staffRole'])['permissions'];
+  if (rawPermissions is! List) return <String>[];
   return rawPermissions
       .map((dynamic permission) => permission.toString().trim().toLowerCase())
-      .contains('branch.delivery.manage');
+      .where((String permission) => permission.isNotEmpty)
+      .toList();
 }
+
+String branchAssignmentId(Map<String, dynamic> user) {
+  final dynamic assignment =
+      user['branchId'] ?? user['branch_id'] ?? user['branch'];
+  if (assignment is Map) {
+    return '${assignment['_id'] ?? assignment['id'] ?? ''}'.trim();
+  }
+  return assignment?.toString().trim() ?? '';
+}
+
+String verifiedSessionActorId(Map<String, dynamic> user) =>
+    '${user['_id'] ?? user['id'] ?? ''}'.trim();
 
 Widget authenticatedHomeForRole(
   String role, {
@@ -122,9 +188,30 @@ Widget authenticatedHomeForRole(
           load: admin.loadLibrary, builder: () => admin.AdminMainNavigation());
     case 'STAFF':
       if (isBranchDeliveryStaffAccess(role, user)) {
+        final List<String> permissions = branchPermissionsForUser(user);
         return DeferredScreen(
           load: branch_counter.loadLibrary,
-          builder: () => branch_counter.BranchCounterScreen(staffMode: true),
+          builder: () => branch_counter.BranchCounterScreen(
+            staffMode: true,
+            canViewOperationalRequests:
+                permissions.contains('branch.dashboard.view') ||
+                    permissions.contains('branch.approvals.view') ||
+                    permissions.contains('branch.staff.manage'),
+            canSubmitOperationalRequests:
+                permissions.contains('branch.approvals.submit'),
+            canManageOperationalRequests:
+                permissions.contains('branch.staff.manage'),
+            branchId: branchAssignmentId(user),
+            actorId: verifiedSessionActorId(user),
+          ),
+        );
+      }
+      if (isBranchScopedStaffUser(role, user)) {
+        return DeferredScreen(
+          load: branch.loadLibrary,
+          builder: () => branch.BranchManagerDashboardScreen(
+            actorId: verifiedSessionActorId(user),
+          ),
         );
       }
       return DeferredScreen(

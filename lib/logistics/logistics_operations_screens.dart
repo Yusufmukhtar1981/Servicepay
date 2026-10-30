@@ -118,15 +118,16 @@ class _LogisticsTabs extends StatelessWidget {
                                 'trips',
                               }.contains(tab.resource)
                           ? AdminLogisticsSetupScreen(
-                              resource: tab.resource, api: api ?? LogisticsApi())
-                      : _OperationsList(
-                          scope: scope,
-                          tab: tab,
-                          api: api ?? LogisticsApi(),
-                          branchActions: actionScope,
-                          tripControls:
-                              scope == 'admin' && tab.resource == 'trips',
-                        ))
+                              resource: tab.resource,
+                              api: api ?? LogisticsApi())
+                          : _OperationsList(
+                              scope: scope,
+                              tab: tab,
+                              api: api ?? LogisticsApi(),
+                              branchActions: actionScope,
+                              tripControls:
+                                  scope == 'admin' && tab.resource == 'trips',
+                            ))
                   .toList()),
         ),
       );
@@ -372,7 +373,6 @@ class _RecordCard extends StatelessWidget {
 
   Future<void> _actionDialog(BuildContext context) async {
     final TextEditingController note = TextEditingController();
-    final TextEditingController riderId = TextEditingController();
     final TextEditingController actualWeight = TextEditingController();
     final TextEditingController evidence = TextEditingController();
     final String? action = await showDialog<String>(
@@ -386,10 +386,6 @@ class _RecordCard extends StatelessWidget {
                       decoration: const InputDecoration(
                           labelText: 'Audit note (optional)')),
                   TextField(
-                      controller: riderId,
-                      decoration: const InputDecoration(
-                          labelText: 'Destination rider ID (to assign)')),
-                  TextField(
                       controller: actualWeight,
                       keyboardType:
                           const TextInputType.numberWithOptions(decimal: true),
@@ -401,7 +397,8 @@ class _RecordCard extends StatelessWidget {
                       maxLines: 3,
                       decoration: const InputDecoration(
                           labelText: 'Parcel evidence URLs (optional)',
-                          helperText: 'Separate HTTP(S) URLs with commas or lines')),
+                          helperText:
+                              'Separate HTTP(S) URLs with commas or lines')),
                 ]),
                 actions: <Widget>[
                   TextButton(
@@ -431,7 +428,6 @@ class _RecordCard extends StatelessWidget {
                 ]));
     if (action == null) {
       note.dispose();
-      riderId.dispose();
       actualWeight.dispose();
       evidence.dispose();
       return;
@@ -446,13 +442,7 @@ class _RecordCard extends StatelessWidget {
         'ready-collection': 'READY_FOR_COLLECTION',
       };
       if (action == 'assign-rider') {
-        if (riderId.text.trim().isEmpty) {
-          throw const LogisticsApiException(
-              'Enter the destination rider ID before assigning.');
-        }
-        await api.request('POST',
-            '/$scope/logistics/interstate/shipments/${Uri.encodeComponent(_id)}/assign-rider',
-            body: <String, dynamic>{'riderId': riderId.text.trim()});
+        await _assignRider(context, _assignmentLeg());
       } else {
         if (action == 'verify' &&
             (num.tryParse(actualWeight.text.trim()) == null ||
@@ -466,19 +456,19 @@ class _RecordCard extends StatelessWidget {
               'status': statuses[action],
               if (action == 'verify')
                 'verifiedWeightKg': num.parse(actualWeight.text.trim()),
-              if (note.text.trim().isNotEmpty) 'note': note.text.trim()
-              ,
+              if (note.text.trim().isNotEmpty) 'note': note.text.trim(),
               if (evidence.text.trim().isNotEmpty)
                 'evidenceUrls': evidence.text
                     .split(RegExp(r'[\s,]+'))
                     .map((value) => value.trim())
-                    .where((value) => value.startsWith('http://') ||
+                    .where((value) =>
+                        value.startsWith('http://') ||
                         value.startsWith('https://'))
                     .take(5)
                     .toList(),
             });
       }
-      onChanged();
+      if (action != 'assign-rider') onChanged();
     } on LogisticsApiException catch (error) {
       if (error.code == 'ADDITIONAL_PAYMENT_REQUIRED' ||
           error.code == 'REFUND_REVIEW_REQUIRED') {
@@ -493,9 +483,85 @@ class _RecordCard extends StatelessWidget {
                 : '${error.code}: ${error.message}')));
     } finally {
       note.dispose();
-      riderId.dispose();
       actualWeight.dispose();
       evidence.dispose();
+    }
+  }
+
+  String _assignmentLeg() {
+    const Set<String> originStatuses = <String>{
+      'AWAITING_PICKUP',
+      'PICKUP_ASSIGNED',
+      'PICKED_UP',
+      'RECEIVED_AT_ORIGIN_HUB',
+      'VERIFIED_AT_ORIGIN_HUB',
+      'READY_FOR_INTERSTATE_DISPATCH',
+    };
+    return originStatuses
+            .contains(logisticsText(row['status'], '').toUpperCase())
+        ? 'ORIGIN'
+        : 'DESTINATION';
+  }
+
+  Future<void> _assignRider(BuildContext context, String leg) async {
+    try {
+      final List<Map<String, dynamic>> riders =
+          await api.shipmentRiders(_id, leg, scope: scope);
+      if (!context.mounted) return;
+      if (riders.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('No eligible verified riders are available.'),
+        ));
+        return;
+      }
+      final Map<String, dynamic>? selected =
+          await showDialog<Map<String, dynamic>>(
+        context: context,
+        builder: (BuildContext dialogContext) => SimpleDialog(
+          title: Text('Select ${leg.toLowerCase()} rider'),
+          children: riders
+              .map((Map<String, dynamic> rider) => SimpleDialogOption(
+                    key: Key(
+                        'interstate-rider-${rider['_id'] ?? rider['id'] ?? ''}'),
+                    onPressed: () => Navigator.pop(dialogContext, rider),
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(
+                          logisticsText(rider['fullName'], 'Delivery rider')),
+                      subtitle: Text(<String>[
+                        logisticsText(rider['riderId'], ''),
+                        logisticsText(rider['vehicleType'], ''),
+                        logisticsText(rider['availabilityStatus'], ''),
+                      ].where((String value) => value.isNotEmpty).join(' · ')),
+                    ),
+                  ))
+              .toList(),
+        ),
+      );
+      if (selected == null) return;
+      final String riderId =
+          logisticsText(selected['_id'] ?? selected['id'], '');
+      if (riderId.isEmpty) {
+        throw const LogisticsApiException(
+            'The selected rider record is missing its ID.');
+      }
+      await api.assignShipmentRider(_id, riderId, leg, scope: scope);
+      onChanged();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Rider assignment updated.')),
+        );
+      }
+    } on LogisticsApiException catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('$error')));
+      }
     }
   }
 
@@ -768,17 +834,14 @@ class _RiderShipmentCard extends StatelessWidget {
         'GET',
         '/rider/logistics/interstate/shipments/${Uri.encodeComponent(id)}',
       );
-      final Map<String, dynamic> shipment =
-          LogisticsApi.map(root['shipment']);
+      final Map<String, dynamic> shipment = LogisticsApi.map(root['shipment']);
       final List<Map<String, dynamic>> history =
           LogisticsApi.listOf(root['history']);
       if (!context.mounted) return;
-      final Map<String, dynamic> sender =
-          LogisticsApi.map(shipment['sender']);
+      final Map<String, dynamic> sender = LogisticsApi.map(shipment['sender']);
       final Map<String, dynamic> receiver =
           LogisticsApi.map(shipment['receiver']);
-      final Map<String, dynamic> parcel =
-          LogisticsApi.map(shipment['parcel']);
+      final Map<String, dynamic> parcel = LogisticsApi.map(shipment['parcel']);
       final String status = logisticsText(shipment['status'], '').toUpperCase();
       final List<String> statusActions = <String>[
         if (status == 'ASSIGNED' ||
@@ -803,7 +866,8 @@ class _RiderShipmentCard extends StatelessWidget {
                       style: TextStyle(
                           fontWeight: FontWeight.w800, letterSpacing: 1.2)),
                   const SizedBox(height: 8),
-                  Text('Tracking: ${logisticsText(shipment['trackingNumber'])}'),
+                  Text(
+                      'Tracking: ${logisticsText(shipment['trackingNumber'])}'),
                   Text(
                       'Origin: ${logisticsText(shipment['originState'] ?? shipment['origin'])}'),
                   Text(

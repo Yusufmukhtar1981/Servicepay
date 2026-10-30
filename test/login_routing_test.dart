@@ -111,13 +111,17 @@ void main() {
         '_id': 'staff-role-branch-7',
         'scopeType': 'BRANCH',
       },
-      'permissions': <String>['branch.delivery.manage'],
+      'permissions': <String>[
+        'branch.delivery.manage',
+        'branch.dashboard.view',
+        'branch.approvals.submit',
+      ],
     };
     expect(isBranchDeliveryStaffAccess('STAFF', user), isTrue);
-    expect(
-      await loadedHome('STAFF', user: user),
-      isA<BranchCounterScreen>(),
-    );
+    final BranchCounterScreen branchCounter =
+        await loadedHome('STAFF', user: user) as BranchCounterScreen;
+    expect(branchCounter.canViewOperationalRequests, isTrue);
+    expect(branchCounter.canSubmitOperationalRequests, isTrue);
     expect(
       await loadedHome('STAFF', user: <String, dynamic>{
         'staffRoleId': <String, dynamic>{
@@ -155,6 +159,82 @@ void main() {
       }),
       isA<AdminMainNavigation>(),
     );
+  });
+
+  test(
+      'routes backend-created branch STAFF using branch identity and job title',
+      () async {
+    final Map<String, dynamic> deliveryStaff = <String, dynamic>{
+      '_id': 'verified-branch-staff-7',
+      'role': 'STAFF',
+      'isStaff': true,
+      'branchId': <String, dynamic>{'_id': 'branch-7'},
+      'jobTitle': 'DELIVERY_OFFICER',
+      'branchStaffPermissions': <String>[
+        'branch.dashboard.view',
+        'branch.delivery.manage',
+        'branch.approvals.submit',
+        'branch.staff.manage',
+      ],
+    };
+    expect(isBranchScopedStaffUser('STAFF', deliveryStaff), isTrue);
+    final BranchCounterScreen counter =
+        await loadedHome('STAFF', user: deliveryStaff) as BranchCounterScreen;
+    expect(counter.branchId, 'branch-7');
+    expect(counter.canViewOperationalRequests, isTrue);
+    expect(counter.canSubmitOperationalRequests, isTrue);
+    expect(counter.canManageOperationalRequests, isTrue);
+    expect(counter.actorId, 'verified-branch-staff-7');
+
+    final BranchManagerDashboardScreen dashboard =
+        await loadedHome('STAFF', user: <String, dynamic>{
+      '_id': 'verified-general-staff-9',
+      'role': 'STAFF',
+      'isStaff': true,
+      'branchId': 'branch-7',
+      'jobTitle': 'GENERAL_STAFF',
+      'branchStaffPermissions': <String>['branch.dashboard.view'],
+    }) as BranchManagerDashboardScreen;
+    expect(dashboard, isA<BranchManagerDashboardScreen>());
+    expect(dashboard.actorId, 'verified-general-staff-9');
+  });
+
+  test('global Operations and Customer Support staff remain on global routing',
+      () async {
+    for (final String title in <String>[
+      'OPERATIONS_MANAGER',
+      'CUSTOMER_SUPPORT',
+    ]) {
+      final Map<String, dynamic> globalStaff = <String, dynamic>{
+        'role': 'STAFF',
+        'isStaff': true,
+        'jobTitle': title,
+        'branchId': 'misassigned-branch-7',
+        'branchStaffPermissions': <String>['branch.delivery.manage'],
+        'staffRoleId': <String, dynamic>{
+          '_id': 'global-role-$title',
+          'scopeType': 'GLOBAL',
+          'permissions': <String>['branch.delivery.manage'],
+        },
+      };
+      expect(isBranchScopedStaffUser('STAFF', globalStaff), isFalse);
+      expect(
+        await loadedHome('STAFF', user: globalStaff),
+        isA<AdminMainNavigation>(),
+      );
+    }
+    final Map<String, dynamic> globallyScopedDeliveryTitle = <String, dynamic>{
+      'role': 'STAFF',
+      'isStaff': true,
+      'branchId': 'misassigned-branch-7',
+      'jobTitle': 'DELIVERY_OFFICER',
+      'branchStaffPermissions': <String>['branch.delivery.manage'],
+      'staffRoleId': <String, dynamic>{'scopeType': 'GLOBAL'},
+    };
+    expect(
+        isBranchScopedStaffUser('STAFF', globallyScopedDeliveryTitle), isFalse);
+    expect(await loadedHome('STAFF', user: globallyScopedDeliveryTitle),
+        isA<AdminMainNavigation>());
   });
 
   test('routes Branch Managers to their dedicated dashboard', () async {

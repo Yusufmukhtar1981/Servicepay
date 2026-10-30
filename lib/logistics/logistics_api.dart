@@ -44,8 +44,35 @@ class LogisticsApi {
     return listOf(root['branches'] ?? map(root['data'])['branches']);
   }
 
-  Future<Map<String, dynamic>> setRouteActive(
-          String routeId, bool active) =>
+  String _officeBase(String scope) =>
+      '/${scope == 'branch' ? 'branch' : 'admin'}/logistics/interstate';
+
+  Future<List<Map<String, dynamic>>> shipmentRiders(
+    String shipmentId,
+    String leg, {
+    String scope = 'branch',
+  }) async {
+    final Map<String, dynamic> root = await request(
+      'GET',
+      '${_officeBase(scope)}/shipments/${Uri.encodeComponent(shipmentId)}/riders',
+      query: <String, String>{'leg': leg},
+    );
+    return listOf(root['riders'] ?? map(root['data'])['riders']);
+  }
+
+  Future<Map<String, dynamic>> assignShipmentRider(
+    String shipmentId,
+    String riderId,
+    String leg, {
+    String scope = 'branch',
+  }) =>
+      request(
+        'POST',
+        '${_officeBase(scope)}/shipments/${Uri.encodeComponent(shipmentId)}/assign-rider',
+        body: <String, dynamic>{'riderId': riderId, 'leg': leg},
+      );
+
+  Future<Map<String, dynamic>> setRouteActive(String routeId, bool active) =>
       request(
         'PATCH',
         '/admin/logistics/interstate/routes/${Uri.encodeComponent(routeId)}/${active ? 'activate' : 'deactivate'}',
@@ -138,8 +165,12 @@ class LogisticsApi {
 
 String? validateInterstateRoutePayload(Map<String, dynamic> payload) {
   for (final String field in <String>[
-    'name', 'originState', 'originBranchId', 'destinationState',
-    'destinationBranchId', 'standardDeliveryTime',
+    'name',
+    'originState',
+    'originBranchId',
+    'destinationState',
+    'destinationBranchId',
+    'standardDeliveryTime',
   ]) {
     if ('${payload[field] ?? ''}'.trim().isEmpty) {
       return 'Complete all required route, state, and delivery fields.';
@@ -149,10 +180,18 @@ String? validateInterstateRoutePayload(Map<String, dynamic> payload) {
     return 'Pickup and destination branches must be different.';
   }
   for (final String field in <String>[
-    'baseFare', 'minimumWeightKg', 'maximumWeightKg',
-    'pricePerAdditionalKg', 'maximumDimensionCm', 'oversizeSurcharge',
-    'expressSurcharge', 'fragileItemSurcharge', 'pickupFee',
-    'doorDeliveryFee', 'branchCollectionFee', 'protectionPercent',
+    'baseFare',
+    'minimumWeightKg',
+    'maximumWeightKg',
+    'pricePerAdditionalKg',
+    'maximumDimensionCm',
+    'oversizeSurcharge',
+    'expressSurcharge',
+    'fragileItemSurcharge',
+    'pickupFee',
+    'doorDeliveryFee',
+    'branchCollectionFee',
+    'protectionPercent',
     'protectionFlatFee',
   ]) {
     final dynamic raw = payload[field];

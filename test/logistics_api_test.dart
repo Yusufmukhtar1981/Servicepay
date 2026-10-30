@@ -80,6 +80,38 @@ void main() {
     expect(rows.single['trackingNumber'], 'SPX-1');
   });
 
+  test('loads eligible interstate riders and assigns with an explicit leg',
+      () async {
+    final List<http.Request> requests = <http.Request>[];
+    final LogisticsApi api = LogisticsApi(
+      tokenLoader: () async => 'branch-token',
+      baseUrl: 'https://api.servicepay.ng/api',
+      client: MockClient((http.Request request) async {
+        requests.add(request);
+        if (request.url.path.endsWith('/riders')) {
+          return http.Response(
+            '{"success":true,"riders":[{"_id":"rider-1","fullName":"Rider One"}]}',
+            200,
+          );
+        }
+        return http.Response('{"success":true}', 200);
+      }),
+    );
+
+    final List<Map<String, dynamic>> riders =
+        await api.shipmentRiders('shipment-1', 'DESTINATION');
+    await api.assignShipmentRider('shipment-1', 'rider-1', 'DESTINATION');
+
+    expect(riders.single['fullName'], 'Rider One');
+    expect(requests[0].url.path,
+        '/api/branch/logistics/interstate/shipments/shipment-1/riders');
+    expect(requests[0].url.queryParameters['leg'], 'DESTINATION');
+    expect(requests[1].url.path,
+        '/api/branch/logistics/interstate/shipments/shipment-1/assign-rider');
+    expect(requests[1].method, 'POST');
+    expect(requests[1].body, '{"riderId":"rider-1","leg":"DESTINATION"}');
+  });
+
   test('surfaces API permission failure messages', () async {
     late http.Request captured;
     final LogisticsApi api = LogisticsApi(

@@ -16,10 +16,12 @@ class _DashboardApi implements BranchManagerDashboardApi {
   _DashboardApi({
     this.empty = false,
     this.managerName = 'Ada Manager',
+    this.withFinance = false,
   });
 
   final bool empty;
   final String managerName;
+  final bool withFinance;
   String? lastStartDate;
   String? lastEndDate;
 
@@ -35,6 +37,7 @@ class _DashboardApi implements BranchManagerDashboardApi {
         'name': 'Ikeja Branch',
         'code': 'IKJ',
         'status': 'ACTIVE',
+        'city': 'Ikeja',
         'lga': 'Ikeja',
         'state': 'Lagos',
       },
@@ -74,10 +77,12 @@ class _DashboardApi implements BranchManagerDashboardApi {
         <String, dynamic>{'name': 'DELIVERY'},
         <String, dynamic>{'name': 'MARKETPLACE'},
       ],
-      permissions: const <String>[
+      permissions: <String>[
         'branch.customers.create',
         'branch.approvals.submit',
         'branch.reports.view',
+        'branch.delivery.view',
+        if (withFinance) 'branch.finance.view',
         'branch.delivery.manage',
       ],
       openRequests: 2,
@@ -112,7 +117,60 @@ class _DashboardApi implements BranchManagerDashboardApi {
                   'failed': 1,
                 },
               ],
-              'deliveries': <String, dynamic>{'count': 4, 'value': 12000},
+              'deliveries': <String, dynamic>{
+                'count': 4,
+                'value': 12000,
+                'operations': <String, dynamic>{
+                  'total': 41,
+                  'today': 7,
+                  'pending': 8,
+                  'assigned': 4,
+                  'inTransit': 3,
+                  'delivered': 19,
+                  'cancelled': 2,
+                  'failed': 1,
+                  'unclassified': 4,
+                  'activeRiders': 5,
+                  'deliveredPercent': 46.3,
+                  'localOrders': 31,
+                  'interstateOrders': 10,
+                  'rawStatuses': <String, dynamic>{
+                    'PENDING_PICKUP': 8,
+                    'SUCCESSFUL': 19,
+                    'CANCELLED': 2,
+                  },
+                  'lifecycle': <String, dynamic>{
+                    'CREATED': 41,
+                    'CONFIRMED': 33,
+                    'ASSIGNED': 29,
+                    'ACCEPTED': 25,
+                    'PICKED_UP': 22,
+                    'IN_TRANSIT': 3,
+                    'ARRIVED_AT_DESTINATION_BRANCH': 2,
+                    'OUT_FOR_DELIVERY': 4,
+                    'DELIVERED': 19,
+                    'CANCELLED': 2,
+                    'FAILED': 1,
+                    'UNCLASSIFIED': 4,
+                  },
+                  'financial': <String, dynamic>{
+                    'grossOrderValue': 88740,
+                    'recordedPaidValue': 56280,
+                    'unpaidValue': 10850,
+                    'refundedValue': 1360,
+                    'recordedRiderCommissions': 4970,
+                    'operationalExpenses': null,
+                    'reconciledProfit': null,
+                    'estimatedNetEarnings': null,
+                    'basis': 'Confirmed server-side delivery records.',
+                    'attribution': 'Fees attributed to origin branch only.',
+                    'limitations': <String>[
+                      'Not a reconciled ledger.',
+                      'Interstate commissions unavailable.',
+                    ],
+                  },
+                },
+              },
               'marketplace': <String, dynamic>{'count': 3, 'value': 28000},
               'recentTransactions': <Map<String, dynamic>>[
                 <String, dynamic>{
@@ -189,6 +247,89 @@ void main() {
       await SessionStore.clear();
     }
   });
+
+  test(
+      'dashboard API preserves backend delivery operations and financial fields',
+      () async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+    await SessionStore.writeToken('branch-session-fixture');
+    late Uri requestedUri;
+    final MockClient client = MockClient((http.Request request) async {
+      requestedUri = request.url;
+      return http.Response(
+        jsonEncode(<String, dynamic>{
+          'success': true,
+          'dashboard': <String, dynamic>{
+            'branch': <String, dynamic>{
+              'assignedModules': <String>['DELIVERY'],
+            },
+            'permissions': <String>[
+              'branch.delivery.view',
+              'branch.finance.view',
+            ],
+            'metrics': <String, dynamic>{
+              'revenue': 999999,
+              'revenueBasis':
+                  'NON_ADDITIVE_OPERATIONAL_VALUE_NOT_RECONCILED_REVENUE',
+              'deliveries': <String, dynamic>{
+                'operations': <String, dynamic>{
+                  'total': 41,
+                  'deliveredPercent': 46.3,
+                  'localOrders': 31,
+                  'interstateOrders': 10,
+                  'rawStatuses': <String, dynamic>{'PENDING_PICKUP': 8},
+                  'lifecycle': <String, dynamic>{'CREATED': 41},
+                  'financial': <String, dynamic>{
+                    'recordedPaidValue': 56280,
+                    'refundedValue': 1360,
+                    'recordedRiderCommissions': 4970,
+                    'operationalExpenses': null,
+                    'reconciledProfit': null,
+                    'estimatedNetEarnings': null,
+                    'basis': 'Confirmed delivery records.',
+                    'attribution': 'Origin branch only.',
+                    'limitations': <String>['Not a reconciled ledger.'],
+                  },
+                },
+              },
+            },
+          },
+        }),
+        200,
+      );
+    });
+
+    try {
+      final BranchManagerDashboard dashboard =
+          await BranchManagerDashboardHttpApi(
+        client: client,
+        baseUrl: 'https://example.test/api',
+      ).loadDashboard(startDate: '2026-08-01', endDate: '2026-08-31');
+      final Map<String, dynamic> operations =
+          ((dashboard.metrics['deliveries'] as Map)['operations'] as Map)
+              .cast<String, dynamic>();
+      final Map<String, dynamic> financial =
+          (operations['financial'] as Map).cast<String, dynamic>();
+
+      expect(requestedUri.path, '/api/branches/dashboard');
+      expect(requestedUri.queryParameters, <String, String>{
+        'startDate': '2026-08-01',
+        'endDate': '2026-08-31',
+      });
+      expect(operations['total'], 41);
+      expect(operations['deliveredPercent'], 46.3);
+      expect(operations['localOrders'], 31);
+      expect(operations['interstateOrders'], 10);
+      expect(financial['recordedPaidValue'], 56280);
+      expect(financial['operationalExpenses'], isNull);
+      expect(dashboard.metrics['revenueBasis'],
+          'NON_ADDITIVE_OPERATIONAL_VALUE_NOT_RECONCILED_REVENUE');
+    } finally {
+      client.close();
+      await SessionStore.clear();
+    }
+  });
+
   testWidgets('shows branch identity, compact KPIs and reporting period',
       (WidgetTester tester) async {
     final _DashboardApi api = _DashboardApi();
@@ -196,6 +337,7 @@ void main() {
 
     expect(find.text('Ikeja Branch'), findsOneWidget);
     expect(find.text('IKJ'), findsOneWidget);
+    expect(find.text('Ikeja, Lagos'), findsOneWidget);
     expect(find.text('Ada Manager'), findsOneWidget);
     expect(find.text('Reporting period'), findsOneWidget);
     await tester.scrollUntilVisible(
@@ -207,6 +349,58 @@ void main() {
     expect(find.text('18'), findsWidgets);
     expect(api.lastStartDate, isNotNull);
     expect(api.lastEndDate, api.lastStartDate);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'delivery operations map populated backend status data at 360px without finance access',
+      (WidgetTester tester) async {
+    await _pumpAt(tester, const Size(360, 800), _DashboardApi());
+    await tester.scrollUntilVisible(
+      find.text('Delivery operations'),
+      350,
+      scrollable: find.byType(Scrollable).first,
+    );
+
+    expect(find.text('Delivery orders'), findsOneWidget);
+    expect(find.text('41'), findsWidgets);
+    expect(find.text('Delivered rate'), findsOneWidget);
+    expect(find.text('46.3%'), findsOneWidget);
+    expect(find.text('Local orders'), findsOneWidget);
+    expect(find.text('Interstate orders'), findsOneWidget);
+    expect(find.text('ARRIVED AT DESTINATION BRANCH'), findsOneWidget);
+    expect(find.text('Raw recorded statuses'), findsOneWidget);
+    expect(find.text('Recorded paid delivery fees'), findsNothing);
+    expect(find.text('Operational expenses'), findsNothing);
+    expect(find.text('Branch revenue'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('finance permission reveals accurately labelled recorded values',
+      (WidgetTester tester) async {
+    await _pumpAt(
+      tester,
+      const Size(360, 800),
+      _DashboardApi(withFinance: true),
+    );
+    await tester.scrollUntilVisible(
+      find.text('Recorded paid delivery fees'),
+      400,
+      scrollable: find.byType(Scrollable).first,
+    );
+
+    expect(find.text('Recorded paid delivery fees'), findsOneWidget);
+    expect(find.text('Recorded refunds'), findsOneWidget);
+    expect(find.text('Recorded rider commissions'), findsOneWidget);
+    expect(find.text('₦56,280'), findsOneWidget);
+    expect(find.text('₦1,360'), findsOneWidget);
+    expect(find.text('₦4,970'), findsOneWidget);
+    expect(find.text('Operational expenses'), findsOneWidget);
+    expect(find.text('Reconciled profit'), findsOneWidget);
+    expect(find.text('Estimated net earnings'), findsOneWidget);
+    expect(find.text('Unavailable'), findsNWidgets(3));
+    expect(find.textContaining('not reconciled revenue or profit'),
+        findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -237,8 +431,13 @@ void main() {
 
     await tester.scrollUntilVisible(
       find.text('Register customer'),
-      450,
-      scrollable: find.byType(Scrollable).first,
+      480,
+      scrollable: find
+          .descendant(
+            of: find.byKey(const Key('branch-manager-dashboard-scroll')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
     );
     await tester.tap(find.text('Register customer'));
     await tester.pump();
@@ -344,6 +543,12 @@ void main() {
     expect(
       find.descendant(of: sheet, matching: find.text('Customers')),
       findsOneWidget,
+    );
+    await tester.scrollUntilVisible(
+      find.descendant(of: sheet, matching: find.text('Reports')),
+      260,
+      scrollable:
+          find.descendant(of: sheet, matching: find.byType(Scrollable)).first,
     );
     expect(
       find.descendant(of: sheet, matching: find.text('Reports')),

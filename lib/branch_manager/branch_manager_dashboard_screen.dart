@@ -11,6 +11,7 @@ import 'branch_manager_dashboard_api.dart';
 import 'branch_manager_staff_screen.dart';
 import '../logistics/logistics_operations_screens.dart';
 import '../login_screen.dart';
+import 'branch_operational_requests_screen.dart';
 import 'branch_counter_screen.dart';
 import 'branch_counter_api.dart';
 import 'branch_delivery_dashboard_section.dart';
@@ -21,11 +22,13 @@ class BranchManagerDashboardScreen extends StatefulWidget {
     this.api,
     this.counterApi,
     this.onAction,
+    this.actorId = '',
   });
 
   final BranchManagerDashboardApi? api;
   final BranchCounterApi? counterApi;
   final ValueChanged<String>? onAction;
+  final String actorId;
 
   @override
   State<BranchManagerDashboardScreen> createState() =>
@@ -185,6 +188,15 @@ class _BranchManagerDashboardScreenState
     return permissions.contains('*') || permissions.contains(permission);
   }
 
+  Map<String, dynamic> _deliveryOperationsFor(BranchManagerDashboard data) {
+    if (!_moduleAssigned('DELIVERY')) return <String, dynamic>{};
+    if (data.hasExplicitPermissions && !_has('branch.delivery.view')) {
+      return <String, dynamic>{};
+    }
+    final Map<String, dynamic> deliveries = _map(data.metrics['deliveries']);
+    return _map(deliveries['operations']);
+  }
+
   bool _moduleAssigned(String module) =>
       _dashboard?.modules.any((Map<String, dynamic> item) =>
           _text(item, <String>['name']).toUpperCase() == module) ??
@@ -326,6 +338,15 @@ class _BranchManagerDashboardScreenState
           'Targets',
           'targets',
           Icons.track_changes_outlined,
+        ),
+      if (_has('branch.dashboard.view') ||
+          _has('branch.approvals.view') ||
+          _has('branch.approvals.submit') ||
+          _has('branch.staff.manage'))
+        const _ActionData(
+          'Operational requests',
+          'operational-requests',
+          Icons.assignment_outlined,
         ),
       if (_has('branch.staff.view'))
         const _ActionData(
@@ -579,6 +600,7 @@ class _BranchManagerDashboardScreenState
         final bool desktop = box.maxWidth >= 1040;
         final bool tablet = box.maxWidth >= 680;
         return ListView(
+          key: const Key('branch-manager-dashboard-scroll'),
           physics: const AlwaysScrollableScrollPhysics(),
           padding: EdgeInsets.fromLTRB(
             tablet ? 24 : 14,
@@ -620,6 +642,10 @@ class _BranchManagerDashboardScreenState
             _periodSelector(),
             const SizedBox(height: 16),
             _kpiGrid(data, box.maxWidth),
+            if (_deliveryOperationsFor(data).isNotEmpty) ...<Widget>[
+              const SizedBox(height: 16),
+              _deliveryOperationsPanel(data),
+            ],
             const SizedBox(height: 16),
             if (desktop)
               Row(
@@ -682,8 +708,11 @@ class _BranchManagerDashboardScreenState
   Widget _branchHeader(BranchManagerDashboard data, bool desktop) {
     final Map<String, dynamic> branch = data.branch;
     final Map<String, dynamic> manager = data.manager;
+    final String city = _text(branch, <String>['city'], '');
+    final String lga = _text(branch, <String>['lga'], '');
     final String location = <String>[
-      _text(branch, <String>['lga'], ''),
+      city,
+      if (lga.isNotEmpty && lga.toLowerCase() != city.toLowerCase()) lga,
       _text(branch, <String>['state'], ''),
     ].where((String value) => value.isNotEmpty).join(', ');
     final Widget status = Container(
@@ -851,8 +880,14 @@ class _BranchManagerDashboardScreenState
         children: <Widget>[
           Icon(icon, color: Colors.white60, size: 16),
           const SizedBox(width: 5),
-          Text(text,
-              style: const TextStyle(color: Colors.white70, fontSize: 12)),
+          Flexible(
+            child: Text(
+              text,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+          ),
         ],
       );
 
@@ -999,14 +1034,6 @@ class _BranchManagerDashboardScreenState
         const Color(0xffeaf7f8),
         const Color(0xff247982),
       ),
-      _KpiData(
-        'Branch revenue',
-        _money(metrics['revenue']),
-        'across permitted modules',
-        Icons.trending_up_rounded,
-        const Color(0xfffff5e6),
-        const Color(0xff9d650e),
-      ),
     ];
     return GridView.builder(
       physics: const NeverScrollableScrollPhysics(),
@@ -1022,6 +1049,263 @@ class _BranchManagerDashboardScreenState
           _KpiCard(data: rows[index]),
     );
   }
+
+  Widget _deliveryOperationsPanel(BranchManagerDashboard data) {
+    final Map<String, dynamic> operations = _deliveryOperationsFor(data);
+    final Map<String, dynamic> lifecycle = _map(operations['lifecycle']);
+    final Map<String, dynamic> rawStatuses = _map(operations['rawStatuses']);
+    final Map<String, dynamic> financial = _map(operations['financial']);
+    final List<_DashboardValue> values = <_DashboardValue>[
+      _DashboardValue('Delivery orders', _countValue(operations, 'total')),
+      _DashboardValue('Today', _countValue(operations, 'today')),
+      _DashboardValue('Pending', _countValue(operations, 'pending')),
+      _DashboardValue('Assigned', _countValue(operations, 'assigned')),
+      _DashboardValue('In transit', _countValue(operations, 'inTransit')),
+      _DashboardValue('Delivered', _countValue(operations, 'delivered')),
+      _DashboardValue('Cancelled', _countValue(operations, 'cancelled')),
+      _DashboardValue('Failed', _countValue(operations, 'failed')),
+      _DashboardValue('Unclassified', _countValue(operations, 'unclassified')),
+      _DashboardValue('Active riders', _countValue(operations, 'activeRiders')),
+      _DashboardValue('Local orders', _countValue(operations, 'localOrders')),
+      _DashboardValue(
+          'Interstate orders', _countValue(operations, 'interstateOrders')),
+      if (operations['deliveredPercent'] is num)
+        _DashboardValue(
+          'Delivered rate',
+          '${(operations['deliveredPercent'] as num).toStringAsFixed(1)}%',
+        ),
+    ];
+    return _Panel(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          _sectionTitle(
+            'Delivery operations',
+            'Branch workload · selected reporting period',
+            Icons.local_shipping_outlined,
+          ),
+          const SizedBox(height: 14),
+          LayoutBuilder(
+            builder: (BuildContext context, BoxConstraints constraints) {
+              final int columns = constraints.maxWidth >= 780
+                  ? 4
+                  : constraints.maxWidth >= 500
+                      ? 3
+                      : 2;
+              const double gap = 8;
+              final double itemWidth =
+                  (constraints.maxWidth - (gap * (columns - 1))) / columns;
+              return Wrap(
+                spacing: gap,
+                runSpacing: gap,
+                children: values
+                    .map(
+                      (_DashboardValue value) => SizedBox(
+                        width: itemWidth,
+                        child: Container(
+                          constraints: const BoxConstraints(minHeight: 72),
+                          padding: const EdgeInsets.all(11),
+                          decoration: BoxDecoration(
+                            color: _mint,
+                            border: Border.all(color: _line),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: <Widget>[
+                              Text(
+                                value.label,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: Colors.black54,
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 5),
+                              Text(
+                                value.value,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: _ink,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    )
+                    .toList(),
+              );
+            },
+          ),
+          if (lifecycle.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 18),
+            const Text(
+              'Order lifecycle',
+              style: TextStyle(
+                color: _ink,
+                fontWeight: FontWeight.w800,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 4),
+            ...lifecycle.entries.map(
+              (MapEntry<String, dynamic> entry) => _compactRow(
+                icon: Icons.route_outlined,
+                title: entry.key.replaceAll('_', ' '),
+                subtitle: 'Recorded lifecycle status',
+                trailing: _nullableCount(entry.value),
+              ),
+            ),
+          ],
+          if (rawStatuses.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 12),
+            const Text(
+              'Raw recorded statuses',
+              style: TextStyle(
+                color: _ink,
+                fontWeight: FontWeight.w800,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 4),
+            ...rawStatuses.entries.map(
+              (MapEntry<String, dynamic> entry) => _compactRow(
+                icon: Icons.label_outline,
+                title: entry.key.replaceAll('_', ' '),
+                subtitle: 'Source order status',
+                trailing: _nullableCount(entry.value),
+              ),
+            ),
+          ],
+          if (data.metrics.containsKey('revenue') ||
+              data.metrics['revenueBasis'] != null)
+            const Padding(
+              padding: EdgeInsets.only(top: 8),
+              child: Text(
+                'Legacy combined activity value omitted: it is non-additive '
+                'operational activity, not revenue or earnings.',
+                style: TextStyle(
+                  color: Colors.black54,
+                  fontSize: 11,
+                  height: 1.35,
+                ),
+              ),
+            ),
+          if (_has('branch.finance.view') && financial.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 18),
+            const Divider(),
+            const Text(
+              'Recorded delivery fees · finance permission',
+              style: TextStyle(
+                color: _ink,
+                fontWeight: FontWeight.w800,
+                fontSize: 14,
+              ),
+            ),
+            const SizedBox(height: 8),
+            _financialRow('Gross order value',
+                _financialValue(financial['grossOrderValue'])),
+            _financialRow('Recorded paid delivery fees',
+                _financialValue(financial['recordedPaidValue'])),
+            _financialRow('Unpaid delivery fees',
+                _financialValue(financial['unpaidValue'])),
+            _financialRow('Recorded refunds',
+                _financialValue(financial['refundedValue'])),
+            _financialRow('Recorded rider commissions',
+                _financialValue(financial['recordedRiderCommissions'])),
+            _financialRow('Operational expenses',
+                _financialValue(financial['operationalExpenses'])),
+            _financialRow('Reconciled profit',
+                _financialValue(financial['reconciledProfit'])),
+            _financialRow('Estimated net earnings',
+                _financialValue(financial['estimatedNetEarnings'])),
+            const SizedBox(height: 8),
+            const Text(
+              'Recorded paid value is recorded delivery-fee payments, not '
+              'reconciled revenue or profit. Workload may include both '
+              'interstate hubs; fee totals are attributed to origin only. '
+              'This is not a financial-custody or reconciled-ledger view. '
+              'Expenses and net figures are unavailable where not supplied.',
+              style: TextStyle(
+                color: Colors.black54,
+                fontSize: 11,
+                height: 1.35,
+              ),
+            ),
+            ...<String>[
+              _displayContractValue(financial['basis']),
+              _displayContractValue(financial['attribution']),
+              _displayContractValue(financial['limitations']),
+            ].where((String value) => value.isNotEmpty).map(
+                  (String value) => Padding(
+                    padding: const EdgeInsets.only(top: 5),
+                    child: Text(
+                      value,
+                      style: const TextStyle(
+                        color: Colors.black45,
+                        fontSize: 10,
+                      ),
+                    ),
+                  ),
+                ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  String _countValue(Map<String, dynamic> source, String key) =>
+      source[key] == null ? '—' : _groupDigits(_integer(source[key]));
+
+  String _nullableCount(dynamic value) =>
+      value == null ? '—' : _groupDigits(_integer(value));
+
+  String _financialValue(dynamic value) {
+    if (value == null) return 'Unavailable';
+    final num? amount = _number(value);
+    return amount == null ? 'Unavailable' : _money(amount);
+  }
+
+  String _displayContractValue(dynamic value) {
+    if (value == null || value is Map) return '';
+    if (value is List) {
+      return value.map((dynamic item) => '$item').join(', ');
+    }
+    return '$value'.trim();
+  }
+
+  Widget _financialRow(String label, String value) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          children: <Widget>[
+            Expanded(
+              child: Text(
+                label,
+                style: const TextStyle(color: Colors.black54, fontSize: 12),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Flexible(
+              child: Text(
+                value,
+                textAlign: TextAlign.right,
+                style: const TextStyle(
+                  color: _ink,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
 
   Widget _transactionPerformance(BranchManagerDashboard data) {
     final List<Map<String, dynamic>> trend =
@@ -1306,12 +1590,6 @@ class _BranchManagerDashboardScreenState
   Widget _liveOperations(BranchManagerDashboard data) {
     final Map<String, dynamic> metrics = data.metrics;
     final List<_OperationData> operations = <_OperationData>[
-      if (metrics['deliveries'] is Map)
-        _OperationData(
-          'Deliveries',
-          _integer(_map(metrics['deliveries'])['count']),
-          Icons.local_shipping_outlined,
-        ),
       if (metrics['marketplace'] is Map)
         _OperationData(
           'Marketplace orders',
@@ -1663,6 +1941,23 @@ class _BranchManagerDashboardScreenState
     }
     if (widget.onAction != null) {
       widget.onAction!(action);
+      return;
+    }
+    if (action == 'operational-requests') {
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => BranchOperationalRequestsScreen(
+            canView: _has('branch.dashboard.view') ||
+                _has('branch.approvals.view') ||
+                _has('branch.staff.manage'),
+            canSubmit: _has('branch.approvals.submit'),
+            canManage: _has('branch.staff.manage'),
+            branchId:
+                '${_dashboard?.branch['_id'] ?? _dashboard?.branch['id'] ?? ''}',
+            actorId: widget.actorId,
+          ),
+        ),
+      );
       return;
     }
     if (action == 'staff') {
@@ -2060,6 +2355,12 @@ class _OperationData {
   final String label;
   final int value;
   final IconData icon;
+}
+
+class _DashboardValue {
+  const _DashboardValue(this.label, this.value);
+  final String label;
+  final String value;
 }
 
 class _RefreshWarning extends StatelessWidget {

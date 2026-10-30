@@ -7,6 +7,11 @@ class BranchCounterScreen extends StatefulWidget {
     this.pendingStore,
     this.receiptOpener,
     this.staffMode = false,
+    this.canViewOperationalRequests = false,
+    this.canSubmitOperationalRequests = false,
+    this.canManageOperationalRequests = false,
+    this.branchId = '',
+    this.actorId = '',
     this.initialAction,
   });
 
@@ -14,6 +19,11 @@ class BranchCounterScreen extends StatefulWidget {
   final CounterPendingIntentStore? pendingStore;
   final CounterReceiptOpener? receiptOpener;
   final bool staffMode;
+  final bool canViewOperationalRequests;
+  final bool canSubmitOperationalRequests;
+  final bool canManageOperationalRequests;
+  final String branchId;
+  final String actorId;
   final String? initialAction;
 
   @override
@@ -178,6 +188,27 @@ class _BranchCounterScreenState extends State<BranchCounterScreen> {
         title: const Text('Delivery & Logistics',
             style: TextStyle(fontWeight: FontWeight.w800)),
         actions: <Widget>[
+          if (widget.canViewOperationalRequests ||
+              widget.canSubmitOperationalRequests ||
+              widget.canManageOperationalRequests)
+            IconButton(
+              key: const Key('branch-counter-operational-requests'),
+              tooltip: 'Operational requests',
+              onPressed: () {
+                Navigator.of(context).push<void>(
+                  MaterialPageRoute<void>(
+                    builder: (_) => BranchOperationalRequestsScreen(
+                      canView: widget.canViewOperationalRequests,
+                      canSubmit: widget.canSubmitOperationalRequests,
+                      canManage: widget.canManageOperationalRequests,
+                      branchId: widget.branchId,
+                      actorId: widget.actorId,
+                    ),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.assignment_outlined),
+            ),
           if (widget.staffMode)
             IconButton(
               key: const Key('branch-counter-staff-logout'),
