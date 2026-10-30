@@ -6,6 +6,9 @@ const schema = new mongoose.Schema({
   description: { type: String, trim: true, default: "" },
   status: { type: String, enum: ["OPEN", "IN_PROGRESS", "RESOLVED", "CANCELLED"], default: "OPEN", index: true },
   requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+  assignedStaffId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+  assignedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+  updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
   metadata: { type: mongoose.Schema.Types.Mixed, default: {} },
   resolvedAt: { type: Date, default: null },
 }, { timestamps: true });

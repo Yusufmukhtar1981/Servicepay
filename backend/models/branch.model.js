@@ -8,6 +8,7 @@ const branchSchema = new mongoose.Schema({
   staffIds: [{ type: mongoose.Schema.Types.ObjectId, ref: "User" }],
   address: { type: String, trim: true, default: "" },
   state: { type: String, trim: true, default: "" },
+  city: { type: String, trim: true, maxlength: 120, default: "" },
   lga: { type: String, trim: true, default: "" },
   phone: { type: String, trim: true, default: "" },
   email: { type: String, trim: true, lowercase: true, default: "" },

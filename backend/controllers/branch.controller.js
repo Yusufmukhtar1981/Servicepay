@@ -7,6 +7,7 @@ const AdminAuditLog = require("../models/adminAuditLog.model");
 const BranchAuditLog = require("../models/branchAuditLog.model");
 const Transaction = require("../models/transaction.model");
 const Delivery = require("../models/delivery.model");
+const { branchDeliveryOperations } = require("../services/branchDeliveryReporting.service");
 const SolarApplication = require("../models/solarApplication.model");
 const SolarFinance = require("../models/solarFinance.model");
 const SolarPayment = require("../models/solarPayment.model");
@@ -47,9 +48,13 @@ const moduleAllowed = (req, module) => {
   if (req.staffAccess.isHeadOffice || !module) return true;
   return (req.branchScope?.assignedModules || []).includes(String(module).trim().toUpperCase());
 };
-const audit = async (req, action, reason, metadata = {}, before = null, after = null) => {
+const audit = async (req, action, reason, metadata = {}, before = null, after = null, session = null) => {
   const branchId = metadata.branchId || req.branchScope?._id || req.user.branchId;
-  if (branchId) await BranchAuditLog.create({ branchId, actorId: id(req), action, reason, metadata, before, after });
+  if (branchId) {
+    const entry = { branchId, actorId: id(req), action, reason, metadata, before, after };
+    if (session) await BranchAuditLog.create([entry], { session });
+    else await BranchAuditLog.create(entry);
+  }
 };
 const page = (req) => Math.max(1, Number(req.query.page) || 1);
 const headOffice = (req, res) => req.staffAccess.isHeadOffice || (res.status(403).json({ success: false, message: "Head Office access only." }), false);
@@ -220,7 +225,7 @@ exports.create = async (req, res) => {
           temporaryPassword: clean.password,
         };
       }
-      branch = (await Branch.create([{ code: req.body.code, name: req.body.name, address: req.body.address, state: req.body.state, lga: req.body.lga, phone: req.body.phone, email: req.body.email, openingDate: req.body.openingDate, notes: req.body.notes, assignedModules, latitude: req.body.latitude, longitude: req.body.longitude, managerId: manager?._id || null, staffIds: manager ? [manager._id] : [], createdBy: id(req), updatedBy: id(req) }], { session }))[0];
+      branch = (await Branch.create([{ code: req.body.code, name: req.body.name, address: req.body.address, state: req.body.state, city: req.body.city, lga: req.body.lga, phone: req.body.phone, email: req.body.email, openingDate: req.body.openingDate, notes: req.body.notes, assignedModules, latitude: req.body.latitude, longitude: req.body.longitude, managerId: manager?._id || null, staffIds: manager ? [manager._id] : [], createdBy: id(req), updatedBy: id(req) }], { session }))[0];
       if (manager) {
         if (String(manager.role).toUpperCase() === "STAFF") {
           manager.branchManagerPreviousRole = manager.role;
@@ -260,22 +265,52 @@ exports.get = async (req, res) => {
 };
 exports.update = async (req, res) => {
   if (!headOffice(req, res)) return;
-  const allowed = ["name", "address", "state", "lga", "phone", "email", "openingDate", "notes", "assignedModules", "latitude", "longitude"];
+  const allowed = ["code", "name", "address", "state", "city", "lga", "phone", "email", "openingDate", "notes", "assignedModules", "latitude", "longitude"];
   const update = Object.fromEntries(allowed.filter((key) => req.body[key] !== undefined).map((key) => [key, req.body[key]]));
   update.updatedBy = id(req);
-  const branch = await Branch.findByIdAndUpdate(req.params.branchId, update, { new: true, runValidators: true });
-  if (!branch) return res.status(404).json({ success: false, message: "Branch not found." });
-  await audit(req, "BRANCH_UPDATED", "Branch updated.", { branchId: String(branch._id) });
-  res.json({ success: true, branch });
+  const session = await mongoose.startSession();
+  try {
+    let branch;
+    await session.withTransaction(async () => {
+      branch = await Branch.findById(req.params.branchId).session(session);
+      if (!branch) return;
+      const before = branch.toObject();
+      branch.set(update);
+      await branch.save({ session });
+      await audit(req, "BRANCH_UPDATED", "Branch updated.", { branchId: String(branch._id) }, before, branch.toObject(), session);
+    });
+    if (!branch) return res.status(404).json({ success: false, message: "Branch not found." });
+    return res.json({ success: true, branch });
+  } catch (error) {
+    const invalid = ["ValidationError", "CastError"].includes(error.name);
+    return res.status(error.code === 11000 ? 409 : invalid ? 400 : 500).json({
+      success: false, message: error.code === 11000 ? "Branch code already exists." : invalid ? "Invalid branch information." : "Branch update could not be safely recorded.",
+    });
+  } finally { await session.endSession(); }
 };
 exports.activate = async (req, res) => {
   if (!headOffice(req, res)) return;
   const requested = String(req.body.status || "ACTIVE").toUpperCase();
+  if (!["ACTIVE", "INACTIVE", "SUSPENDED"].includes(requested)) {
+    return res.status(400).json({ success: false, message: "Select ACTIVE, INACTIVE or SUSPENDED." });
+  }
   const active = requested === "ACTIVE";
-  const branch = await Branch.findByIdAndUpdate(req.params.branchId, { status: active ? "ACTIVE" : requested === "SUSPENDED" ? "SUSPENDED" : "INACTIVE", updatedBy: id(req), ...(active ? { "lifecycle.activatedAt": new Date(), "lifecycle.activatedBy": id(req) } : requested === "SUSPENDED" ? { "lifecycle.suspendedAt": new Date(), "lifecycle.suspendedBy": id(req), "lifecycle.suspensionReason": String(req.body.reason || "").trim() } : { "lifecycle.deactivatedAt": new Date(), "lifecycle.deactivatedBy": id(req) }) }, { new: true });
-  if (!branch) return res.status(404).json({ success: false, message: "Branch not found." });
-  await audit(req, "BRANCH_ACTIVATED", `Branch ${branch.status.toLowerCase()}.`, { branchId: String(branch._id) });
-  res.json({ success: true, branch });
+  const session = await mongoose.startSession();
+  try {
+    let branch;
+    await session.withTransaction(async () => {
+      branch = await Branch.findById(req.params.branchId).session(session);
+      if (!branch) return;
+      const before = branch.toObject();
+      branch.set({ status: requested, updatedBy: id(req), ...(active ? { "lifecycle.activatedAt": new Date(), "lifecycle.activatedBy": id(req) } : requested === "SUSPENDED" ? { "lifecycle.suspendedAt": new Date(), "lifecycle.suspendedBy": id(req), "lifecycle.suspensionReason": String(req.body.reason || "").trim() } : { "lifecycle.deactivatedAt": new Date(), "lifecycle.deactivatedBy": id(req) }) });
+      await branch.save({ session });
+      await audit(req, "BRANCH_ACTIVATED", `Branch ${branch.status.toLowerCase()}.`, { branchId: String(branch._id) }, before, branch.toObject(), session);
+    });
+    if (!branch) return res.status(404).json({ success: false, message: "Branch not found." });
+    return res.json({ success: true, branch });
+  } catch {
+    return res.status(500).json({ success: false, message: "Branch status could not be safely recorded." });
+  } finally { await session.endSession(); }
 };
 exports.assignManager = async (req, res) => {
   if (!headOffice(req, res)) return;
@@ -835,8 +870,13 @@ exports.dashboard = async (req, res) => {
     groupedStatuses(BranchApprovalRequest, base),
     BranchOperationalRequest.countDocuments({ ...base, status: { $in: ["OPEN", "IN_PROGRESS"] } }),
     User.find({ branchId: scope, isStaff: true }).select("_id fullName staffId jobTitle department status role lastStaffLoginAt").sort({ fullName: 1 }).lean(),
-    Branch.findById(scope).select("_id code name status state lga assignedModules managerId openingDate").lean(),
+    Branch.findById(scope).select("_id code name status state city lga address phone assignedModules managerId openingDate").lean(),
   ]);
+  if (dashboardAccess(req, "deliveries") && (!req.query.module || ["DELIVERY", "DELIVERIES"].includes(String(req.query.module).toUpperCase()))) {
+    metrics.deliveries.operations = await branchDeliveryOperations({ branchId: scope, dateRange: requestedDateRange(req), staffId: req.query.staffId, status: safeStatus(req) });
+    if (!can(req, "branch.finance.view")) delete metrics.deliveries.operations.financial;
+  }
+  metrics.revenueBasis = "NON_ADDITIVE_OPERATIONAL_VALUE_NOT_RECONCILED_REVENUE";
   const visibleRevenue = permittedRevenue(req, metrics);
   for (const section of ["users", "staff", "transactions", "deliveries", "solar", "marketplace", "phoneFinancing", "empowerment"]) {
     if (!dashboardAccess(req, section)) delete metrics[section];
@@ -846,7 +886,7 @@ exports.dashboard = async (req, res) => {
   const approvals = { approved: approvalStatuses.APPROVED || 0, rejected: approvalStatuses.REJECTED || 0, correctionRequested: approvalStatuses.CORRECTION_REQUESTED || 0 };
   const dashboard = {
     branchId: scope,
-    branch: branch && { id: branch._id, code: branch.code, name: branch.name, status: branch.status, state: branch.state, lga: branch.lga, assignedModules: branch.assignedModules || [], managerId: branch.managerId, openingDate: branch.openingDate },
+    branch: branch && { id: branch._id, code: branch.code, name: branch.name, status: branch.status, state: branch.state, city: branch.city || "", lga: branch.lga, address: branch.address, phone: branch.phone, assignedModules: branch.assignedModules || [], managerId: branch.managerId, openingDate: branch.openingDate },
     period: { startDate: req.query.startDate || null, endDate: req.query.endDate || null, module: req.query.module || null, status: safeStatus(req) },
     metrics,
   };
@@ -887,6 +927,11 @@ exports.reports = async (req, res) => {
     metricsForBranch(scope, req), BranchTarget.find({ branchId: scope, ...dateFilter(req), ...(req.query.module ? { module: String(req.query.module).toUpperCase() } : {}) }).lean(),
     groupedStatuses(BranchApprovalRequest, scoped(scope, req)),
   ]);
+  if (scope && dashboardAccess(req, "deliveries") && (!req.query.module || ["DELIVERY", "DELIVERIES"].includes(String(req.query.module).toUpperCase()))) {
+    metrics.deliveries.operations = await branchDeliveryOperations({ branchId: scope, dateRange: requestedDateRange(req), staffId: req.query.staffId, status: safeStatus(req) });
+    if (!can(req, "branch.finance.view")) delete metrics.deliveries.operations.financial;
+  }
+  metrics.revenueBasis = "NON_ADDITIVE_OPERATIONAL_VALUE_NOT_RECONCILED_REVENUE";
   const report = { branchId: scope, count: transactions.length, transactions, metrics, targets, approvals };
   if (["csv", "json"].includes(String(req.query.export || "").toLowerCase())) {
     // Only aggregate/statistical fields and masked transaction references leave
@@ -1015,18 +1060,96 @@ exports.reviewApproval = async (req, res) => {
   } catch (error) { res.status(400).json({ success: false, message: error.message }); }
 };
 exports.operational = async (req, res) => {
-  const scope = branchScope(req, req.body.branchId || req.query.branchId); if (scope === false) return deny(res);
-  if (req.method === "GET") return res.json({ success: true, requests: await BranchOperationalRequest.find({ branchId: scope }).sort({ createdAt: -1 }).lean() });
+  const scope = branchScope(req, req.body?.branchId || req.query.branchId); if (scope === false) return deny(res);
+  if (req.method === "GET") {
+    const filter = scope ? { branchId: scope } : {};
+    if (!can(req, "branch.staff.manage") && !can(req, "branch.approvals.view")) {
+      filter.$or = [{ requestedBy: id(req) }, { assignedStaffId: id(req) }];
+    }
+    return res.json({ success: true, requests: await BranchOperationalRequest.find(filter).sort({ createdAt: -1 }).lean() });
+  }
+  if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) return res.status(400).json({ success: false, message: "Request details are required." });
   const sensitive = /MONEY|PAYMENT|TRANSFER|WITHDRAW|FUND|WALLET/.test(String(req.body.type || "").toUpperCase());
   if (sensitive) return exports.submitApproval(req, res); // deliberately creates approval evidence, never a money movement.
-  const request = await BranchOperationalRequest.create({ branchId: scope, type: req.body.type, title: req.body.title, description: req.body.description, metadata: req.body.metadata || {}, requestedBy: id(req) });
-  await audit(req, "BRANCH_OPERATIONAL_REQUEST_CREATED", "Operational request created.", { branchId: String(scope), requestId: String(request._id) });
-  res.status(201).json({ success: true, request });
+  const session = await mongoose.startSession();
+  try {
+    let request;
+    await session.withTransaction(async () => {
+      [request] = await BranchOperationalRequest.create([{ branchId: scope, type: req.body.type, title: req.body.title, description: req.body.description, metadata: req.body.metadata || {}, requestedBy: id(req) }], { session });
+      await audit(req, "BRANCH_OPERATIONAL_REQUEST_CREATED", "Operational request created.",
+        { branchId: String(scope), requestId: String(request._id) }, null, { type: request.type, status: request.status }, session);
+    });
+    return res.status(201).json({ success: true, request });
+  } catch (error) {
+    return res.status(error.name === "ValidationError" ? 400 : 500).json({ success: false, message: "Operational request could not be safely recorded." });
+  } finally { await session.endSession(); }
 };
 exports.audit = async (req, res) => {
   const scope = branchScope(req, req.query.branchId); if (scope === false) return deny(res);
   const logs = await BranchAuditLog.find(scope ? { branchId: scope } : {}).sort({ createdAt: -1 }).limit(100).lean();
   res.json({ success: true, logs });
+};
+// Task/request administration is operational evidence only. It cannot approve a
+// payment, activate staff or change any account permission.
+exports.updateOperational = async (req, res) => {
+  if (!req.body || typeof req.body !== "object" || Array.isArray(req.body)) return res.status(400).json({ success: false, message: "Request update details are required." });
+  const scope = branchScope(req, req.query.branchId || req.body.branchId);
+  if (scope === false) return deny(res);
+  const managesTasks = can(req, "branch.staff.manage");
+  if (!managesTasks && (Object.hasOwn(req.body, "assignedStaffId") || !["IN_PROGRESS", "RESOLVED"].includes(req.body.status))) {
+    return res.status(403).json({ success: false, message: "Staff may only progress their own assigned operational tasks." });
+  }
+  const reason = String(req.body.reason || "").trim();
+  const statuses = {
+    OPEN: ["OPEN", "IN_PROGRESS", "RESOLVED", "CANCELLED"],
+    IN_PROGRESS: ["IN_PROGRESS", "RESOLVED", "CANCELLED"],
+    RESOLVED: ["RESOLVED"], CANCELLED: ["CANCELLED"],
+  };
+  if (!mongoose.isValidObjectId(req.params.requestId) || reason.length < 5 || reason.length > 2000 ||
+      (req.body.assignedStaffId != null && !mongoose.isValidObjectId(req.body.assignedStaffId))) {
+    return res.status(400).json({ success: false, message: "Valid request, assignee and a reason of 5–2000 characters are required." });
+  }
+  const session = await mongoose.startSession();
+  try {
+    let request, outcome = 200;
+    await session.withTransaction(async () => {
+      request = await BranchOperationalRequest.findOne({
+        _id: req.params.requestId, ...(scope ? { branchId: scope } : {}),
+        ...(!managesTasks ? { assignedStaffId: id(req) } : {}),
+      }).session(session);
+      if (!request) { outcome = 404; return; }
+      const nextStatus = req.body.status || request.status;
+      if (!statuses[request.status]?.includes(nextStatus)) { outcome = 409; return; }
+      const assigning = Object.hasOwn(req.body, "assignedStaffId");
+      const nextAssignee = assigning ? req.body.assignedStaffId : request.assignedStaffId;
+      if (["RESOLVED", "CANCELLED"].includes(request.status) && !same(nextAssignee || "", request.assignedStaffId || "")) { outcome = 409; return; }
+      if (request.status === nextStatus && same(nextAssignee || "", request.assignedStaffId || "")) return;
+      if (nextAssignee) {
+        const member = await User.findOne({
+          _id: nextAssignee, branchId: request.branchId, isStaff: true,
+          role: { $in: ["STAFF", "BRANCH_MANAGER", "SOLAR_OFFICER", "PHONE_FINANCING_OFFICER"] },
+          status: "ACTIVE", isDeleted: { $ne: true },
+        }).select("_id").session(session);
+        if (!member) { outcome = 400; return; }
+      }
+      const before = { status: request.status, assignedStaffId: request.assignedStaffId, assignedBy: request.assignedBy };
+      request.status = nextStatus;
+      if (assigning) { request.assignedStaffId = nextAssignee || null; request.assignedBy = id(req); }
+      request.updatedBy = id(req);
+      if (["RESOLVED", "CANCELLED"].includes(nextStatus)) request.resolvedAt = new Date();
+      await request.save({ session });
+      await audit(req, "BRANCH_OPERATIONAL_REQUEST_UPDATED", reason,
+        { branchId: String(request.branchId), requestId: String(request._id) }, before,
+        { status: request.status, assignedStaffId: request.assignedStaffId, assignedBy: request.assignedBy, resolvedAt: request.resolvedAt }, session);
+    });
+    if (outcome !== 200) return res.status(outcome).json({ success: false, message:
+      outcome === 404 ? "Operational request not found in this branch." :
+        outcome === 409 ? "This request transition is not allowed." : "Assignee must be active staff in the same branch.",
+    });
+    return res.json({ success: true, request });
+  } catch {
+    return res.status(500).json({ success: false, message: "Operational request could not be safely updated." });
+  } finally { await session.endSession(); }
 };
 
 exports.__dashboardTest = {

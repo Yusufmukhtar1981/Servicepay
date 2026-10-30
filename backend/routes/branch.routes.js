@@ -38,6 +38,7 @@ router.put("/targets/:targetId/progress", requireAnyPermission(P.BRANCHES_TARGET
 router.route("/approvals").get(requireAnyPermission(P.BRANCH_APPROVALS_VIEW, P.BRANCHES_APPROVALS_VIEW), c.approvals).post(requireAnyPermission(P.BRANCH_APPROVALS_SUBMIT), c.submitApproval);
 router.put("/approvals/:requestId/review", requireAnyPermission(P.BRANCHES_APPROVALS_MANAGE), c.reviewApproval);
 router.route("/operational-requests").get(requireAnyPermission(P.BRANCH_DASHBOARD_VIEW), c.operational).post(requireAnyPermission(P.BRANCH_APPROVALS_SUBMIT), c.operational);
+router.patch("/operational-requests/:requestId", requireAnyPermission(P.BRANCH_STAFF_MANAGE, P.BRANCH_DASHBOARD_VIEW), c.updateOperational);
 router.get("/audit", requireAnyPermission(P.BRANCHES_APPROVALS_VIEW), c.audit);
 router.get("/customers", requireAnyPermission(P.BRANCH_CUSTOMERS_VIEW, P.BRANCH_CUSTOMERS_CREATE), c.customers);
 router.post("/customers", requireAnyPermission(P.BRANCH_CUSTOMERS_CREATE), c.createCustomer);
