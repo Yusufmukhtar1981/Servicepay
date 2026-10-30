@@ -276,7 +276,8 @@ exports.staffHistory = async (req, res) => {
     if (!member) return fail(res, 404, "Staff member not found.");
     const [logins, activities, access] = await Promise.all([
       LoginEvent.find({ user: member._id }).select("_id outcome eventType createdAt").sort({ createdAt: -1 }).limit(50).lean(),
-      Audit.find({ actorId: member._id }).select("_id action reason createdAt").sort({ createdAt: -1 }).limit(50).lean(),
+      Audit.find({ $or: [{ actorId: member._id }, { targetUserId: member._id }] })
+        .select("_id action reason createdAt").sort({ createdAt: -1 }).limit(50).lean(),
       AccessLog.find({ actorId: member._id }).select("_id method path statusCode createdAt").sort({ createdAt: -1 }).limit(50).lean(),
     ]);
     return ok(res, { staff: { id: id(member), fullName: member.fullName, status: member.status }, logins, activities, access });

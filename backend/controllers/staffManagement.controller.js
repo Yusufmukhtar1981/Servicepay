@@ -966,7 +966,7 @@ exports.updateStaffStatus = async (req, res) => {
       role: "STAFF",
     })
       .select("+authTokenVersion")
-      .populate("staffRoleId", "name permissions hierarchyLevel");
+      .populate("staffRoleId", "name permissions hierarchyLevel status");
 
     if (!staff) {
       return res.status(404).json({
@@ -982,6 +982,12 @@ exports.updateStaffStatus = async (req, res) => {
       });
     }
     const previousStatus = staff.status;
+    if (status === "ACTIVE" && previousStatus !== "ACTIVE" &&
+        (!staff.staffRoleId || staff.staffRoleId.status !== "ACTIVE")) {
+      return res.status(400).json({
+        success: false, message: "Assign an active staff role before reactivating this account.",
+      });
+    }
 
     staff.status = status;
     staff.authTokenVersion = Number(staff.authTokenVersion || 0) + 1;
@@ -1108,7 +1114,52 @@ exports.assignStaffRole = async (req, res) => {
         message: "You cannot change your own staff role.",
       });
     }
+    if (req.body?.revoke === true) {
+      if (String(req.user?.role || "").toUpperCase() !== "HEAD_OFFICE" ||
+          !req.staffAccess?.isHeadOffice) {
+        return res.status(403).json({ success: false, message: "Only Head Office may revoke a staff role." });
+      }
+      const reason = String(req.body?.reason || "").trim();
+      if (reason.length < 5 || reason.length > 2000 || req.body.roleId ||
+          req.body.preserveHeadOffice || !mongoose.isValidObjectId(req.params.staffId)) {
+        return res.status(400).json({ success: false, message: "Provide a valid staff account and a reason of 5–2000 characters." });
+      }
+      const session = await mongoose.startSession();
+      let revoked, outcome = "updated";
+      try {
+        await session.withTransaction(async () => {
+          const staff = await User.findOne({
+            _id: req.params.staffId, isStaff: true, role: "STAFF", isDeleted: { $ne: true },
+          }).select("+authTokenVersion").populate("staffRoleId", "name").session(session);
+          if (!staff) { outcome = "missing"; return; }
+          if (!staff.staffRoleId && staff.status === "SUSPENDED") {
+            revoked = publicStaff(staff); return;
+          }
+          const previousData = { roleId: staff.staffRoleId?._id || null, roleName: staff.staffRoleId?.name || null, status: staff.status };
+          staff.staffRoleId = null;
+          staff.department = null;
+          // A revoked account cannot fall back to legacy STAFF permissions.
+          staff.status = "SUSPENDED";
+          staff.authTokenVersion = Number(staff.authTokenVersion || 0) + 1;
+          await staff.save({ session, validateBeforeSave: false });
+          await createAuditLog(req, {
+            action: "STAFF_ROLE_ASSIGNED", reason,
+            targetUser: staff, previousData,
+            newData: { roleId: null, status: "SUSPENDED" },
+            metadata: { operation: "REVOKE_STAFF_ROLE" }, session,
+          });
+          revoked = publicStaff(staff);
+        });
+      } finally { await session.endSession(); }
+      if (outcome === "missing") return res.status(404).json({ success: false, message: "Staff account was not found." });
+      return res.status(200).json({
+        success: true, message: "Staff role revoked and account suspended. Assign a role before reactivation.", staff: revoked,
+      });
+    }
     const preservingHeadOffice = req.body?.preserveHeadOffice === true;
+    if (!mongoose.isValidObjectId(req.body?.roleId)) {
+      return res.status(400).json({ success: false, message: "Select a valid active staff role." });
+    }
     const [staff, role] = await Promise.all([
       User.findOne(preservingHeadOffice
         ? { _id: req.params.staffId, role: "HEAD_OFFICE", isDeleted: { $ne: true } }
