@@ -11,6 +11,7 @@ const {
 
 const SUPPORT_STATUSES = [
   "OPEN",
+  "ESCALATED",
   "IN_PROGRESS",
   "IN_REVIEW",
   "WAITING_ON_CUSTOMER",
@@ -316,6 +317,7 @@ exports.updateTicket = async (req, res) => {
   try {
     const priority = req.body.priority === undefined ? null : value(req.body.priority);
     const status = normalizedStatus(req.body.status);
+    if (status === "ESCALATED") return error(res, 400, "Use the escalation workflow with a required reason.");
     if (status && !SUPPORT_STATUSES.includes(status)) return error(res, 400, "Invalid support status.");
     if (priority && !PRIORITIES.includes(priority)) return error(res, 400, "Invalid priority.");
     if (

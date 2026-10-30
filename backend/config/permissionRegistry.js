@@ -2,6 +2,8 @@ const permission = (key, value, module, label, description, risk = "STANDARD") =
   Object.freeze({ key, value, module, label, description, risk });
 
 const STAFF_PERMISSION_CATALOG = Object.freeze([
+  permission("OPERATIONS_WORKSPACE_VIEW", "operations.workspace.view", "SUPPORT", "Operations workspace", "Read operational monitoring and investigate complaints; no financial adjustments."),
+  permission("SUPPORT_WORKSPACE_VIEW", "support.workspace.view", "SUPPORT", "Support workspace", "Search customers and investigate complaints; no financial adjustments."),
   permission("DASHBOARD_VIEW", "dashboard.view", "DASHBOARD", "View dashboard", "View Admin dashboard summaries."),
   permission("STAFF_CREATE", "staff.create", "STAFF", "Create staff", "Create internal staff accounts.", "PRIVILEGED"),
   permission("STAFF_VIEW", "staff.view", "STAFF", "View staff", "View internal staff accounts."),

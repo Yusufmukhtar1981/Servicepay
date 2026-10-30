@@ -335,6 +335,7 @@ app.use(
 );
 app.use("/api/support", supportRoutes.customer);
 app.use("/api/admin/support", supportRoutes.admin);
+app.use("/api/admin/staff-workspace", require("./routes/staffWorkspace.routes"));
 
 app.use(
   "/api/wallet",

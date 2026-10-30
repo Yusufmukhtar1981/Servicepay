@@ -16,13 +16,14 @@ customer.post("/tickets/:id/replies", controller.customerReply);
 
 const admin = express.Router();
 admin.use(protect, loadStaffRole);
+admin.use(require("../middleware/workspaceScope.middleware"));
 admin.route("/ai-settings")
   .get(requirePermission(P.SUPPORT_VIEW), smart.getSettings)
-  .put(requirePermission(P.SUPPORT_RESOLVE), smart.updateSettings);
+  .put(requirePermission(P.SETTINGS_UPDATE), smart.updateSettings);
 admin.get("/ai-metrics", requirePermission(P.SUPPORT_VIEW), smart.metrics);
 admin.route("/ai-knowledge")
   .get(requirePermission(P.SUPPORT_VIEW), smart.getKnowledge)
-  .put(requirePermission(P.SUPPORT_RESOLVE), smart.updateKnowledge);
+  .put(requirePermission(P.SETTINGS_UPDATE), smart.updateKnowledge);
 admin.get("/ai-conversations", requirePermission(P.SUPPORT_VIEW), smart.conversations);
 admin.get("/ai-conversations/:id", requirePermission(P.SUPPORT_VIEW), smart.conversation);
 admin.get("/metrics", requirePermission(P.SUPPORT_VIEW), controller.metrics);

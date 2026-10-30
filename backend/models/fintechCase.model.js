@@ -19,7 +19,7 @@ const replySchema = new mongoose.Schema({
 const statusEventSchema = new mongoose.Schema({
   status: {
     type: String,
-    enum: ["OPEN", "IN_PROGRESS", "IN_REVIEW", "WAITING_ON_CUSTOMER", "RESOLVED", "REJECTED", "CLOSED"],
+    enum: ["OPEN", "IN_PROGRESS", "IN_REVIEW", "WAITING_ON_CUSTOMER", "RESOLVED", "REJECTED", "CLOSED", "ESCALATED"],
     required: true,
   },
   actorId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
@@ -47,7 +47,8 @@ const fintechCaseSchema = new mongoose.Schema({
   type: { type: String, required: true, enum: ["COMPLAINT", "CHARGEBACK", "MANUAL_RESOLUTION"], index: true },
   // IN_REVIEW, WAITING_ON_CUSTOMER and REJECTED are retained for existing
   // operational cases. IN_PROGRESS is the customer-support workflow value.
-  status: { type: String, enum: ["OPEN", "IN_PROGRESS", "IN_REVIEW", "WAITING_ON_CUSTOMER", "RESOLVED", "REJECTED", "CLOSED"], default: "OPEN", index: true },
+  status: { type: String, enum: ["OPEN", "IN_PROGRESS", "IN_REVIEW", "WAITING_ON_CUSTOMER", "RESOLVED", "REJECTED", "CLOSED", "ESCALATED"], default: "OPEN", index: true },
+  staffRequestFingerprint: { type: String, maxlength: 64, default: undefined },
   priority: { type: String, enum: ["LOW", "NORMAL", "HIGH", "URGENT"], default: "NORMAL", index: true },
   category: {
     type: String,
