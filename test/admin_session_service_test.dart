@@ -19,7 +19,8 @@ void main() {
     secureValues = <String, String>{};
     SharedPreferences.setMockInitialValues(<String, Object>{});
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(secureStorageChannel, (MethodCall call) async {
+        .setMockMethodCallHandler(secureStorageChannel,
+            (MethodCall call) async {
       final Map<dynamic, dynamic> arguments =
           call.arguments is Map ? call.arguments as Map : <dynamic, dynamic>{};
       final String key = arguments['key']?.toString() ?? '';
@@ -81,6 +82,56 @@ void main() {
     expect(prefs.getString('user_role'), 'STAFF');
     expect(prefs.getString('auth_token'), isNull);
   });
+
+  for (final int workspaceStatus in <int>[200, 403]) {
+    test(
+        'legacy production staff profile requires workspace proof $workspaceStatus',
+        () async {
+      expect(await SessionStore.writeSessionVerified('staff-token'), isTrue);
+      int probes = 0;
+      final AdminSessionService service = AdminSessionService(
+        client: MockClient((http.Request request) async {
+          expect(request.headers['authorization'], 'Bearer staff-token');
+          if (request.url.path == '/api/auth/profile') {
+            // Matches formatUser: staffRole is projected without scopeType.
+            return http.Response(
+                jsonEncode(<String, dynamic>{
+                  'user': <String, dynamic>{
+                    'role': 'STAFF',
+                    'status': 'ACTIVE',
+                    'isStaff': true,
+                    'jobTitle': 'CUSTOMER_SUPPORT',
+                    'staffRole': <String, dynamic>{
+                      'name': 'CUSTOMER_SUPPORT',
+                      'permissions': <String>['support.workspace.view'],
+                    },
+                    'permissions': <String>['support.workspace.view'],
+                  },
+                }),
+                200);
+          }
+          expect(request.method, 'GET');
+          expect(request.url.path, '/api/admin/staff-workspace/overview');
+          probes++;
+          return http.Response(
+            jsonEncode(<String, dynamic>{'success': workspaceStatus == 200}),
+            workspaceStatus,
+          );
+        }),
+      );
+      if (workspaceStatus == 200) {
+        final AdminAccess access = await service.refresh();
+        expect(access.isGlobalCustomerSupportStaff, isTrue);
+        expect(access.isFullAccess, isFalse);
+        expect(access.has(AdminPermissions.financeView), isFalse);
+      } else {
+        await expectLater(service.refresh(), throwsException);
+        final SharedPreferences prefs = await SharedPreferences.getInstance();
+        expect(prefs.getString('admin_access_scope'), isNull);
+      }
+      expect(probes, 1);
+    });
+  }
 
   test('expired authoritative profile clears admin session safely', () async {
     SharedPreferences.setMockInitialValues(<String, Object>{

@@ -58,10 +58,44 @@ class AdminSessionService {
             ? Map<String, dynamic>.from(data['user'] as Map)
             : data;
     final String status = user['status']?.toString().toUpperCase() ?? 'ACTIVE';
-    final AdminAccess access = AdminAccess.fromUser(user);
+    AdminAccess access = AdminAccess.fromUser(user);
     if (user.isEmpty || status != 'ACTIVE' || access.role.isEmpty) {
       await _clearSession();
       throw const AdminSessionExpiredException();
+    }
+
+    // Older production profile projections omit role scope. Do not infer
+    // GLOBAL from a job title or from missing branch information: the existing
+    // workspace API independently enforces GLOBAL scope and capability.
+    final String title = '${user['jobTitle'] ?? ''}'.toUpperCase();
+    final bool workspaceCandidate = access.role == 'STAFF' &&
+        user['isStaff'] == true &&
+        ((title == 'OPERATIONS_MANAGER' &&
+                access.permissions.contains('operations.workspace.view')) ||
+            (title == 'CUSTOMER_SUPPORT' &&
+                access.permissions.contains('support.workspace.view')));
+    if (workspaceCandidate &&
+        !access.isGlobalOperationsStaff &&
+        !access.isGlobalCustomerSupportStaff) {
+      final http.Response authorization = await _client.get(
+        Uri.parse('$baseUrl/admin/staff-workspace/overview'),
+        headers: <String, String>{
+          'Accept': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      ).timeout(const Duration(seconds: 15));
+      if (authorization.statusCode == 401) {
+        await _clearSession();
+        throw const AdminSessionExpiredException();
+      }
+      final dynamic evidence = authorization.statusCode == 200
+          ? jsonDecode(authorization.body)
+          : null;
+      if (evidence is! Map || evidence['success'] != true) {
+        throw Exception('Your operational workspace could not be authorized.');
+      }
+      user['accessScope'] = <String, dynamic>{'type': 'GLOBAL'};
+      access = AdminAccess.fromUser(user);
     }
 
     await prefs.setString('user_role', access.role);
