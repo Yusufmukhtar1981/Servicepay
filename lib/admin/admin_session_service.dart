@@ -74,7 +74,15 @@ class AdminSessionService {
                 access.permissions.contains('operations.workspace.view')) ||
             (title == 'CUSTOMER_SUPPORT' &&
                 access.permissions.contains('support.workspace.view')));
-    if (workspaceCandidate &&
+    // Some live profile projections omit the assigned STAFF role entirely.
+    // Only the protected server workspace response may recover its UI context.
+    final bool missingStaffProjection = access.role == 'STAFF' &&
+        user['isStaff'] == true &&
+        access.permissions.isEmpty &&
+        (title.isEmpty ||
+            title == 'OPERATIONS_MANAGER' ||
+            title == 'CUSTOMER_SUPPORT');
+    if ((workspaceCandidate || missingStaffProjection) &&
         !access.isGlobalOperationsStaff &&
         !access.isGlobalCustomerSupportStaff) {
       final http.Response authorization = await _client.get(
@@ -93,6 +101,31 @@ class AdminSessionService {
           : null;
       if (evidence is! Map || evidence['success'] != true) {
         throw Exception('Your operational workspace could not be authorized.');
+      }
+      final dynamic context = evidence['data'];
+      final String verifiedRole =
+          context is Map ? '${context['role'] ?? ''}'.trim().toUpperCase() : '';
+      final String? capability = switch (verifiedRole) {
+        'OPERATIONS_MANAGER' => AdminPermissions.operationsWorkspaceView,
+        'CUSTOMER_SUPPORT' => AdminPermissions.supportWorkspaceView,
+        _ => null,
+      };
+      if (capability == null ||
+          (title.isNotEmpty && title != verifiedRole) ||
+          access.scope['type'] == 'BRANCH' ||
+          access.scope['roleScopeType'] == 'BRANCH' ||
+          (verifiedRole == 'OPERATIONS_MANAGER' &&
+              (context is! Map || context['transactions'] is! Map))) {
+        throw Exception('Your operational workspace could not be authorized.');
+      }
+      if (missingStaffProjection) {
+        // UI visibility only, proven by this token's protected GLOBAL endpoint.
+        // Never synthesize Head Office or financial-administration permissions.
+        user['staffRole'] = <String, dynamic>{
+          'name': verifiedRole,
+          'permissions': <String>[capability],
+        };
+        user['permissions'] = <String>[capability];
       }
       user['accessScope'] = <String, dynamic>{'type': 'GLOBAL'};
       access = AdminAccess.fromUser(user);

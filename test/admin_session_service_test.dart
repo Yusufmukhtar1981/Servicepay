@@ -113,7 +113,10 @@ void main() {
           expect(request.url.path, '/api/admin/staff-workspace/overview');
           probes++;
           return http.Response(
-            jsonEncode(<String, dynamic>{'success': workspaceStatus == 200}),
+            jsonEncode(<String, dynamic>{
+              'success': workspaceStatus == 200,
+              'data': <String, dynamic>{'role': 'CUSTOMER_SUPPORT'},
+            }),
             workspaceStatus,
           );
         }),
@@ -129,6 +132,110 @@ void main() {
         expect(prefs.getString('admin_access_scope'), isNull);
       }
       expect(probes, 1);
+    });
+  }
+
+  for (final String roleName in <String>[
+    'CUSTOMER_SUPPORT',
+    'OPERATIONS_MANAGER',
+  ]) {
+    for (final bool authorized in <bool>[true, false]) {
+      test(
+          'unpopulated production STAFF profile $roleName authorized=$authorized',
+          () async {
+        await SessionStore.writeSessionVerified('unpopulated-staff-token');
+        int probes = 0;
+        final AdminSessionService service = AdminSessionService(
+          client: MockClient((http.Request request) async {
+            expect(request.headers['authorization'],
+                'Bearer unpopulated-staff-token');
+            if (request.url.path == '/api/auth/profile') {
+              return http.Response(
+                  jsonEncode(<String, dynamic>{
+                    'user': <String, dynamic>{
+                      'role': 'STAFF',
+                      'status': 'ACTIVE',
+                      'isStaff': true,
+                      'jobTitle': '',
+                      'staffRole': null,
+                      'permissions': <String>[],
+                    },
+                  }),
+                  200);
+            }
+            expect(request.method, 'GET');
+            expect(request.url.path, '/api/admin/staff-workspace/overview');
+            probes++;
+            return http.Response(
+                jsonEncode(<String, dynamic>{
+                  'success': authorized,
+                  'data': <String, dynamic>{
+                    'role': roleName,
+                    if (roleName == 'OPERATIONS_MANAGER')
+                      'transactions': <String, dynamic>{},
+                  },
+                }),
+                authorized ? 200 : 403);
+          }),
+        );
+        if (authorized) {
+          final AdminAccess access = await service.refresh();
+          expect(access.isGlobalCustomerSupportStaff,
+              roleName == 'CUSTOMER_SUPPORT');
+          expect(
+              access.isGlobalOperationsStaff, roleName == 'OPERATIONS_MANAGER');
+          expect(access.permissions, <String>{
+            roleName == 'CUSTOMER_SUPPORT'
+                ? AdminPermissions.supportWorkspaceView
+                : AdminPermissions.operationsWorkspaceView,
+          });
+          expect(access.isFullAccess, isFalse);
+          expect(access.has(AdminPermissions.staffCreate), isFalse);
+          expect(access.has(AdminPermissions.financeView), isFalse);
+        } else {
+          await expectLater(service.refresh(), throwsException);
+          expect(
+              (await SharedPreferences.getInstance())
+                  .getStringList('admin_effective_permissions'),
+              isNull);
+        }
+        expect(probes, 1);
+      });
+    }
+  }
+
+  for (final String unsupportedRole in <String>[
+    'HEAD_OFFICE',
+    'GENERAL_STAFF',
+    'OPERATIONS_MANAGER',
+  ]) {
+    test(
+        'workspace proof never invents unsupported capability $unsupportedRole',
+        () async {
+      await SessionStore.writeSessionVerified('staff-token');
+      final AdminSessionService service = AdminSessionService(
+        client: MockClient((http.Request request) async => http.Response(
+            jsonEncode(request.url.path == '/api/auth/profile'
+                ? <String, dynamic>{
+                    'user': <String, dynamic>{
+                      'role': 'STAFF',
+                      'isStaff': true,
+                      'permissions': <String>[],
+                    },
+                  }
+                : <String, dynamic>{
+                    'success': true,
+                    'data': <String, dynamic>{'role': unsupportedRole},
+                  }),
+            200)),
+      );
+      // OPERATIONS_MANAGER without the permission-gated operations payload
+      // must not gain operations visibility merely from a role name.
+      await expectLater(service.refresh(), throwsException);
+      expect(
+          (await SharedPreferences.getInstance())
+              .getStringList('admin_effective_permissions'),
+          isNull);
     });
   }
 
