@@ -15,10 +15,10 @@ import 'services/session_store.dart';
 class LoginScreen extends StatefulWidget {
   const LoginScreen({
     super.key,
-    BiometricAuthService? biometricService,
+    this.biometricService,
     this.returnToCaller = false,
     this.expectedCustomerId,
-  }) : biometricService = biometricService;
+  });
   final BiometricAuthService? biometricService;
   final bool returnToCaller;
   final String? expectedCustomerId;
@@ -80,7 +80,8 @@ class _LoginScreenState extends State<LoginScreen> {
           MaterialPageRoute(
             builder: (_) => authenticatedHomeForLogin(role,
                 mustChangePassword: result.user['mustChangePassword'] == true,
-                user: result.user),
+                user: result.user,
+                onRelogin: _reloginAction()),
           ),
           (_) => false,
         );
@@ -114,6 +115,39 @@ class _LoginScreenState extends State<LoginScreen> {
           backgroundColor: isError ? Colors.red.shade700 : primaryColor,
         ),
       );
+  }
+
+  VoidCallback _reloginAction() {
+    final NavigatorState navigator = Navigator.of(context);
+    return () => unawaited(_restartLogin(navigator));
+  }
+
+  Future<void> _restartLogin(NavigatorState navigator) async {
+    try {
+      await SessionStore.clear();
+      final SharedPreferences preferences =
+          await SharedPreferences.getInstance();
+      for (final String key in const <String>[
+        'must_change_password',
+        'forced_password_user_context',
+        'login_routing_context',
+        'user_id',
+        'user_name',
+        'user_phone',
+        'user_email',
+        'user_role',
+        'user_status',
+      ]) {
+        await preferences.remove(key);
+      }
+    } catch (_) {
+      // Continue to a safe sign-in screen even if local cleanup fails.
+    }
+    if (!navigator.mounted) return;
+    navigator.pushAndRemoveUntil(
+      MaterialPageRoute<void>(builder: (_) => const LoginScreen()),
+      (Route<dynamic> route) => false,
+    );
   }
 
   bool validateFields() {
@@ -247,6 +281,9 @@ class _LoginScreenState extends State<LoginScreen> {
       'accessToken',
       'jwt_token',
       'jwt',
+      'must_change_password',
+      'forced_password_user_context',
+      'login_routing_context',
     ];
 
     for (final String key in oldTokenKeys) {
@@ -302,6 +339,58 @@ class _LoginScreenState extends State<LoginScreen> {
       'user_status',
       user['status']?.toString() ?? 'ACTIVE',
     );
+
+    const List<String> routingKeys = <String>[
+      '_id',
+      'id',
+      'role',
+      'effectiveRole',
+      'isStaff',
+      'status',
+      'jobTitle',
+      'staffRoleId',
+      'staffRole',
+      'permissions',
+      'branchStaffPermissions',
+      'branchManagerPermissions',
+      'branchId',
+      'branch_id',
+      'branch',
+      'accessScope',
+      'scopeType',
+      'businessPartnerId',
+      'riderId',
+      'rider_id',
+      'riderVerificationStatus',
+      'verificationStatus',
+    ];
+    final Map<String, dynamic> routingContext = <String, dynamic>{
+      for (final String key in routingKeys)
+        if (user.containsKey(key)) key: user[key],
+    };
+    final String encodedRoutingContext = jsonEncode(routingContext);
+    await prefs.setString('login_routing_context', encodedRoutingContext);
+    final bool mustChangePassword = user['mustChangePassword'] == true;
+    if (mustChangePassword) {
+      final bool contextSaved = await prefs.setString(
+        'forced_password_user_context',
+        encodedRoutingContext,
+      );
+      final bool flagSaved = await prefs.setBool('must_change_password', true);
+      if (!contextSaved ||
+          !flagSaved ||
+          prefs.getBool('must_change_password') != true ||
+          prefs.getString('forced_password_user_context') == null) {
+        await SessionStore.clear();
+        await prefs.remove('must_change_password');
+        await prefs.remove('forced_password_user_context');
+        throw Exception(
+            'The required password-change session could not be saved. Please sign in again.');
+      }
+    } else {
+      await prefs.remove('forced_password_user_context');
+      await prefs.setBool('must_change_password', false);
+    }
 
     await prefs.setString(
       'rider_id',
@@ -508,7 +597,8 @@ class _LoginScreenState extends State<LoginScreen> {
       if (widget.returnToCaller &&
           (user['role'] != 'CUSTOMER' ||
               (widget.expectedCustomerId != null &&
-                  (user['_id'] ?? user['id']).toString() != widget.expectedCustomerId))) {
+                  (user['_id'] ?? user['id']).toString() !=
+                      widget.expectedCustomerId))) {
         throw Exception('Sign in with the same customer account to continue.');
       }
       await saveLoginData(
@@ -516,7 +606,8 @@ class _LoginScreenState extends State<LoginScreen> {
         user,
       );
       await SessionStore.writeSession(token,
-          refreshToken: result['refreshToken'] is String ? result['refreshToken'] : null);
+          refreshToken:
+              result['refreshToken'] is String ? result['refreshToken'] : null);
 
       if (!mounted) {
         return;
@@ -527,7 +618,7 @@ class _LoginScreenState extends State<LoginScreen> {
         isError: false,
       );
 
-      if (widget.returnToCaller) {
+      if (widget.returnToCaller && user['mustChangePassword'] != true) {
         Navigator.of(context).pop(true);
         return;
       }
@@ -539,7 +630,8 @@ class _LoginScreenState extends State<LoginScreen> {
           ) {
             return authenticatedHomeForLogin(role,
                 mustChangePassword: user['mustChangePassword'] == true,
-                user: user);
+                user: user,
+                onRelogin: _reloginAction());
           },
         ),
         (

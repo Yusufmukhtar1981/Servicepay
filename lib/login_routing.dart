@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'main_navigation.dart' deferred as customer;
 import 'rider/rider_main_navigation.dart' deferred as rider;
-import 'role_dashboard_screen.dart' deferred as roleHome;
+import 'role_dashboard_screen.dart' deferred as role_home;
 import 'solar_officer/solar_officer_dashboard_screen.dart' deferred as solar;
 import 'phone_financing_officer/phone_financing_officer_dashboard_screen.dart'
     deferred as financing;
@@ -225,19 +225,21 @@ Widget authenticatedHomeForRole(
           builder: () => branch.BranchManagerDashboardScreen());
     default:
       return DeferredScreen(
-          load: roleHome.loadLibrary,
+          load: role_home.loadLibrary,
           builder: () =>
-              roleHome.RoleDashboardScreen(role: normalizeLoginRole(role)));
+              role_home.RoleDashboardScreen(role: normalizeLoginRole(role)));
   }
 }
 
 Widget authenticatedHomeForLogin(String role,
         {required bool mustChangePassword,
-        Map<String, dynamic> user = const <String, dynamic>{}}) =>
+        Map<String, dynamic> user = const <String, dynamic>{},
+        VoidCallback? onRelogin}) =>
     mustChangePassword
         ? ForcedPasswordChangeScreen(
             role: normalizeLoginRole(role),
             staffUser: user,
+            onRelogin: onRelogin,
           )
         : authenticatedHomeForRole(role, user: user);
 

@@ -83,13 +83,18 @@ class SessionStore {
     await writeSession(token);
   }
 
-  static Future<bool> writeSession(String token, {
-    String? refreshToken, String? expectedAccessToken,
+  static Future<bool> writeSession(
+    String token, {
+    String? refreshToken,
+    String? expectedAccessToken,
   }) async {
     if (token.trim().isEmpty) throw ArgumentError('Token cannot be empty');
     var applied = false;
     Future<void> apply() async {
-      if (expectedAccessToken != null && _memoryFallback != expectedAccessToken) return;
+      if (expectedAccessToken != null &&
+          _memoryFallback != expectedAccessToken) {
+        return;
+      }
       _generation++;
       final migration = _migration;
       if (migration != null) await migration;
@@ -113,6 +118,7 @@ class SessionStore {
       }
       applied = true;
     }
+
     final wasPending = _writeCount > 0;
     _writeCount++;
     final operation = (wasPending ? _writes.then((_) => apply()) : apply())
@@ -120,6 +126,58 @@ class SessionStore {
     _writes = operation.catchError((Object _) {});
     await operation;
     return applied;
+  }
+
+  /// Writes and reads back the encrypted access token before reporting
+  /// success. Forced password changes use this path because the old temporary
+  /// token is invalidated by the server as soon as the password is changed.
+  static Future<bool> writeSessionVerified(
+    String token, {
+    String? refreshToken,
+  }) async {
+    final String value = token.trim();
+    if (value.isEmpty) return false;
+    var persisted = false;
+    Future<void> apply() async {
+      _generation++;
+      final Future<void>? migration = _migration;
+      if (migration != null) await migration;
+      try {
+        await _storage.write(key: _tokenKey, value: value);
+        if (await _storage.read(key: _tokenKey) != value) return;
+        if (refreshToken == null) {
+          await _storage.delete(key: _refreshKey);
+        } else {
+          await _storage.write(key: _refreshKey, value: refreshToken);
+          if (await _storage.read(key: _refreshKey) != refreshToken) return;
+        }
+        final SharedPreferences prefs = await SharedPreferences.getInstance();
+        final bool marked = await prefs.setBool(_secureSessionMarker, true);
+        if (!marked || prefs.getBool(_secureSessionMarker) != true) return;
+        for (final String key in const <String>[
+          'auth_token',
+          'access_token',
+          'token',
+        ]) {
+          await prefs.remove(key);
+        }
+        _memoryFallback = value;
+        _refreshFallback = refreshToken;
+        persisted = true;
+      } catch (_) {
+        // The previous temporary token must never be mistaken for a renewed
+        // durable session when secure storage is unavailable.
+      }
+    }
+
+    final bool wasPending = _writeCount > 0;
+    _writeCount++;
+    final Future<void> operation =
+        (wasPending ? _writes.then((_) => apply()) : apply())
+            .whenComplete(() => _writeCount--);
+    _writes = operation.catchError((Object _) {});
+    await operation;
+    return persisted;
   }
 
   static Future<void> clear() async {

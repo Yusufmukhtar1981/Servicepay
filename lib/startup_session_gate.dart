@@ -58,6 +58,9 @@ class _StartupSessionGateState extends State<StartupSessionGate> {
     'user_role',
     'user_status',
     'wallet_balance',
+    'must_change_password',
+    'forced_password_user_context',
+    'login_routing_context',
   ];
 
   late final http.Client _client;
@@ -119,6 +122,48 @@ class _StartupSessionGateState extends State<StartupSessionGate> {
     });
   }
 
+  Future<void> _showStoredPasswordChangeGate(
+    SharedPreferences preferences,
+    int generation,
+  ) async {
+    final String encodedContext =
+        preferences.getString('login_routing_context') ??
+            preferences.getString('forced_password_user_context') ??
+            '';
+    Map<String, dynamic> user = <String, dynamic>{};
+    try {
+      user = _asMap(jsonDecode(encodedContext));
+    } catch (_) {
+      user = <String, dynamic>{};
+    }
+    final String role = loginRoleFromResponse(user, user);
+    final String status =
+        user['status']?.toString().trim().toUpperCase() ?? 'ACTIVE';
+    if (user.isEmpty ||
+        role.isEmpty ||
+        _adminRoles.contains(role) ||
+        status != 'ACTIVE') {
+      await _clearLocalSession(preferences);
+      _showLoggedOut();
+      return;
+    }
+    await preferences.setString(
+      'forced_password_user_context',
+      jsonEncode(user),
+    );
+    await preferences.setBool('must_change_password', true);
+    if (!mounted || generation != _requestGeneration) return;
+    setState(() {
+      _authenticatedHome = authenticatedHomeForLogin(
+        role,
+        mustChangePassword: true,
+        user: user,
+        onRelogin: () => unawaited(_signOut()),
+      );
+      _state = StartupSessionState.authenticated;
+    });
+  }
+
   Future<void> _restoreSession() async {
     if (_requestInFlight) return;
     _requestInFlight = true;
@@ -131,6 +176,43 @@ class _StartupSessionGateState extends State<StartupSessionGate> {
           await RiderAuthSession.token(preferences: preferences);
       if (token.isEmpty) {
         _showLoggedOut();
+        return;
+      }
+
+      if (preferences.getBool('must_change_password') == true) {
+        final String encodedContext =
+            preferences.getString('forced_password_user_context') ??
+                preferences.getString('login_routing_context') ??
+                '';
+        Map<String, dynamic> forcedUser = <String, dynamic>{};
+        try {
+          forcedUser = _asMap(jsonDecode(encodedContext));
+        } catch (_) {
+          forcedUser = <String, dynamic>{};
+        }
+        final String forcedRole = loginRoleFromResponse(forcedUser, forcedUser);
+        final String forcedStatus =
+            forcedUser['status']?.toString().trim().toUpperCase() ?? 'ACTIVE';
+        if (forcedUser.isEmpty ||
+            forcedRole.isEmpty ||
+            _adminRoles.contains(forcedRole) ||
+            forcedStatus != 'ACTIVE') {
+          await _clearLocalSession(preferences);
+          _showLoggedOut();
+          return;
+        }
+        await preferences.setString('user_role', forcedRole);
+        await preferences.setString('user_status', forcedStatus);
+        if (!mounted || generation != _requestGeneration) return;
+        setState(() {
+          _authenticatedHome = authenticatedHomeForLogin(
+            forcedRole,
+            mustChangePassword: true,
+            user: forcedUser,
+            onRelogin: () => unawaited(_signOut()),
+          );
+          _state = StartupSessionState.authenticated;
+        });
         return;
       }
 
@@ -147,6 +229,19 @@ class _StartupSessionGateState extends State<StartupSessionGate> {
         await _clearLocalSession(preferences);
         _showLoggedOut();
         return;
+      }
+      if (response.statusCode == 403) {
+        Map<String, dynamic> body = <String, dynamic>{};
+        try {
+          body = _asMap(jsonDecode(response.body));
+        } catch (_) {
+          body = <String, dynamic>{};
+        }
+        if (body['code']?.toString().trim().toUpperCase() ==
+            'PASSWORD_CHANGE_REQUIRED') {
+          await _showStoredPasswordChangeGate(preferences, generation);
+          return;
+        }
       }
       if (response.statusCode < 200 || response.statusCode >= 300) {
         _showRecoverableError();
@@ -172,13 +267,20 @@ class _StartupSessionGateState extends State<StartupSessionGate> {
 
       await preferences.setString('user_role', role);
       await preferences.setString('user_status', status);
+      final bool mustChangePassword = profile['mustChangePassword'] == true;
+      if (mustChangePassword) {
+        final String context = jsonEncode(profile);
+        await preferences.setString('forced_password_user_context', context);
+        await preferences.setBool('must_change_password', true);
+      }
       if (!mounted || generation != _requestGeneration) return;
       setState(() {
         _authenticatedHome = widget.authenticatedHomeOverride ??
             authenticatedHomeForLogin(
               role,
-              mustChangePassword: profile['mustChangePassword'] == true,
+              mustChangePassword: mustChangePassword,
               user: profile,
+              onRelogin: () => unawaited(_signOut()),
             );
         _state = StartupSessionState.authenticated;
       });
