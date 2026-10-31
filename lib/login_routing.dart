@@ -9,6 +9,7 @@ import 'phone_financing_officer/phone_financing_officer_dashboard_screen.dart'
 import 'business_partner/business_partner_dashboard_screen.dart'
     deferred as partner;
 import 'admin/main_navigation.dart' deferred as admin;
+import 'admin/admin_session_service.dart';
 import 'branch_manager/branch_manager_dashboard_screen.dart' deferred as branch;
 import 'branch_manager/branch_counter_screen.dart' deferred as branch_counter;
 import 'forced_password_change_screen.dart';
@@ -155,9 +156,66 @@ String branchAssignmentId(Map<String, dynamic> user) {
 String verifiedSessionActorId(Map<String, dynamic> user) =>
     '${user['_id'] ?? user['id'] ?? ''}'.trim();
 
+String? globalStaffWorkspaceForRole(
+  String role,
+  Map<String, dynamic> user,
+) {
+  if (normalizeLoginRole(role) != 'STAFF' || user['isStaff'] != true) {
+    return null;
+  }
+  final String jobTitle = normalizeLoginRole(user['jobTitle']);
+  if (jobTitle != 'OPERATIONS_MANAGER' && jobTitle != 'CUSTOMER_SUPPORT') {
+    return null;
+  }
+
+  final dynamic roleReference = user['staffRoleId'] ?? user['staffRole'];
+  final Map<String, dynamic> staffRole = _mapFromDynamic(roleReference);
+  final Map<String, dynamic> nestedRoleScope =
+      _mapFromDynamic(staffRole['scope']);
+  final Map<String, dynamic> accessScope =
+      _mapFromDynamic(user['accessScope']);
+  final List<dynamic> declaredScopeValues = <dynamic>[
+    staffRole['scopeType'],
+    nestedRoleScope['type'],
+    accessScope['type'],
+    user['scopeType'],
+  ];
+  final List<String> declaredScopes = declaredScopeValues
+      .whereType<String>()
+      .map(normalizeLoginRole)
+      .where((String value) => value.isNotEmpty)
+      .toList();
+  if (!declaredScopes.contains('GLOBAL') ||
+      declaredScopes.contains('BRANCH')) {
+    return null;
+  }
+
+  final List<dynamic> permissionSources = <dynamic>[
+    user['permissions'],
+    staffRole['permissions'],
+    _mapFromDynamic(user['staffRole'])['permissions'],
+  ];
+  final Set<String> permissions = permissionSources
+      .whereType<List>()
+      .expand((List<dynamic> values) => values)
+      .map((dynamic value) => value.toString().trim().toLowerCase())
+      .where((String value) => value.isNotEmpty)
+      .toSet();
+  if (jobTitle == 'OPERATIONS_MANAGER' &&
+      permissions.contains('operations.workspace.view')) {
+    return 'OPERATIONS';
+  }
+  if (jobTitle == 'CUSTOMER_SUPPORT' &&
+      permissions.contains('support.workspace.view')) {
+    return 'SUPPORT';
+  }
+  return null;
+}
+
 Widget authenticatedHomeForRole(
   String role, {
   Map<String, dynamic> user = const <String, dynamic>{},
+  AdminSessionService? adminSessionService,
 }) {
   switch (normalizeLoginRole(role)) {
     case 'DELIVERY_RIDER':
@@ -185,7 +243,9 @@ Widget authenticatedHomeForRole(
     case 'SUPER_ADMIN':
     case 'ADMIN':
       return DeferredScreen(
-          load: admin.loadLibrary, builder: () => admin.AdminMainNavigation());
+          load: admin.loadLibrary,
+          builder: () =>
+              admin.AdminMainNavigation(sessionService: adminSessionService));
     case 'STAFF':
       if (isBranchDeliveryStaffAccess(role, user)) {
         final List<String> permissions = branchPermissionsForUser(user);
@@ -214,8 +274,19 @@ Widget authenticatedHomeForRole(
           ),
         );
       }
+      final String? workspace = globalStaffWorkspaceForRole(role, user);
+      final String? initialDestination = switch (workspace) {
+        'OPERATIONS' => 'Operations overview',
+        'SUPPORT' => 'Customer support desk',
+        _ => null,
+      };
       return DeferredScreen(
-          load: admin.loadLibrary, builder: () => admin.AdminMainNavigation());
+        load: admin.loadLibrary,
+        builder: () => admin.AdminMainNavigation(
+          sessionService: adminSessionService,
+          initialDestinationLabel: initialDestination,
+        ),
+      );
     case 'SVP':
       return DeferredScreen(
           load: svp.loadLibrary, builder: () => svp.SvpCommandCenterScreen());
@@ -234,6 +305,7 @@ Widget authenticatedHomeForRole(
 Widget authenticatedHomeForLogin(String role,
         {required bool mustChangePassword,
         Map<String, dynamic> user = const <String, dynamic>{},
+        AdminSessionService? adminSessionService,
         VoidCallback? onRelogin}) =>
     mustChangePassword
         ? ForcedPasswordChangeScreen(
@@ -241,7 +313,11 @@ Widget authenticatedHomeForLogin(String role,
             staffUser: user,
             onRelogin: onRelogin,
           )
-        : authenticatedHomeForRole(role, user: user);
+        : authenticatedHomeForRole(
+            role,
+            user: user,
+            adminSessionService: adminSessionService,
+          );
 
 Map<String, dynamic> _mapFromDynamic(dynamic value) {
   return value is Map ? Map<String, dynamic>.from(value) : <String, dynamic>{};

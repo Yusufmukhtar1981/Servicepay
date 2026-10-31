@@ -32,6 +32,8 @@ abstract final class AdminPermissions {
   static const amanaView = 'amana.view';
   static const airtimeToCashView = 'airtime_to_cash.view';
   static const supportView = 'support.view';
+  static const operationsWorkspaceView = 'operations.workspace.view';
+  static const supportWorkspaceView = 'support.workspace.view';
   static const kycView = 'kyc.view';
   static const trustView = 'trust.view';
   static const notificationsView = 'notifications.view';
@@ -126,6 +128,36 @@ class AdminAccess {
       _fullAccessRoles.contains(role.toUpperCase()) ||
       permissions.contains('*');
 
+  bool get isHeadOffice => _fullAccessRoles.contains(role.toUpperCase());
+
+  bool get isGlobalOperationsManager =>
+      _isGlobalStaffWithTitle('OPERATIONS_MANAGER');
+
+  bool get isGlobalCustomerSupportRole =>
+      _isGlobalStaffWithTitle('CUSTOMER_SUPPORT');
+
+  bool get isGlobalOperationsStaff =>
+      isGlobalOperationsManager &&
+      permissions.contains(AdminPermissions.operationsWorkspaceView);
+
+  bool get isGlobalCustomerSupportStaff =>
+      isGlobalCustomerSupportRole &&
+      permissions.contains(AdminPermissions.supportWorkspaceView);
+
+  bool _isGlobalStaffWithTitle(String title) {
+    if (role.toUpperCase() != 'STAFF' ||
+        scope['isStaff'] != true ||
+        scope['jobTitle']?.toString().trim().toUpperCase() != title) {
+      return false;
+    }
+    final Set<String> declaredScopes = <String>{
+      scope['type']?.toString().trim().toUpperCase() ?? '',
+      scope['roleScopeType']?.toString().trim().toUpperCase() ?? '',
+    }..remove('');
+    return declaredScopes.contains('GLOBAL') &&
+        !declaredScopes.contains('BRANCH');
+  }
+
   bool has(String permission) {
     if (isFullAccess || permissions.contains(permission)) return true;
     const Map<String, String> legacy = <String, String>{
@@ -143,8 +175,19 @@ class AdminAccess {
   bool hasAny(Iterable<String> required) => isFullAccess || required.any(has);
 
   static AdminAccess fromUser(Map<String, dynamic> user) {
+    final dynamic staffRoleReference =
+        user['staffRoleId'] ?? user['staffRole'];
+    final Map<String, dynamic> staffRole = staffRoleReference is Map
+        ? Map<String, dynamic>.from(staffRoleReference)
+        : <String, dynamic>{};
+    final dynamic directPermissions = user['permissions'];
     final dynamic rawPermissions =
-        user['permissions'] ?? (user['staffRole'] as Map?)?['permissions'];
+        directPermissions is List && directPermissions.isNotEmpty
+            ? directPermissions
+            : staffRole['permissions'] ??
+                (user['staffRole'] is Map
+                    ? (user['staffRole'] as Map)['permissions']
+                    : null);
     final Set<String> permissions = rawPermissions is List
         ? rawPermissions
             .map((dynamic value) => value.toString().trim())
@@ -152,14 +195,37 @@ class AdminAccess {
             .toSet()
         : <String>{};
     final dynamic rawScope = user['accessScope'];
+    final Map<String, dynamic> scope = rawScope is Map
+        ? Map<String, dynamic>.from(rawScope)
+        : <String, dynamic>{};
+    final Map<String, dynamic> nestedRoleScope = staffRole['scope'] is Map
+        ? Map<String, dynamic>.from(staffRole['scope'] as Map)
+        : <String, dynamic>{};
+    final String roleScopeType = (staffRole['scopeType'] ??
+            nestedRoleScope['type'] ??
+            '')
+        .toString()
+        .trim()
+        .toUpperCase();
+    final String userScopeType =
+        (scope['type'] ?? scope['scopeType'] ?? user['scopeType'] ?? '')
+            .toString()
+            .trim()
+            .toUpperCase();
+    if (userScopeType.isEmpty && roleScopeType.isNotEmpty) {
+      scope['type'] = roleScopeType;
+    }
+    if (roleScopeType.isNotEmpty) scope['roleScopeType'] = roleScopeType;
+    final String jobTitle =
+        user['jobTitle']?.toString().trim().toUpperCase() ?? '';
+    if (jobTitle.isNotEmpty) scope['jobTitle'] = jobTitle;
+    if (user['isStaff'] == true) scope['isStaff'] = true;
     final String role =
         (user['role'] ?? user['effectiveRole'] ?? '').toString().toUpperCase();
     return AdminAccess(
       role: role,
       permissions: permissions,
-      scope: rawScope is Map
-          ? Map<String, dynamic>.from(rawScope)
-          : const <String, dynamic>{},
+      scope: scope,
     );
   }
 }

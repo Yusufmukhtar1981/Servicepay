@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'admin_permissions.dart';
+import '../services/session_store.dart';
 
 class AdminSessionExpiredException implements Exception {
   const AdminSessionExpiredException();
@@ -26,7 +27,7 @@ class AdminSessionService {
 
   Future<AdminAccess> refresh() async {
     final SharedPreferences prefs = await preferencesLoader();
-    final String token = prefs.getString('auth_token')?.trim() ?? '';
+    final String token = (await SessionStore.readToken())?.trim() ?? '';
     if (token.isEmpty) throw const AdminSessionExpiredException();
 
     final http.Response response = await _client.get(
@@ -37,7 +38,7 @@ class AdminSessionService {
       },
     );
     if (response.statusCode == 401 || response.statusCode == 403) {
-      await AdminSessionStore.clearSession();
+      await _clearSession();
       throw const AdminSessionExpiredException();
     }
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -59,7 +60,7 @@ class AdminSessionService {
     final String status = user['status']?.toString().toUpperCase() ?? 'ACTIVE';
     final AdminAccess access = AdminAccess.fromUser(user);
     if (user.isEmpty || status != 'ACTIVE' || access.role.isEmpty) {
-      await AdminSessionStore.clearSession();
+      await _clearSession();
       throw const AdminSessionExpiredException();
     }
 
@@ -67,5 +68,10 @@ class AdminSessionService {
     await prefs.setString('user_status', status);
     await AdminSessionStore.saveAccess(access);
     return access;
+  }
+
+  Future<void> _clearSession() async {
+    await SessionStore.clear();
+    await AdminSessionStore.clearSession();
   }
 }

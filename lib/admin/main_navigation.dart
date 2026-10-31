@@ -21,6 +21,7 @@ import 'admin_solar_screen.dart';
 import 'admin_permissions.dart';
 import 'admin_roles_permissions_screen.dart';
 import 'admin_session_service.dart';
+import 'admin_staff_workspace_screens.dart';
 import 'login_screen.dart';
 import 'executive_management_screen.dart';
 import 'admin_feature_controls_screen.dart';
@@ -32,14 +33,41 @@ class AdminMainNavigation extends StatefulWidget {
     super.key,
     this.sessionService,
     this.initialDestinationLabel,
+    this.destinationOverrides = const <String, Widget>{},
   });
 
   final AdminSessionService? sessionService;
   final String? initialDestinationLabel;
+  @visibleForTesting
+  final Map<String, Widget> destinationOverrides;
 
   static List<String> visibleDestinationLabels(AdminAccess access) {
     return _AdminMainNavigationState.destinations
-        .where((_AdminDestination item) =>
+        .where((_AdminDestination item) {
+      final bool isWorkspace = item.label == 'Operations overview' ||
+          item.label == 'Customer support desk';
+      if (item.label == 'Dashboard' &&
+          (access.isGlobalOperationsManager ||
+              access.isGlobalCustomerSupportRole)) {
+        return false;
+      }
+      if (item.label == 'Operations overview' &&
+          !access.isHeadOffice &&
+          !access.isGlobalOperationsStaff) {
+        return false;
+      }
+      if (item.label == 'Customer support desk' &&
+          !access.isHeadOffice &&
+          !access.isGlobalCustomerSupportStaff) {
+        return false;
+      }
+      if (!access.isHeadOffice &&
+          (access.isGlobalOperationsStaff ||
+              access.isGlobalCustomerSupportStaff) &&
+          !isWorkspace) {
+        return false;
+      }
+      return
             (item.label != 'Executive Management' ||
                 (const {
                       'HEAD_OFFICE',
@@ -49,7 +77,8 @@ class AdminMainNavigation extends StatefulWidget {
                     }.contains(access.role) &&
                     access.isFullAccess)) &&
             access.hasAny(item.permissions) &&
-            (item.label != 'Control' || access.role == 'HEAD_OFFICE'))
+            (item.label != 'Control' || access.role == 'HEAD_OFFICE');
+    })
         .map((_AdminDestination item) => item.label)
         .toList();
   }
@@ -61,6 +90,7 @@ class AdminMainNavigation extends StatefulWidget {
 class _AdminMainNavigationState extends State<AdminMainNavigation>
     with WidgetsBindingObserver {
   int currentIndex = 0;
+  final Set<String> _visitedDestinationLabels = <String>{};
   AdminAccess? access;
   String? refreshError;
   late final AdminSessionService sessionService;
@@ -74,6 +104,18 @@ class _AdminMainNavigationState extends State<AdminMainNavigation>
         Icons.dashboard_rounded,
         <String>[AdminPermissions.dashboardView],
         AdminDashboardScreen()),
+    _AdminDestination(
+        'Operations overview',
+        Icons.monitor_heart_outlined,
+        Icons.monitor_heart_rounded,
+        <String>[AdminPermissions.operationsWorkspaceView],
+        OperationsManagerDashboard()),
+    _AdminDestination(
+        'Customer support desk',
+        Icons.manage_search_outlined,
+        Icons.manage_search_rounded,
+        <String>[AdminPermissions.supportWorkspaceView],
+        CustomerSupportDashboard()),
     _AdminDestination(
         'Executive Management',
         Icons.insights_outlined,
@@ -247,7 +289,12 @@ class _AdminMainNavigationState extends State<AdminMainNavigation>
                 item.label == widget.initialDestinationLabel);
         setState(() {
           access = value;
-          if (requestedIndex >= 0) currentIndex = requestedIndex;
+          currentIndex = requestedIndex >= 0
+              ? requestedIndex
+              : (currentIndex < allowed.length ? currentIndex : 0);
+          if (allowed.isNotEmpty) {
+            _visitedDestinationLabels.add(allowed[currentIndex].label);
+          }
         });
       }
     } on AdminSessionExpiredException {
@@ -261,6 +308,14 @@ class _AdminMainNavigationState extends State<AdminMainNavigation>
         setState(() => refreshError = 'Unable to refresh your admin session.');
       }
     }
+  }
+
+  void _selectDestination(int index, List<_AdminDestination> allowed) {
+    if (index < 0 || index >= allowed.length) return;
+    setState(() {
+      currentIndex = index;
+      _visitedDestinationLabels.add(allowed[index].label);
+    });
   }
 
   @override
@@ -294,18 +349,21 @@ class _AdminMainNavigationState extends State<AdminMainNavigation>
       );
     }
     if (currentIndex >= allowed.length) currentIndex = 0;
+    if (allowed.isNotEmpty) {
+      _visitedDestinationLabels.add(allowed[currentIndex].label);
+    }
     final int executiveIndex = allowed.indexWhere(
         (_AdminDestination item) => item.label == 'Executive Management');
     final int dashboardIndex = allowed
         .indexWhere((_AdminDestination item) => item.label == 'Dashboard');
     void openAdminDashboard() {
       if (dashboardIndex < 0) return;
-      setState(() => currentIndex = dashboardIndex);
+      _selectDestination(dashboardIndex, allowed);
     }
 
     void openExecutiveManagement({bool createSvp = false}) {
       if (executiveIndex < 0) return;
-      setState(() => currentIndex = executiveIndex);
+      _selectDestination(executiveIndex, allowed);
       if (createSvp) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           executiveManagementKey.currentState?.openCreate();
@@ -321,12 +379,16 @@ class _AdminMainNavigationState extends State<AdminMainNavigation>
             _DesktopAdminNavigation(
               destinations: allowed,
               currentIndex: currentIndex,
-              onSelect: (index) => setState(() => currentIndex = index),
+              onSelect: (index) => _selectDestination(index, allowed),
             ),
           Expanded(
             child: IndexedStack(
               index: currentIndex,
               children: allowed.map((_AdminDestination item) {
+                if (!access!.isHeadOffice &&
+                    !_visitedDestinationLabels.contains(item.label)) {
+                  return const SizedBox.shrink();
+                }
                 if (item.label == 'Dashboard') {
                   return AdminDashboardScreen(
                     showExecutiveManagement: executiveIndex >= 0,
@@ -340,7 +402,7 @@ class _AdminMainNavigationState extends State<AdminMainNavigation>
                     onBackToAdminDashboard: openAdminDashboard,
                   );
                 }
-                return item.page;
+                return widget.destinationOverrides[item.label] ?? item.page;
               }).toList(),
             ),
           ),
@@ -351,7 +413,7 @@ class _AdminMainNavigationState extends State<AdminMainNavigation>
           : _MobileAdminNavigation(
               destinations: allowed,
               currentIndex: currentIndex,
-              onSelect: (index) => setState(() => currentIndex = index),
+              onSelect: (index) => _selectDestination(index, allowed),
             ),
     );
   }
