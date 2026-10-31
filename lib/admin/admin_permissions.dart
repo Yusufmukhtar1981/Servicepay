@@ -2,6 +2,22 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// Assigned role metadata takes precedence over the optional legacy job title.
+/// This identifies a role only; permissions and server scope still authorize it.
+String assignedStaffRoleName(Map<String, dynamic> user) {
+  for (final dynamic reference in <dynamic>[
+    user['staffRoleId'],
+    user['staffRole'],
+  ]) {
+    if (reference is Map) {
+      final String name =
+          reference['name']?.toString().trim().toUpperCase() ?? '';
+      if (name.isNotEmpty) return name;
+    }
+  }
+  return user['jobTitle']?.toString().trim().toUpperCase() ?? '';
+}
+
 abstract final class AdminPermissions {
   static const dashboardView = 'dashboard.view';
   static const staffCreate = 'staff.create';
@@ -147,7 +163,11 @@ class AdminAccess {
   bool _isGlobalStaffWithTitle(String title) {
     if (role.toUpperCase() != 'STAFF' ||
         scope['isStaff'] != true ||
-        scope['jobTitle']?.toString().trim().toUpperCase() != title) {
+        (scope['staffRoleName'] ?? scope['jobTitle'])
+                ?.toString()
+                .trim()
+                .toUpperCase() !=
+            title) {
       return false;
     }
     final Set<String> declaredScopes = <String>{
@@ -175,8 +195,7 @@ class AdminAccess {
   bool hasAny(Iterable<String> required) => isFullAccess || required.any(has);
 
   static AdminAccess fromUser(Map<String, dynamic> user) {
-    final dynamic staffRoleReference =
-        user['staffRoleId'] ?? user['staffRole'];
+    final dynamic staffRoleReference = user['staffRoleId'] ?? user['staffRole'];
     final Map<String, dynamic> staffRole = staffRoleReference is Map
         ? Map<String, dynamic>.from(staffRoleReference)
         : <String, dynamic>{};
@@ -201,12 +220,11 @@ class AdminAccess {
     final Map<String, dynamic> nestedRoleScope = staffRole['scope'] is Map
         ? Map<String, dynamic>.from(staffRole['scope'] as Map)
         : <String, dynamic>{};
-    final String roleScopeType = (staffRole['scopeType'] ??
-            nestedRoleScope['type'] ??
-            '')
-        .toString()
-        .trim()
-        .toUpperCase();
+    final String roleScopeType =
+        (staffRole['scopeType'] ?? nestedRoleScope['type'] ?? '')
+            .toString()
+            .trim()
+            .toUpperCase();
     final String userScopeType =
         (scope['type'] ?? scope['scopeType'] ?? user['scopeType'] ?? '')
             .toString()
@@ -219,6 +237,8 @@ class AdminAccess {
     final String jobTitle =
         user['jobTitle']?.toString().trim().toUpperCase() ?? '';
     if (jobTitle.isNotEmpty) scope['jobTitle'] = jobTitle;
+    final String assignedRole = assignedStaffRoleName(user);
+    if (assignedRole.isNotEmpty) scope['staffRoleName'] = assignedRole;
     if (user['isStaff'] == true) scope['isStaff'] = true;
     final String role =
         (user['role'] ?? user['effectiveRole'] ?? '').toString().toUpperCase();

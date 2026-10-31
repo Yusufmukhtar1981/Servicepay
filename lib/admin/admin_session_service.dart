@@ -67,7 +67,7 @@ class AdminSessionService {
     // Older production profile projections omit role scope. Do not infer
     // GLOBAL from a job title or from missing branch information: the existing
     // workspace API independently enforces GLOBAL scope and capability.
-    final String title = '${user['jobTitle'] ?? ''}'.toUpperCase();
+    final String title = assignedStaffRoleName(user);
     final bool workspaceCandidate = access.role == 'STAFF' &&
         user['isStaff'] == true &&
         ((title == 'OPERATIONS_MANAGER' &&

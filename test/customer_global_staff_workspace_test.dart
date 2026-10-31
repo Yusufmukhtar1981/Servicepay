@@ -24,7 +24,8 @@ void main() {
     secureValues = <String, String>{};
     SharedPreferences.setMockInitialValues(<String, Object>{});
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
-        .setMockMethodCallHandler(secureStorageChannel, (MethodCall call) async {
+        .setMockMethodCallHandler(secureStorageChannel,
+            (MethodCall call) async {
       final Map<dynamic, dynamic> arguments =
           call.arguments is Map ? call.arguments as Map : <dynamic, dynamic>{};
       final String key = arguments['key']?.toString() ?? '';
@@ -56,10 +57,10 @@ void main() {
     final Map<String, dynamic> operationsProfile = <String, dynamic>{
       'role': 'STAFF',
       'isStaff': true,
-      'jobTitle': 'OPERATIONS_MANAGER',
       'scopeType': 'GLOBAL',
       'permissions': <String>['operations.workspace.view', 'users.view'],
       'staffRoleId': <String, dynamic>{
+        'name': 'OPERATIONS_MANAGER',
         'scopeType': 'GLOBAL',
         'permissions': <String>['operations.workspace.view', 'users.view'],
       },
@@ -76,15 +77,14 @@ void main() {
       <String>['Operations overview'],
     );
 
-    final Map<String, dynamic> branchScopedSupport =
-        <String, dynamic>{
+    final Map<String, dynamic> branchScopedSupport = <String, dynamic>{
       'role': 'STAFF',
       'isStaff': true,
-      'jobTitle': 'CUSTOMER_SUPPORT',
       'scopeType': 'BRANCH',
       'branchId': 'branch-7',
       'permissions': <String>['support.workspace.view'],
       'staffRoleId': <String, dynamic>{
+        'name': 'CUSTOMER_SUPPORT',
         'scopeType': 'BRANCH',
         'permissions': <String>['support.workspace.view'],
       },
@@ -104,8 +104,8 @@ void main() {
   testWidgets(
       'global support staff reload uses secure session and renders support workspace',
       (WidgetTester tester) async {
-    expect(await SessionStore.writeSessionVerified('replacement-session'),
-        isTrue);
+    expect(
+        await SessionStore.writeSessionVerified('replacement-session'), isTrue);
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     expect(prefs.getString('auth_token'), isNull);
     bool profileRequestedWithSecureToken = false;
@@ -113,7 +113,6 @@ void main() {
       'role': 'STAFF',
       'isStaff': true,
       'status': 'ACTIVE',
-      'jobTitle': 'CUSTOMER_SUPPORT',
       'branchId': 'stale-assignment-does-not-change-global-scope',
       'permissions': <String>[
         'support.workspace.view',
@@ -122,6 +121,7 @@ void main() {
       ],
       'staffRoleId': <String, dynamic>{
         '_id': 'role-support',
+        'name': 'CUSTOMER_SUPPORT',
         'scopeType': 'GLOBAL',
         'permissions': <String>[
           'support.workspace.view',
@@ -134,8 +134,7 @@ void main() {
       client: MockClient((http.Request request) async {
         expect(request.url.path, '/api/auth/profile');
         profileRequestedWithSecureToken =
-            request.headers['authorization'] ==
-                'Bearer replacement-session';
+            request.headers['authorization'] == 'Bearer replacement-session';
         return http.Response(
           jsonEncode(<String, dynamic>{
             'success': true,
@@ -163,6 +162,35 @@ void main() {
     expect(find.byType(AdminDashboardScreen), findsNothing);
     expect(find.text('No Admin modules are assigned to this account.'),
         findsNothing);
+  });
+
+  test(
+      'assigned role overrides a conflicting optional title without granting access',
+      () {
+    final Map<String, dynamic> user = <String, dynamic>{
+      'role': 'STAFF',
+      'isStaff': true,
+      'jobTitle': 'CUSTOMER_SUPPORT',
+      'accessScope': <String, dynamic>{'type': 'GLOBAL'},
+      'staffRoleId': 'role-id',
+      'staffRole': <String, dynamic>{
+        'name': 'GENERAL_STAFF',
+        'permissions': <String>['support.workspace.view'],
+      },
+    };
+    expect(assignedStaffRoleName(user), 'GENERAL_STAFF');
+    expect(globalStaffWorkspaceForRole('STAFF', user), isNull);
+    expect(AdminAccess.fromUser(user).isGlobalCustomerSupportStaff, isFalse);
+
+    user['staffRole'] = <String, dynamic>{'name': 'CUSTOMER_SUPPORT'};
+    user['permissions'] = <String>[];
+    expect(globalStaffWorkspaceForRole('STAFF', user), isNull);
+    expect(AdminAccess.fromUser(user).isGlobalCustomerSupportStaff, isFalse);
+
+    user['permissions'] = <String>['support.workspace.view'];
+    user.remove('accessScope');
+    expect(globalStaffWorkspaceForRole('STAFF', user), isNull);
+    expect(AdminAccess.fromUser(user).isGlobalCustomerSupportStaff, isFalse);
   });
 
   testWidgets(

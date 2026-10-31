@@ -100,7 +100,6 @@ void main() {
                     'role': 'STAFF',
                     'status': 'ACTIVE',
                     'isStaff': true,
-                    'jobTitle': 'CUSTOMER_SUPPORT',
                     'staffRole': <String, dynamic>{
                       'name': 'CUSTOMER_SUPPORT',
                       'permissions': <String>['support.workspace.view'],

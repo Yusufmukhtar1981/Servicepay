@@ -10,6 +10,7 @@ import 'business_partner/business_partner_dashboard_screen.dart'
     deferred as partner;
 import 'admin/main_navigation.dart' deferred as admin;
 import 'admin/admin_session_service.dart';
+import 'admin/admin_permissions.dart' show assignedStaffRoleName;
 import 'branch_manager/branch_manager_dashboard_screen.dart' deferred as branch;
 import 'branch_manager/branch_counter_screen.dart' deferred as branch_counter;
 import 'forced_password_change_screen.dart';
@@ -163,8 +164,9 @@ String? globalStaffWorkspaceForRole(
   if (normalizeLoginRole(role) != 'STAFF' || user['isStaff'] != true) {
     return null;
   }
-  final String jobTitle = normalizeLoginRole(user['jobTitle']);
-  if (jobTitle != 'OPERATIONS_MANAGER' && jobTitle != 'CUSTOMER_SUPPORT') {
+  final String assignedRole = assignedStaffRoleName(user);
+  if (assignedRole != 'OPERATIONS_MANAGER' &&
+      assignedRole != 'CUSTOMER_SUPPORT') {
     return null;
   }
 
@@ -172,8 +174,7 @@ String? globalStaffWorkspaceForRole(
   final Map<String, dynamic> staffRole = _mapFromDynamic(roleReference);
   final Map<String, dynamic> nestedRoleScope =
       _mapFromDynamic(staffRole['scope']);
-  final Map<String, dynamic> accessScope =
-      _mapFromDynamic(user['accessScope']);
+  final Map<String, dynamic> accessScope = _mapFromDynamic(user['accessScope']);
   final List<dynamic> declaredScopeValues = <dynamic>[
     staffRole['scopeType'],
     nestedRoleScope['type'],
@@ -185,8 +186,7 @@ String? globalStaffWorkspaceForRole(
       .map(normalizeLoginRole)
       .where((String value) => value.isNotEmpty)
       .toList();
-  if (!declaredScopes.contains('GLOBAL') ||
-      declaredScopes.contains('BRANCH')) {
+  if (!declaredScopes.contains('GLOBAL') || declaredScopes.contains('BRANCH')) {
     return null;
   }
 
@@ -201,11 +201,11 @@ String? globalStaffWorkspaceForRole(
       .map((dynamic value) => value.toString().trim().toLowerCase())
       .where((String value) => value.isNotEmpty)
       .toSet();
-  if (jobTitle == 'OPERATIONS_MANAGER' &&
+  if (assignedRole == 'OPERATIONS_MANAGER' &&
       permissions.contains('operations.workspace.view')) {
     return 'OPERATIONS';
   }
-  if (jobTitle == 'CUSTOMER_SUPPORT' &&
+  if (assignedRole == 'CUSTOMER_SUPPORT' &&
       permissions.contains('support.workspace.view')) {
     return 'SUPPORT';
   }
