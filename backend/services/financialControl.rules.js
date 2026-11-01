@@ -10,6 +10,14 @@ const NON_SALES = new Set(["WALLET_FUNDING", "REFERRAL_BONUS", "REFERRAL_BONUS_R
 const CATEGORIES = ["SALARY", "RENT", "MARKETING", "HOSTING", "PROVIDER_CHARGE", "LOGISTICS", "ADMINISTRATION", "OTHER"];
 const fail = (message, statusCode = 400) => Object.assign(new Error(message), { statusCode });
 const text = value => typeof value === "string" ? value.trim() : "";
+// Canonical internal codes, verified against the existing purchase controller.
+// This labels immutable snapshots; it never reads or changes today's catalogue.
+const NETWORK_NAMES = { "01": "MTN", "02": "Glo", "03": "9mobile", "04": "Airtel" };
+const reportNetwork = value => {
+  const raw = text(value);
+  if (Object.hasOwn(NETWORK_NAMES, raw)) return NETWORK_NAMES[raw];
+  return Object.values(NETWORK_NAMES).find(label => label.toUpperCase() === raw.toUpperCase()) || raw || "UNKNOWN";
+};
 const day = value => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value || "")) throw fail("Use YYYY-MM-DD dates.");
   const date = new Date(value + "T00:00:00Z");
@@ -48,7 +56,7 @@ function transaction(t, commissionMinor = null) {
   const reversed = REFUNDED.has(state) || Boolean(t.reversalReference || t.reversalTransactionId || t.reversedTransactionId);
   const complete = SUCCESS.has(state) && !reversed;
   const row = { id: String(t._id), reference: text(t.reference), service: t.serviceType || "OTHER",
-    network: text(p.networkName || p.network?.name || p.network || p.airtimeLifecycle?.networkName) || "UNKNOWN",
+    network: reportNetwork(p.networkName || p.network?.name || p.networkCode || p.network || p.airtimeLifecycle?.networkName),
     plan: text(p.planName || p.plan?.name || p.planId || p.plan_id) || "UNKNOWN",
     branch: t.branchId && t.hierarchyCapturedAt ? String(t.branchId) : "UNATTRIBUTED",
     date: nigeriaDay(t.createdAt), status: state, amount: number(t.amount),
@@ -150,5 +158,5 @@ function expense(input, now = new Date()) {
     id: digest(["financial-expense-reference", reference.toUpperCase()]).slice(0, 24),
     claimId: digest(["financial-expense-fingerprint", fingerprint]).slice(0, 24) };
 }
-module.exports = { transaction, totals, grouped, planRows, filters, dateMatch, nigeriaDay,
+module.exports = { transaction, totals, grouped, planRows, filters, dateMatch, nigeriaDay, reportNetwork,
   expense, CATEGORIES, SUCCESS, NON_SALES, sum, fail };

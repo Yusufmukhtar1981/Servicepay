@@ -156,7 +156,7 @@ async function load(query) {
       recordedRevenue: null, providerCosts: null, grossProfit: null });
     return row;
   });
-  const selected = f.network ? all.filter(row => row.network.toUpperCase() === f.network.toUpperCase()) : all;
+  const selected = f.network ? all.filter(row => row.network.toUpperCase() === r.reportNetwork(f.network).toUpperCase()) : all;
   const selectedIds = new Set(selected.map(row => row.id));
   const selectedDocs = docs.filter(doc => selectedIds.has(String(doc._id)));
   const docMap = new Map(selectedDocs.map(doc => [String(doc._id), doc]));

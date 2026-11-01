@@ -20,6 +20,16 @@ test("earned bill margin, not customer gross payment, is recorded revenue", () =
   assert.equal(row.grossProfit, 40); // 50 margin - 4 commissions - 6 other costs.
   assert.equal(r.totals([row], 10).netProfit, null); // No complete expense attestation.
 });
+test("verified internal network codes receive carrier names without guessing unknown provider IDs", () => {
+  for (const [code, label] of Object.entries({ "01": "MTN", "02": "Glo", "03": "9mobile", "04": "Airtel" })) {
+    const row = r.transaction(source({ providerResponse: { network: code } }));
+    assert.equal(row.network, label);
+    assert.equal(r.reportNetwork(code), label);
+  }
+  assert.equal(r.reportNetwork("unrecognized-provider-network"), "unrecognized-provider-network");
+  assert.equal(r.reportNetwork("AIRTEL"), "Airtel");
+  assert.equal(r.reportNetwork("toString"), "toString");
+});
 test("provider costs already deducted in earned margin are not deducted twice", () => {
   const row = r.transaction(source(), 0);
   assert.equal(row.grossProfit, 44);
