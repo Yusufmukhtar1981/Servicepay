@@ -3,6 +3,7 @@ const { protect } = require("../middleware/auth.middleware");
 const { loadStaffRole, requirePermission } = require("../middleware/staffPermission.middleware");
 const { STAFF_PERMISSIONS: P } = require("../config/staffPermissions");
 const controller = require("../controllers/adminRevenue.controller");
+router.use("/financial-control", require("./financialControl.routes"));
 const headOfficeOnly = (req,res,next) => req.staffAccess?.isHeadOffice === true &&
   req.staffAccess?.scope?.type === "GLOBAL" ? next() :
   res.status(403).json({success:false,message:"Revenue Account is restricted to authorized Head Office administrators."});
