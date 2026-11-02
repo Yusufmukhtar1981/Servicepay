@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'services/session_store.dart';
 import 'services/pin_session_client.dart';
 import 'dart:convert';
@@ -22,10 +23,12 @@ import 'biometric_settings_screen.dart';
 import 'customer_leaderboard_privacy_preference.dart';
 import 'services/customer_leaderboard_api.dart';
 import 'customer_profile_edit_sheet.dart';
+import 'services/customer_account_recovery.dart';
 
 class ProfileScreen extends StatefulWidget {
-  const ProfileScreen({super.key, this.client});
+  const ProfileScreen({super.key, this.client, this.urlLauncher});
   final http.Client? client;
+  final RecoveryUrlLauncher? urlLauncher;
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -82,6 +85,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   late final http.Client _client;
   late final bool _ownsClient;
   late final CustomerLeaderboardApi _leaderboardApi;
+  late final CustomerAccountRecoveryService _recovery;
+  bool isPhoneRecoveryLoading = false;
+  RecoveryEntry? _pendingPhoneEntry;
+  String? _pendingPhoneAction;
+  bool _pendingPhoneEntryExpired = false;
+  bool _openingPendingPhoneEntry = false;
+  Timer? _pendingPhoneExpiryTimer;
 
   @override
   void initState() {
@@ -92,12 +102,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
       client: _client,
       baseUrl: baseUrl,
     );
+    _recovery = CustomerAccountRecoveryService(
+      client: _client,
+      baseUrl: baseUrl,
+      launch: widget.urlLauncher ??
+          (uri) => launchUrl(uri, mode: LaunchMode.externalApplication),
+    );
     loadProfile();
     loadKycSummary();
   }
 
   @override
   void dispose() {
+    _pendingPhoneExpiryTimer?.cancel();
     if (_ownsClient) _client.close();
     super.dispose();
   }
@@ -639,6 +656,133 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  Future<void> recoverTransactionPinByPhone() async {
+    if (_pendingPhoneEntry != null && !_pendingPhoneEntryExpired) {
+      if (_pendingPhoneAction == 'Transaction PIN recovery') {
+        await _openPendingPhoneEntry();
+      } else {
+        _showMessage(
+          'A different phone request is already active. Continue it from Open secure page first.',
+          isError: false,
+        );
+      }
+      return;
+    }
+    if (isPhoneRecoveryLoading || phone == 'Not provided') return;
+    setState(() => isPhoneRecoveryLoading = true);
+    try {
+      final entry = await _recovery.requestPhoneChallenge(
+        phone: phone,
+        action: 'PIN_RECOVERY',
+      );
+      if (!mounted) return;
+      _setPendingPhoneEntry(entry, 'Transaction PIN recovery');
+      await _openPendingPhoneEntry();
+    } catch (_) {
+      if (mounted) {
+        _showMessage(
+          'If the details match an eligible account, recovery instructions will be sent to its verified phone.',
+          isError: false,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => isPhoneRecoveryLoading = false);
+    }
+  }
+
+  Future<void> verifyExistingPhone() async {
+    if (_pendingPhoneEntry != null && !_pendingPhoneEntryExpired) {
+      if (_pendingPhoneAction == 'Phone verification') {
+        await _openPendingPhoneEntry();
+      } else {
+        _showMessage(
+          'A different phone request is already active. Continue it from Open secure page first.',
+          isError: false,
+        );
+      }
+      return;
+    }
+    final password = await showDialog<String>(
+      context: context,
+      builder: (_) => _CurrentPasswordDialog(phone: phone),
+    );
+    if (password == null || password.isEmpty || !mounted) return;
+    if (isPhoneRecoveryLoading) return;
+    setState(() => isPhoneRecoveryLoading = true);
+    try {
+      final entry = await _recovery.requestPhoneVerification(
+        currentPassword: password,
+      );
+      if (!mounted) return;
+      _setPendingPhoneEntry(entry, 'Phone verification');
+      await _openPendingPhoneEntry();
+    } catch (_) {
+      if (mounted) {
+        _showMessage(
+          'Unable to start phone verification. Check your password and try again.',
+          isError: true,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => isPhoneRecoveryLoading = false);
+    }
+  }
+
+  void _setPendingPhoneEntry(RecoveryEntry entry, String action) {
+    _pendingPhoneExpiryTimer?.cancel();
+    final expiresAt = entry.expiresAt;
+    final expired =
+        expiresAt != null && !expiresAt.isAfter(DateTime.now().toUtc());
+    setState(() {
+      _pendingPhoneEntry = entry;
+      _pendingPhoneAction = action;
+      _pendingPhoneEntryExpired = expired;
+    });
+    if (expiresAt != null && !expired) {
+      _pendingPhoneExpiryTimer = Timer(
+        expiresAt.difference(DateTime.now().toUtc()),
+        () {
+          if (mounted) setState(() => _pendingPhoneEntryExpired = true);
+        },
+      );
+    }
+  }
+
+  Future<void> _openPendingPhoneEntry() async {
+    final entry = _pendingPhoneEntry;
+    if (entry == null ||
+        _pendingPhoneEntryExpired ||
+        _openingPendingPhoneEntry) {
+      return;
+    }
+    setState(() => _openingPendingPhoneEntry = true);
+    try {
+      final opened = await _recovery.openEntry(entry.uri);
+      if (!opened && mounted) {
+        _showMessage(
+          'The secure page could not be opened. Use Open secure page to try again; no new code was sent.',
+          isError: true,
+        );
+      } else if (opened &&
+          mounted &&
+          _pendingPhoneAction == 'Phone verification') {
+        _showMessage(
+          'Complete verification in the secure page. You may need to sign in again after verification.',
+          isError: false,
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        _showMessage(
+          'The secure page could not be opened. Use Open secure page to try again; no new code was sent.',
+          isError: true,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _openingPendingPhoneEntry = false);
+    }
+  }
+
   Future<void> logout() async {
     final bool? confirmed = await showDialog<bool>(
       context: context,
@@ -966,6 +1110,43 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             subtitle: 'Update your personal information',
                             onTap: openEditProfile,
                           ),
+                          if (user['role']?.toString().trim().toUpperCase() ==
+                              'CUSTOMER') ...[
+                            if (_pendingPhoneEntry != null)
+                              _ProfileActionTile(
+                                icon: Icons.open_in_browser_outlined,
+                                title: _pendingPhoneEntryExpired
+                                    ? 'Phone challenge expired'
+                                    : 'Open secure page',
+                                subtitle: _pendingPhoneEntryExpired
+                                    ? 'This request expired. Start a new request only if you still need one.'
+                                    : 'Continue ${_pendingPhoneAction?.toLowerCase() ?? 'your secure phone flow'} without sending another code',
+                                onTap: _pendingPhoneEntryExpired ||
+                                        _openingPendingPhoneEntry
+                                    ? null
+                                    : _openPendingPhoneEntry,
+                              ),
+                            if (!phoneVerified && phone != 'Not provided')
+                              _ProfileActionTile(
+                                icon: Icons.phonelink_lock_outlined,
+                                title: 'Verify existing phone',
+                                subtitle:
+                                    'Confirm the phone number already on your account',
+                                onTap: isPhoneRecoveryLoading
+                                    ? null
+                                    : verifyExistingPhone,
+                              ),
+                            if (phone != 'Not provided')
+                              _ProfileActionTile(
+                                icon: Icons.sms_outlined,
+                                title: 'Recover Transaction PIN by phone',
+                                subtitle:
+                                    'Receive a secure code at your registered phone',
+                                onTap: isPhoneRecoveryLoading
+                                    ? null
+                                    : recoverTransactionPinByPhone,
+                              ),
+                          ],
                           if (user['transactionPinSet'] == true) ...[
                             _ProfileActionTile(
                               icon: Icons.pin_outlined,
@@ -1085,6 +1266,63 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ],
                   ),
                 ),
+    );
+  }
+}
+
+class _CurrentPasswordDialog extends StatefulWidget {
+  const _CurrentPasswordDialog({required this.phone});
+
+  final String phone;
+
+  @override
+  State<_CurrentPasswordDialog> createState() => _CurrentPasswordDialogState();
+}
+
+class _CurrentPasswordDialogState extends State<_CurrentPasswordDialog> {
+  final TextEditingController _controller = TextEditingController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Verify existing phone'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('We will send a verification code to ${widget.phone}.'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _controller,
+              obscureText: true,
+              autofocus: true,
+              textInputAction: TextInputAction.done,
+              decoration: const InputDecoration(
+                labelText: 'Current password',
+                border: OutlineInputBorder(),
+              ),
+              onSubmitted: (_) => Navigator.of(context).pop(_controller.text),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_controller.text),
+          child: const Text('Continue'),
+        ),
+      ],
     );
   }
 }
