@@ -7,6 +7,7 @@ const { protect } = require("../middleware/auth.middleware");
 const { loadStaffRole } = require("../middleware/staffPermission.middleware");
 const S = require("../services/accountRecovery.service");
 const R = require("../services/accountRecovery.rules");
+const Phone = require("../services/accountRecoveryPhone.service");
 
 const adminRouter = express.Router();
 const customerRouter = express.Router();
@@ -53,6 +54,8 @@ adminRouter.post("/:id/verify", safe(async req => {
   }
   return S.verify(req.params.id, req.user, req.body || {});
 }));
+adminRouter.post("/:id/contact-verification", guard(R.PERMISSIONS.PASSWORD),
+  safe(req => Phone.requestIdentityReview(req.params.id, req.user, req.body || {})));
 customerRouter.get("/page", (req, res) => {
   res.set({
     "Cache-Control": "no-store",
@@ -63,4 +66,21 @@ customerRouter.get("/page", (req, res) => {
   res.sendFile(path.join(__dirname, "../views/accountRecovery.html"));
 });
 customerRouter.post("/complete", safe(req => S.complete(req.body || {})));
+// Advisory per-IP ceiling complements durable, five-attempt customer challenges.
+// Bounded memory and fail-closed admission; never trust client-supplied IP headers.
+const phoneClients = new Map();
+customerRouter.post("/phone/verify", (req, res, next) => {
+  const now = Date.now(), key = String(req.ip || "unknown");
+  let rate = phoneClients.get(key);
+  if (!rate || rate.until <= now) {
+    if (phoneClients.size >= 5000) {
+      for (const [ip, item] of phoneClients) if (item.until <= now) phoneClients.delete(ip);
+      if (phoneClients.size >= 5000) return res.status(503).json({ success: false, message: "Recovery is temporarily busy." });
+    }
+    rate = { count: 0, until: now + Phone.OTP_TTL };
+    phoneClients.set(key, rate);
+  }
+  if (++rate.count > 30) return res.status(429).json({ success: false, message: "Wait before trying recovery again." });
+  next();
+}, safe(req => Phone.verify(req.body || {})));
 module.exports = { adminRouter, customerRouter, permissions, guard };

@@ -14,6 +14,8 @@ const Login = require("../models/loginSecurityEvent.model");
 const Notification = require("../models/notification.model");
 const S = require("../services/accountRecovery.service");
 const R = require("../services/accountRecovery.rules");
+const Phone = require("../services/accountRecoveryPhone.service");
+const Sms = require("../services/accountRecoverySms.service");
 const { protect } = require("../middleware/auth.middleware");
 const { adminRouter, customerRouter } = require("../routes/accountRecovery.routes");
 const { normalizeStaffPermission } = require("../config/permissionRegistry");
@@ -33,6 +35,7 @@ async function legacyResetRequest(payload) {
 }
 let mongo, server, base, customer, actor, passwordHash;
 let messages = [];
+let smsMessages = [];
 const adminPassword = "Disposable-Admin-Only-21!";
 const customerPassword = "Disposable-Customer-Only-21!";
 const reason = "Customer requested assistance after failed self-service recovery";
@@ -83,6 +86,10 @@ beforeEach(async () => {
   assert.match(mongoose.connection.host, /^(127\.0\.0\.1|localhost)$/);
   await Promise.all([User, Role, Audit, Login, Notification].map(m => m.collection.deleteMany({})));
   messages = [];
+  smsMessages = [];
+  Phone.hooks.configured = () => true;
+  Phone.hooks.sendSms = async input => { smsMessages.push(input); return { success: true, status: "ACCEPTED" }; };
+  S.hooks.sendRecoverySms = async input => { smsMessages.push(input); return { success: true, status: "ACCEPTED" }; };
   S.hooks.sendEmail = emailHook;
   S.hooks.createInAppNotification = async input => ({ _id: "mock", ...input });
   const roleId = new mongoose.Types.ObjectId();
@@ -99,6 +106,180 @@ beforeEach(async () => {
     virtualAccount: { accountNumber: "TEST-ONLY-NOT-A-BANK-ACCOUNT", status: "ACTIVE" },
     customerRefreshSessions: [{ tokenHash: "test-refresh", expiresAt: new Date(Date.now() + R.TTL) }] };
   await User.collection.insertOne(customer);
+});
+
+const enablePhoneFixture = async () => User.collection.updateOne({ _id: customer._id },
+  { $set: { phoneVerified: true, emailVerified: false } });
+const beginPhone = async () => {
+  await enablePhoneFixture();
+  return request(`/api/admin/account-recovery/${customer._id}/challenge`, {
+    action: "PASSWORD_RESET", channel: "PHONE", reason, currentPassword: adminPassword,
+  });
+};
+const phoneOtp = () => smsMessages[0].message.match(/code: (\d{6})/)[1];
+const verifyPhone = (challenge, otp = phoneOtp()) =>
+  request("/api/account-recovery/phone/verify", { challengeId: challenge, otp }, "", "POST");
+
+test("phone OTP is private, keyed, five-minute and only customer verification issues a reset token", async () => {
+  const result = await beginPhone();
+  assert.equal(result.status, 200);
+  assert.equal(result.body.channel, "PHONE");
+  assert(!("token" in result.body) && !("otp" in result.body));
+  assert(result.body.expiresAt > Date.now() + 290000 && result.body.expiresAt <= Date.now() + 300000);
+  const state = (await raw()).accountRecoveryState;
+  assert.equal(state.deliveryStatus, "ACCEPTED");
+  assert.equal(state.otpHash, R.mac(`phone:${result.body.challengeId}:${phoneOtp()}`));
+  assert(!Object.values(state).includes(phoneOtp()));
+  const adminAttempt = await request(`/api/admin/account-recovery/${customer._id}/verify`, {
+    challengeId: result.body.challengeId, otp: phoneOtp(), currentPassword: adminPassword,
+  });
+  assert.equal(adminAttempt.status, 409);
+  const verified = await verifyPhone(result.body.challengeId);
+  assert.equal(verified.status, 200);
+  assert.match(verified.body.token, /^[a-f0-9]{64}$/);
+  assert.equal((await raw()).accountRecoveryState.tokenHash, R.hash(verified.body.token));
+  const replay = await verifyPhone(result.body.challengeId);
+  assert.equal(replay.status, 400);
+});
+
+test("phone recovery rejects unverified and administratively corrected phones without sending SMS", async () => {
+  const input = { action: "PASSWORD_RESET", channel: "PHONE", reason, currentPassword: adminPassword };
+  assert.equal((await request(`/api/admin/account-recovery/${customer._id}/challenge`, input)).status, 409);
+  await enablePhoneFixture();
+  await User.collection.updateOne({ _id: customer._id }, { $set: { "profileRecoveryBlocked.phone": true } });
+  assert.equal((await request(`/api/admin/account-recovery/${customer._id}/challenge`, input)).status, 409);
+  assert.equal(smsMessages.length, 0);
+});
+
+test("phone recovery is unavailable without verified sender readiness and fails closed on delivery error", async () => {
+  await enablePhoneFixture();
+  Phone.hooks.configured = () => false;
+  const input = { action: "PASSWORD_RESET", channel: "PHONE", reason, currentPassword: adminPassword };
+  assert.equal((await request(`/api/admin/account-recovery/${customer._id}/challenge`, input)).status, 503);
+  assert.equal(smsMessages.length, 0);
+  Phone.hooks.configured = () => true;
+  Phone.hooks.sendSms = async () => ({ success: false, status: "UNCONFIRMED" });
+  assert.equal((await request(`/api/admin/account-recovery/${customer._id}/challenge`, input)).status, 503);
+  const state = (await raw()).accountRecoveryState;
+  assert.equal(state.status, "DELIVERY_FAILED");
+  assert.equal(state.deliveryStatus, "UNCONFIRMED");
+});
+
+test("phone OTP has five bounded guesses and no credential change on failure", async () => {
+  const started = await beginPhone();
+  const wrong = phoneOtp() === "999999" ? "888888" : "999999";
+  for (let i = 0; i < 5; i++) assert.equal((await verifyPhone(started.body.challengeId, wrong)).status, 400);
+  assert.equal((await raw()).accountRecoveryState.status, "LOCKED");
+  assert.equal((await verifyPhone(started.body.challengeId)).status, 400);
+  assert.equal((await raw()).password, passwordHash);
+});
+
+test("expired phone codes and changed phone ownership cannot authorize recovery", async () => {
+  const started = await beginPhone();
+  await User.collection.updateOne({ _id: customer._id }, { $set: { "accountRecoveryState.expiresAt": Date.now() - 1 } });
+  assert.equal((await verifyPhone(started.body.challengeId)).status, 400);
+  await User.collection.updateOne({ _id: customer._id }, { $set: {
+    "accountRecoveryState.expiresAt": Date.now() + Phone.OTP_TTL, phone: "08000000003",
+  } });
+  assert.equal((await verifyPhone(started.body.challengeId)).status, 400);
+});
+
+test("phone reset preserves PIN, wallet and virtual account, revokes sessions and is single use", async () => {
+  await User.collection.updateOne({ _id: customer._id }, { $set: {
+    transactionPin: "unchanged-existing-pin-hash", transactionPinSet: true,
+  } });
+  const before = await raw();
+  const started = await beginPhone();
+  const proof = await verifyPhone(started.body.challengeId);
+  const payload = { action: "PASSWORD_RESET", token: proof.body.token,
+    newPassword: "New-Disposable-Password-32!", confirmPassword: "New-Disposable-Password-32!" };
+  const result = await request("/api/account-recovery/complete", payload, "");
+  assert.equal(result.status, 200);
+  const current = await raw();
+  assert(await bcrypt.compare(payload.newPassword, current.password));
+  assert.notEqual(current.password, payload.newPassword);
+  assert.equal(current.authTokenVersion, 1);
+  assert(!current.customerRefreshSessions?.length);
+  assert.equal(current.transactionPin, before.transactionPin);
+  assert.equal(current.walletBalance, before.walletBalance);
+  assert.deepEqual(current.virtualAccount, before.virtualAccount);
+  assert.equal(current.accountRecoveryState.smsNotificationStatus, "ACCEPTED");
+  assert.equal((await request("/api/account-recovery/complete", payload, "")).status, 400);
+  const oldSession = await request("/api/spending-fixture", undefined, tokenFor(customer));
+  assert.equal(oldSession.status, 401);
+  assert.equal((await S.snapshot(customer._id, allPermissions)).auditIntegrity, "VERIFIED_RECENT_CHAIN");
+});
+
+test("phone authorization cannot change a PIN or bypass customer contact changes", async () => {
+  const started = await beginPhone();
+  const proof = await verifyPhone(started.body.challengeId);
+  assert.equal((await request("/api/account-recovery/complete", {
+    token: proof.body.token, action: "PIN_RECOVERY", newPin: "6381", confirmPin: "6381",
+  }, "")).status, 400);
+  await User.collection.updateOne({ _id: customer._id }, { $set: { phoneVerified: false } });
+  assert.equal((await request("/api/account-recovery/complete", { token: proof.body.token,
+    action: "PASSWORD_RESET", newPassword: "New-Disposable-Password-32!",
+    confirmPassword: "New-Disposable-Password-32!" }, "")).status, 400);
+});
+
+test("phone challenge enforces cooldown, shared limits and exact Head Office permissions", async () => {
+  const started = await beginPhone();
+  assert.equal(started.status, 200);
+  const body = { action: "PASSWORD_RESET", channel: "PHONE", reason, currentPassword: adminPassword };
+  assert.equal((await request(`/api/admin/account-recovery/${customer._id}/challenge`, body)).status, 429);
+  await Role.collection.updateOne({ _id: actor.staffRoleId }, { $set: { permissions: [R.PERMISSIONS.VIEW, "*"] } });
+  assert.equal((await request(`/api/admin/account-recovery/${customer._id}/challenge`, body)).status, 403);
+  await User.collection.updateOne({ _id: actor._id }, { $set: { role: "CUSTOMER_SUPPORT" } });
+  assert.equal((await request(`/api/admin/account-recovery/${customer._id}/challenge`, body)).status, 403);
+});
+
+test("phone verification concurrent claims yield exactly one customer authorization", async () => {
+  const started = await beginPhone();
+  const results = await Promise.all([verifyPhone(started.body.challengeId), verifyPhone(started.body.challengeId)]);
+  assert.deepEqual(results.map(x => x.status).sort(), [200, 400]);
+});
+
+test("identity handoff never marks a contact verified or creates credential authorization", async () => {
+  await User.collection.updateOne({ _id: customer._id }, { $set: { emailVerified: false } });
+  const before = await raw();
+  const result = await request(`/api/admin/account-recovery/${customer._id}/contact-verification`, {
+    reason, currentPassword: adminPassword,
+  });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.status, "IDENTITY_VERIFICATION_REQUIRED");
+  const current = await raw();
+  assert.equal(current.password, before.password);
+  assert.equal(current.emailVerified, false);
+  assert.notEqual(current.phoneVerified, true);
+  assert(!current.accountRecoveryState.tokenHash && !current.accountRecoveryState.otpHash);
+  const snapshot = await S.snapshot(customer._id, allPermissions);
+  assert.equal(snapshot.contactVerificationRequired, true);
+  assert.deepEqual(snapshot.availableRecoveryMethods, []);
+  assert.match(snapshot.customer.phoneMasked, /\*/);
+});
+
+test("recovery SMS adapter gates delivery, reports acceptance honestly and never retries uncertain sends", async () => {
+  const keys = ["ACCOUNT_RECOVERY_PHONE_SMS_VERIFIED", "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER"];
+  const old = keys.map(k => process.env[k]), fetchBefore = global.fetch;
+  let calls = 0;
+  try {
+    process.env.ACCOUNT_RECOVERY_PHONE_SMS_VERIFIED = "false";
+    assert.equal((await Sms.send({ phone: "+2348000000002", message: "disposable" })).status, "UNAVAILABLE");
+    process.env.ACCOUNT_RECOVERY_PHONE_SMS_VERIFIED = "true";
+    process.env.TWILIO_ACCOUNT_SID = "AC" + "a".repeat(32);
+    process.env.TWILIO_AUTH_TOKEN = "local-test-only";
+    process.env.TWILIO_FROM_NUMBER = "LocalTest";
+    global.fetch = async () => { calls++; return { ok: true, json: async () => ({ sid: "SM" + "b".repeat(32), status: "queued" }) }; };
+    assert.deepEqual(await Sms.send({ phone: "+2348000000002", message: "disposable" }),
+      { success: true, status: "ACCEPTED" });
+    global.fetch = async () => { calls++; throw new Error("simulated timeout"); };
+    assert.deepEqual(await Sms.send({ phone: "+2348000000002", message: "disposable" }),
+      { success: false, status: "UNCONFIRMED" });
+    assert.equal(calls, 2);
+  } finally {
+    global.fetch = fetchBefore;
+    keys.forEach((k, i) => old[i] === undefined ? delete process.env[k] : process.env[k] = old[i]);
+  }
 });
 after(async () => {
   if (server) await new Promise(resolve => server.close(resolve));

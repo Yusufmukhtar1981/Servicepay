@@ -9,11 +9,12 @@ const { sendEmail } = require("./email.service");
 const { createInAppNotification } = require("./inAppNotification.service");
 const { validateStrongPassword } = require("../utils/passwordPolicy");
 const R = require("./accountRecovery.rules");
+const RecoverySms = require("./accountRecoverySms.service");
 
 const privateFields = "+password +authTokenVersion +accountRecoveryState +accountRecoveryRate " +
   "+recoveryAuditHead +recoveryAuditSequence +profileRecoveryBlocked +passwordResetToken " +
   "+passwordResetExpires +customerRefreshSessions +transactionPin";
-const hooks = { sendEmail, createInAppNotification };
+const hooks = { sendEmail, createInAppNotification, sendRecoverySms: RecoverySms.send };
 const securityFields = [
   "accountRecoveryState", "accountRecoveryRate", "recoveryAuditHead", "recoveryAuditSequence",
   "password", "passwordChangedAt", "mustChangePassword", "authTokenVersion",
@@ -39,7 +40,8 @@ async function transition(id, actor, event, recoveryReason, change) {
         dedupeKey: `account-recovery:${id}:${user.accountRecoveryState?.id || ""}`,
       }, { session });
       if (!notification) throw R.fail("Security notification could not be recorded. Recovery was not completed.", 503);
-      user.accountRecoveryState = { ...user.accountRecoveryState, emailNotificationStatus: "PENDING" };
+      user.accountRecoveryState = { ...user.accountRecoveryState,
+        [user.accountRecoveryState?.channel === "PHONE" ? "smsNotificationStatus" : "emailNotificationStatus"]: "PENDING" };
     }
     const sequence = Number(user.recoveryAuditSequence || 0) + 1;
     const metadata = {
@@ -137,19 +139,29 @@ async function snapshot(id, permissions) {
       expected = metadata.previous;
     }
   }
+  const emailAvailable = R.verifiedEmail(user) && Boolean(process.env.RESEND_API_KEY) && R.eligible(user);
+  const phoneAvailable = require("./accountRecoveryPhone.service").available(user);
+  const normalizedPhone = R.normalizePhone(user.phone);
   return {
     customer: { id: String(user._id), fullName: user.fullName, email: user.email,
-      phone: user.phone, status: user.status, emailVerified: user.emailVerified === true },
+      phone: user.phone, phoneMasked: normalizedPhone ? `${normalizedPhone.slice(0, 4)}******${normalizedPhone.slice(-4)}` : "Not available",
+      phoneVerified: user.phoneVerified === true, status: user.status, emailVerified: user.emailVerified === true },
     diagnostics: { lastSuccessfulLogin: last?.createdAt || null,
       failedLoginAttempts: failures, failedLoginWindowHours: 24,
       ordinaryLockSupported: false, restrictionsPreserved: true,
       loginStatus: R.eligible(user) ? "ELIGIBLE_SUBJECT_TO_SECURITY_HOLDS" : "ACCOUNT_RESTRICTED",
       mustChangePassword: user.mustChangePassword === true },
-    channelAvailable: R.verifiedEmail(user) && Boolean(process.env.RESEND_API_KEY) && R.eligible(user),
+    channelAvailable: emailAvailable,
+    recoveryMethods: { email: { verified: R.verifiedEmail(user), available: emailAvailable },
+      phone: { verified: R.verifiedPhone(user), available: phoneAvailable } },
+    availableRecoveryMethods: [emailAvailable && "EMAIL", phoneAvailable && "PHONE"].filter(Boolean),
+    contactVerificationRequired: !R.verifiedEmail(user) && !R.verifiedPhone(user),
     permissions,
     recovery: state ? { status: R.live(state) ? state.status :
       state.status === "COMPLETED" ? "COMPLETED" : "EXPIRED",
-      action: state.action, expiresAt: state.expiresAt } : { status: "NONE" },
+      action: state.action, channel: state.channel || "EMAIL",
+      deliveryStatus: state.deliveryStatus || null,
+      expiresAt: state.expiresAt } : { status: "NONE" },
     auditIntegrity,
     history: events.map(e => ({ id: String(e._id), actorId: String(e.actorId),
       reason: e.reason, event: e.metadata?.event, action: e.metadata?.recoveryAction,
@@ -159,6 +171,8 @@ async function snapshot(id, permissions) {
 }
 
 async function start(id, actor, body) {
+  if (body.channel === "PHONE") return require("./accountRecoveryPhone.service").start(id, actor, body);
+  if (body.channel && body.channel !== "EMAIL") throw R.fail("Choose email or phone recovery.");
   const action = body.action;
   const recoveryReason = R.reason(body.reason);
   if (!R.ACTIONS[action]) throw R.fail("Choose a supported recovery action.");
@@ -219,6 +233,9 @@ async function verify(id, actor, body) {
   const token = crypto.randomBytes(32).toString("hex");
   const outcome = await transition(id, actor, "CUSTOMER_OWNERSHIP_CHECK", "Customer ownership verification", async user => {
     const state = user.accountRecoveryState;
+    if (state?.channel === "PHONE") {
+      throw R.fail("Phone OTP must be verified privately by the customer, never by an administrator.", 409);
+    }
     if (!R.eligible(user) || !R.verifiedEmail(user) || !R.live(state) ||
         state.id !== challengeId || state.actorId !== String(actor._id) ||
         state.status !== "CHALLENGE_SENT" || !R.equal(state.binding, R.binding(user))) {
@@ -298,10 +315,11 @@ async function complete(body) {
   const done = await transition(user._id, actor, "CUSTOMER_COMPLETION_ATTEMPT",
     "Customer-controlled credential recovery", async current => {
       const state = current.accountRecoveryState;
-      if (!R.eligible(current) || !R.verifiedEmail(current) || !R.live(state) ||
+      if (!R.eligible(current) || !R.verifiedChannel(current, state) || !R.live(state) ||
           state.status !== "READY" || state.action !== action ||
           !R.equal(state.tokenHash, R.hash(body.token)) ||
-          !R.equal(state.binding, R.binding(current))) {
+          !R.equal(state.binding, R.binding(current, state.channel)) ||
+          (state.channel === "PHONE" && action !== "PASSWORD_RESET")) {
         throw R.fail("Recovery link is invalid, changed or expired.");
       }
       if (Number(state.completionAttempts || 0) >= 5) throw R.fail("Recovery verification attempts exhausted.", 429);
@@ -334,27 +352,32 @@ async function complete(body) {
       current.authTokenVersion = Number(current.authTokenVersion || 0) + 1;
       current.accountRecoveryState = {
         id: state.id, action, actorId: state.actorId, reason: state.reason,
+        channel: state.channel || "EMAIL", deliveryStatus: state.deliveryStatus,
         status: "COMPLETED", completedAt: Date.now(), expiresAt: state.expiresAt,
       };
-      return { email: current.email, action, status: "COMPLETED" };
+      return { email: current.email, phone: state.channel === "PHONE" ? R.normalizePhone(current.phone) : null,
+        action, status: "COMPLETED" };
     });
   if (done.invalidPassword) throw R.fail("Customer password verification failed.", 401);
   let notificationPending = false;
-  try { notificationPending = !await notify(user._id, actor, done.email, action); }
+  try { notificationPending = !await notify(user._id, actor, done.email, action, done.phone); }
   catch (_) { notificationPending = true; }
   return { message: "Recovery completed. Sign in again with your customer credentials.", notificationPending };
 }
 
-async function notify(id, actor, email, action) {
+async function notify(id, actor, email, action, phone) {
   const results = await Promise.allSettled([
-    hooks.sendEmail({ to: email, subject: "ServicePay account security notification",
+    phone ? hooks.sendRecoverySms({ phone,
+      message: "Your ServicePay password was reset and existing sessions were revoked. If this was not you, contact support@servicepay.ng immediately." })
+      : hooks.sendEmail({ to: email, subject: "ServicePay account security notification",
       text: "Your account recovery was completed. Existing sessions were revoked. " +
         "If you did not request this change, contact support@servicepay.ng immediately." }),
   ]);
   const delivered = results.map(r => r.status === "fulfilled" && r.value?.success !== false && !!r.value);
   await transition(id, actor, "COMPLETION_NOTIFICATION", "Customer security notification", async user => {
     user.accountRecoveryState = { ...user.accountRecoveryState,
-      emailNotificationStatus: delivered.every(Boolean) ? "SENT" : "FAILED" };
+      [phone ? "smsNotificationStatus" : "emailNotificationStatus"]:
+        delivered.every(Boolean) ? phone ? "ACCEPTED" : "SENT" : "FAILED" };
     return { action, status: delivered.every(Boolean) ? "NOTIFIED" : "NOTIFICATION_REQUIRES_ATTENTION" };
   });
   return delivered.every(Boolean);

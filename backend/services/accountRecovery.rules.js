@@ -29,10 +29,24 @@ const equal = (a, b) => {
 const verifiedEmail = user => user.emailVerified === true &&
   user.profileRecoveryBlocked?.email !== true &&
   /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(user.email || ""));
-const binding = user => mac(JSON.stringify([
+const normalizePhone = value => {
+  const phone = String(value || "").trim();
+  if (/^0[789]\d{9}$/.test(phone)) return `+234${phone.slice(1)}`;
+  if (/^\+?234[789]\d{9}$/.test(phone)) return `+${phone.replace(/^\+/, "")}`;
+  return "";
+};
+const verifiedPhone = user => user.phoneVerified === true &&
+  user.profileRecoveryBlocked?.phone !== true && !!normalizePhone(user.phone);
+const binding = (user, channel = "EMAIL") => channel === "PHONE"
+  ? mac(JSON.stringify(["PHONE", String(user._id), normalizePhone(user.phone),
+    user.phoneVerified === true, user.profileRecoveryBlocked?.phone === true,
+    Number(user.authTokenVersion || 0)]))
+  : mac(JSON.stringify([
   String(user._id), user.email, user.emailVerified === true,
   user.profileRecoveryBlocked?.email === true, Number(user.authTokenVersion || 0),
 ]));
+const verifiedChannel = (user, state) => state?.channel === "PHONE"
+  ? verifiedPhone(user) : verifiedEmail(user);
 const eligible = user => !!user && user.role === "CUSTOMER" &&
   user.status === "ACTIVE" && user.isDeleted !== true && user.activationPending !== true;
 const authorized = (role, permissions, permission) =>
@@ -47,4 +61,4 @@ const reason = value => {
   return text;
 };
 module.exports = { TTL, PERMISSIONS, ACTIONS, fail, hash, mac, equal, verifiedEmail,
-  binding, eligible, authorized, live, reason };
+  verifiedPhone, normalizePhone, verifiedChannel, binding, eligible, authorized, live, reason };

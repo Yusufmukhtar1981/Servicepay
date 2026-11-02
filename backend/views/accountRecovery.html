@@ -48,8 +48,18 @@
         <p id="unavailable-copy" role="status">This recovery link is unavailable or incomplete.</p>
         <p class="help">Need help? <a href="mailto:support@servicepay.ng">Contact support@servicepay.ng</a>.</p>
       </div>
+      <form id="phone-verify-form" hidden novalidate>
+        <label for="phone-otp">Six-digit SMS verification code</label>
+        <input id="phone-otp" name="otp" type="text" inputmode="numeric"
+          autocomplete="one-time-code" pattern="[0-9]{6}" minlength="6"
+          maxlength="6" required>
+        <p class="help">The code expires in 5 minutes. A maximum of 5 attempts is allowed. Enter it only on this private ServicePay page; never share it with staff.</p>
+        <button id="verify-phone" type="submit">Verify code</button>
+        <p id="phone-status" role="status" aria-live="polite"></p>
+      </form>
       <form id="recovery-form" hidden novalidate>
         <div id="password-fields" hidden>
+          <p class="help">Password recovery links expire after 15 minutes.</p>
           <label for="new-password">New password</label>
           <input id="new-password" name="newPassword" type="password" autocomplete="new-password" minlength="8" required>
           <label for="confirm-password">Confirm new password</label>
@@ -74,19 +84,126 @@
     (() => {
       const fragment = window.location.hash;
       const params = new URLSearchParams(fragment.startsWith("#") ? fragment.slice(1) : fragment);
-      const token = params.get("token") || "";
+      let token = params.get("token") || "";
       const action = params.get("action") || "";
+      const challengeId = params.get("challenge") || "";
       window.history.replaceState(null, "", window.location.pathname + window.location.search);
 
       const form = document.getElementById("recovery-form");
+      const phoneForm = document.getElementById("phone-verify-form");
       const unavailable = document.getElementById("unavailable");
       const status = document.getElementById("status");
+      const phoneStatus = document.getElementById("phone-status");
       const passwordFields = document.getElementById("password-fields");
       const pinFields = document.getElementById("pin-fields");
+      const showPasswordReset = (recoveryToken) => {
+        token = recoveryToken;
+        form.hidden = false;
+        phoneForm.hidden = true;
+        passwordFields.hidden = false;
+        pinFields.hidden = true;
+        for (const input of passwordFields.querySelectorAll("input")) input.required = true;
+        for (const input of pinFields.querySelectorAll("input")) input.required = false;
+      };
       const showUnavailable = () => {
         unavailable.hidden = false;
         document.getElementById("support").hidden = false;
       };
+      if (action === "PHONE_OTP" && challengeId) {
+        phoneForm.hidden = false;
+        phoneForm.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          phoneStatus.textContent = "";
+          phoneStatus.dataset.kind = "";
+          const otp = document.getElementById("phone-otp").value.trim();
+          if (!/^[0-9]{6}$/.test(otp)) {
+            phoneStatus.textContent = "Enter the six-digit code from your SMS.";
+            phoneStatus.dataset.kind = "error";
+            return;
+          }
+          const button = document.getElementById("verify-phone");
+          button.disabled = true;
+          phoneStatus.textContent = "Verifying securely…";
+          try {
+            const response = await fetch("/api/account-recovery/phone/verify", {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "Accept": "application/json" },
+              body: JSON.stringify({ challengeId, otp })
+            });
+            let result = {};
+            try { result = await response.json(); } catch (_) {}
+            if (!response.ok || result.success !== true ||
+                !/^[a-f0-9]{64}$/i.test(String(result.token || "")) ||
+                result.action !== "PASSWORD_RESET") {
+              phoneStatus.textContent = response.status === 410
+                ? "This code has expired or was already used. Request a new recovery SMS."
+                : "We could not verify this code. Check it and try again, or request a new recovery SMS.";
+              phoneStatus.dataset.kind = "error";
+              button.disabled = false;
+              return;
+            }
+            showPasswordReset(result.token);
+            document.getElementById("phone-otp").value = "";
+            phoneStatus.textContent = "";
+            form.addEventListener("submit", async (completeEvent) => {
+              completeEvent.preventDefault();
+              status.textContent = "";
+              status.dataset.kind = "";
+              const data = new FormData(form);
+              const payload = {
+                token,
+                action: "PASSWORD_RESET",
+                newPassword: String(data.get("newPassword") || ""),
+                confirmPassword: String(data.get("confirmPassword") || "")
+              };
+              if (payload.newPassword.length < 8) {
+                status.textContent = "Use a password with at least 8 characters.";
+                status.dataset.kind = "error";
+                return;
+              }
+              if (payload.newPassword !== payload.confirmPassword) {
+                status.textContent = "The passwords do not match.";
+                status.dataset.kind = "error";
+                return;
+              }
+              const submitButton = document.getElementById("submit");
+              submitButton.disabled = true;
+              status.textContent = "Submitting securely…";
+              try {
+                const completeResponse = await fetch("/api/account-recovery/complete", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", "Accept": "application/json" },
+                  body: JSON.stringify(payload)
+                });
+                let completeResult = {};
+                try { completeResult = await completeResponse.json(); } catch (_) {}
+                if (!completeResponse.ok || completeResult.success !== true) {
+                  status.textContent = completeResponse.status === 410
+                    ? "This recovery link has expired or was already used. Request a new recovery email."
+                    : "We could not complete recovery with this link. Request a new recovery email or contact support.";
+                  status.dataset.kind = "error";
+                  submitButton.disabled = false;
+                  return;
+                }
+                token = "";
+                form.hidden = true;
+                status.textContent = "Your account recovery is complete.";
+                status.dataset.kind = "success";
+                document.getElementById("signin").hidden = false;
+              } catch (_) {
+                status.textContent = "We could not reach the recovery service. Please try again.";
+                status.dataset.kind = "error";
+                submitButton.disabled = false;
+              }
+            });
+          } catch (_) {
+            phoneStatus.textContent = "We could not reach the recovery service. Please retry.";
+            phoneStatus.dataset.kind = "error";
+            button.disabled = false;
+          }
+        });
+        return;
+      }
       if (!token || !["PASSWORD_RESET", "PIN_RECOVERY"].includes(action)) {
         showUnavailable();
         return;
