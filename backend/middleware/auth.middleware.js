@@ -72,7 +72,7 @@ const protect = async (req, res, next) => {
     }
 
     const user = await User.findById(userId)
-      .select("-password +authTokenVersion");
+      .select("-password +authTokenVersion +accountRecoveryState");
 
     if (!user) {
       return res.status(401).json({
@@ -111,6 +111,20 @@ const protect = async (req, res, next) => {
     );
 
     req.user = user;
+    const recovery = user.accountRecoveryState;
+    // A verified PIN-recovery authorization temporarily prevents all existing
+    // authenticated spending paths (including legacy PIN-reset endpoints).
+    // Customer completion is a separate token-bound public endpoint.
+    if (user.role === "CUSTOMER" && recovery?.action === "PIN_RECOVERY" &&
+        ["LINK_SENDING", "READY"].includes(recovery.status) &&
+        Number(recovery.expiresAt) > Date.now()) {
+      return res.status(403).json({
+        success: false, code: "PIN_RECOVERY_IN_PROGRESS",
+        message: "Complete your secure PIN recovery link or let it expire before continuing.",
+      });
+    }
+    // Do not expose private recovery state through controllers returning req.user.
+    delete user._doc.accountRecoveryState;
     // Executive APIs are purpose-built and scope-aware.  Do not allow an SVP
     // to inherit access to the broad legacy admin surface.
     if (user.role === "SVP" && /^\/api\/admin(?:\/|$)/.test(String(req.originalUrl || ""))) {

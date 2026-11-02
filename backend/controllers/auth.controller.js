@@ -1860,7 +1860,7 @@ exports.forgotPassword = async (req, res) => {
 
     user.passwordResetToken = hashedToken;
     user.passwordResetExpires =
-      Date.now() + 20 * 60 * 1000;
+      Date.now() + 15 * 60 * 1000;
 
     await user.save({
       validateBeforeSave: false,
@@ -1889,7 +1889,7 @@ exports.forgotPassword = async (req, res) => {
       "",
       `Open this link to create a new password: ${resetUrl}`,
       "",
-      "This link will expire in 20 minutes.",
+      "This link will expire in 15 minutes.",
       "",
       "If you did not request this change, you can ignore this email.",
       "",
@@ -1920,7 +1920,7 @@ exports.forgotPassword = async (req, res) => {
 
                       <p style="line-height:1.6;">
                         Click the button below to create a new password.
-                        This link expires in <strong>20 minutes</strong>.
+                        This link expires in <strong>15 minutes</strong>.
                       </p>
 
                       <p style="text-align:center;margin:30px 0;">
@@ -2154,24 +2154,31 @@ exports.resetPassword = async (req, res) => {
       });
     }
 
-    user.password = newPassword;
-    user.passwordResetToken = undefined;
-    user.passwordResetExpires = undefined;
-    user.passwordChangedAt = new Date();
-    if (user.activationPending === true) {
-      user.activationPending = false;
-      user.status = "ACTIVE";
-      user.mustChangePassword = false;
+    // Atomically consume the existing single-use token, replace the password
+    // and revoke sessions. Two simultaneous reset requests cannot both win.
+    // Use the same bcrypt work factor as the User password save hook, without
+    // materializing unrelated defaults on legacy customer records.
+    const versionedUser = await User.findOneAndUpdate({
+      _id: user._id,
+      password: savedPassword,
+      passwordResetToken: hashedToken,
+      passwordResetExpires: { $gt: Date.now() },
+      "profileRecoveryBlocked.email": { $ne: true },
+    }, {
+      $set: {
+        password: await bcrypt.hash(newPassword, 12),
+        passwordChangedAt: new Date(),
+        mustChangePassword: false,
+        ...(user.activationPending === true ? { activationPending: false, status: "ACTIVE" } : {}),
+      },
+      $inc: { authTokenVersion: 1 },
+      $unset: { passwordResetToken: 1, passwordResetExpires: 1, customerRefreshSessions: 1,
+        accountRecoveryState: 1 },
+    }, { returnDocument: "after" }).select("+authTokenVersion");
+    if (!versionedUser) {
+      return res.status(400).json({ success: false,
+        message: "This password reset link is invalid or has expired." });
     }
-
-    await user.save({
-      validateBeforeSave: false,
-    });
-    const versionedUser = await User.findByIdAndUpdate(
-      user._id,
-      { $inc: { authTokenVersion: 1 } },
-      { new: true }
-    ).select("+authTokenVersion");
 
     return res.status(200).json({
       success: true,

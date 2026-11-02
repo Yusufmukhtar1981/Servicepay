@@ -77,6 +77,7 @@ const adminAuditLogSchema =
           "USER_CREATED",
            "HIERARCHY_ASSIGNMENT_UPDATED",
           "KYC_STATUS_UPDATED",
+          "ACCOUNT_RECOVERY_EVENT",
           "SERVICE_SETTING_UPDATED",
           "SYSTEM_SETTING_UPDATED",
            "FEATURE_CONTROL_UPDATED",

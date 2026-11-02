@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>ServicePay account recovery</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #173b40;
+      --teal: #087f78;
+      --mint: #e7f4ef;
+      --canvas: #f3f7f5;
+      --line: #dbe9e4;
+      --muted: #607773;
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: var(--canvas);
+      color: var(--ink);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; padding: 24px 16px; }
+    main { width: min(100%, 520px); margin: 6vh auto 0; }
+    .brand { margin: 0 0 14px; color: var(--teal); font-size: 12px; font-weight: 800; letter-spacing: .12em; }
+    .panel { padding: clamp(20px, 6vw, 34px); border: 1px solid var(--line); border-radius: 20px; background: #fbfdfc; box-shadow: 0 12px 36px rgba(23,59,64,.08); }
+    h1 { margin: 0 0 9px; font-size: clamp(25px, 7vw, 32px); line-height: 1.12; }
+    .intro { margin: 0 0 24px; color: var(--muted); line-height: 1.55; }
+    label { display: block; margin: 17px 0 7px; font-size: 14px; font-weight: 700; }
+    input { width: 100%; min-height: 48px; padding: 12px 13px; border: 1px solid #bfd3cd; border-radius: 10px; background: #fff; color: var(--ink); font: inherit; }
+    input:focus-visible, button:focus-visible, a:focus-visible { outline: 3px solid #7ac7b5; outline-offset: 2px; }
+    button { display: block; width: 100%; min-height: 48px; margin-top: 22px; border: 0; border-radius: 11px; background: var(--teal); color: #fff; font: inherit; font-weight: 800; cursor: pointer; }
+    button:disabled { opacity: .65; cursor: wait; }
+    #status { min-height: 24px; margin: 16px 0 0; color: var(--muted); line-height: 1.45; }
+    #status[data-kind="error"] { color: #963d33; }
+    #status[data-kind="success"] { color: #176f54; }
+    .help { margin: 19px 0 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+    .help a { color: var(--teal); font-weight: 700; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <main>
+    <p class="brand">SERVICEPAY / ACCOUNT SECURITY</p>
+    <section class="panel" aria-labelledby="heading">
+      <h1 id="heading">Recover your account</h1>
+      <p class="intro">Use this secure customer form to complete the recovery requested for your account. ServicePay staff will never ask you to share your password or PIN.</p>
+      <div id="unavailable" hidden>
+        <p id="unavailable-copy" role="status">This recovery link is unavailable or incomplete.</p>
+        <p class="help">Need help? <a href="mailto:support@servicepay.ng">Contact support@servicepay.ng</a>.</p>
+      </div>
+      <form id="recovery-form" hidden novalidate>
+        <div id="password-fields" hidden>
+          <label for="new-password">New password</label>
+          <input id="new-password" name="newPassword" type="password" autocomplete="new-password" minlength="8" required>
+          <label for="confirm-password">Confirm new password</label>
+          <input id="confirm-password" name="confirmPassword" type="password" autocomplete="new-password" minlength="8" required>
+        </div>
+        <div id="pin-fields" hidden>
+          <label for="current-password">Current password</label>
+          <input id="current-password" name="currentPassword" type="password" autocomplete="current-password" required>
+          <label for="new-pin">New PIN</label>
+          <input id="new-pin" name="newPin" type="password" inputmode="numeric" autocomplete="new-password" pattern="[0-9]{4}" minlength="4" maxlength="4" required>
+          <label for="confirm-pin">Confirm new PIN</label>
+          <input id="confirm-pin" name="confirmPin" type="password" inputmode="numeric" autocomplete="new-password" pattern="[0-9]{4}" minlength="4" maxlength="4" required>
+        </div>
+        <button id="submit" type="submit">Complete account recovery</button>
+        <p id="status" role="status" aria-live="polite"></p>
+      </form>
+      <p id="signin" class="help" hidden>Recovery complete? <a href="https://servicepay.ng">Sign in to ServicePay</a>.</p>
+      <p id="support" class="help" hidden>Need help? <a href="mailto:support@servicepay.ng">Contact support@servicepay.ng</a>.</p>
+    </section>
+  </main>
+  <script>
+    (() => {
+      const fragment = window.location.hash;
+      const params = new URLSearchParams(fragment.startsWith("#") ? fragment.slice(1) : fragment);
+      const token = params.get("token") || "";
+      const action = params.get("action") || "";
+      window.history.replaceState(null, "", window.location.pathname + window.location.search);
+
+      const form = document.getElementById("recovery-form");
+      const unavailable = document.getElementById("unavailable");
+      const status = document.getElementById("status");
+      const passwordFields = document.getElementById("password-fields");
+      const pinFields = document.getElementById("pin-fields");
+      const showUnavailable = () => {
+        unavailable.hidden = false;
+        document.getElementById("support").hidden = false;
+      };
+      if (!token || !["PASSWORD_RESET", "PIN_RECOVERY"].includes(action)) {
+        showUnavailable();
+        return;
+      }
+      form.hidden = false;
+      passwordFields.hidden = action !== "PASSWORD_RESET";
+      pinFields.hidden = action !== "PIN_RECOVERY";
+      for (const input of passwordFields.querySelectorAll("input")) input.required = action === "PASSWORD_RESET";
+      for (const input of pinFields.querySelectorAll("input")) input.required = action === "PIN_RECOVERY";
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        status.textContent = "";
+        status.dataset.kind = "";
+        const data = new FormData(form);
+        const payload = { token, action };
+        if (action === "PASSWORD_RESET") {
+          payload.newPassword = String(data.get("newPassword") || "");
+          payload.confirmPassword = String(data.get("confirmPassword") || "");
+          if (payload.newPassword.length < 8) {
+            status.textContent = "Use a password with at least 8 characters.";
+            status.dataset.kind = "error";
+            return;
+          }
+          if (payload.newPassword !== payload.confirmPassword) {
+            status.textContent = "The passwords do not match.";
+            status.dataset.kind = "error";
+            return;
+          }
+        } else {
+          payload.currentPassword = String(data.get("currentPassword") || "");
+          payload.newPin = String(data.get("newPin") || "");
+          payload.confirmPin = String(data.get("confirmPin") || "");
+          if (!/^[0-9]{4}$/.test(payload.newPin)) {
+            status.textContent = "Enter a four-digit PIN.";
+            status.dataset.kind = "error";
+            return;
+          }
+          if (payload.newPin !== payload.confirmPin) {
+            status.textContent = "The PINs do not match.";
+            status.dataset.kind = "error";
+            return;
+          }
+          if (!payload.currentPassword) {
+            status.textContent = "Enter your current password.";
+            status.dataset.kind = "error";
+            return;
+          }
+        }
+        const button = document.getElementById("submit");
+        button.disabled = true;
+        status.textContent = "Submitting securely…";
+        try {
+          const response = await fetch("/api/account-recovery/complete", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Accept": "application/json" },
+            body: JSON.stringify(payload)
+          });
+          let result = {};
+          try { result = await response.json(); } catch (_) {}
+          if (!response.ok || result.success !== true) {
+            status.textContent = response.status === 410
+              ? "This recovery link has expired or was already used. Request a new recovery email."
+              : "We could not complete recovery with this link. Request a new recovery email or contact support.";
+            status.dataset.kind = "error";
+            button.disabled = false;
+            return;
+          }
+          form.hidden = true;
+          status.textContent = "Your account recovery is complete.";
+          status.dataset.kind = "success";
+          document.getElementById("signin").hidden = false;
+        } catch (_) {
+          status.textContent = "We could not reach the recovery service. Please try again.";
+          status.dataset.kind = "error";
+          button.disabled = false;
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

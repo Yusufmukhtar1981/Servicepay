@@ -123,6 +123,13 @@ const userSchema = new mongoose.Schema(
       select: false,
       default: undefined,
     },
+    // Customer recovery is private and shares existing collections. No
+    // deployment-time backfill, new collection or credential reset is needed.
+    accountRecoveryState: { type: mongoose.Schema.Types.Mixed, select: false },
+    accountRecoveryRate: { type: mongoose.Schema.Types.Mixed, select: false },
+    accountRecoveryAdminRate: { type: mongoose.Schema.Types.Mixed, select: false },
+    recoveryAuditHead: { type: String, select: false },
+    recoveryAuditSequence: { type: Number, select: false },
 
     passwordResetExpires: {
       type: Date,

@@ -2,6 +2,11 @@ const permission = (key, value, module, label, description, risk = "STANDARD") =
   Object.freeze({ key, value, module, label, description, risk });
 
 const STAFF_PERMISSION_CATALOG = Object.freeze([
+  permission("VIEW_ACCOUNT_RECOVERY", "VIEW_ACCOUNT_RECOVERY", "CUSTOMER_SECURITY", "View account recovery", "Explicit Head Office-only recovery diagnostics; never granted by wildcard.", "CRITICAL"),
+  permission("INITIATE_PASSWORD_RESET", "INITIATE_PASSWORD_RESET", "CUSTOMER_SECURITY", "Initiate customer password recovery", "Head Office-only verified customer recovery with fresh authentication.", "CRITICAL"),
+  permission("UNLOCK_CUSTOMER_ACCOUNT", "UNLOCK_CUSTOMER_ACCOUNT", "CUSTOMER_SECURITY", "Unlock ordinary login failures", "Never overrides security, fraud or compliance restrictions.", "CRITICAL"),
+  permission("INITIATE_PIN_RECOVERY", "INITIATE_PIN_RECOVERY", "CUSTOMER_SECURITY", "Initiate customer PIN recovery", "Head Office-only verified email plus customer password; customer sets PIN.", "CRITICAL"),
+  permission("VIEW_RECOVERY_AUDIT_LOG", "VIEW_RECOVERY_AUDIT_LOG", "CUSTOMER_SECURITY", "View recovery audit", "Head Office-only tamper-evident recovery history.", "CRITICAL"),
   permission("OPERATIONS_WORKSPACE_VIEW", "operations.workspace.view", "SUPPORT", "Operations workspace", "Read operational monitoring and investigate complaints; no financial adjustments."),
   permission("SUPPORT_WORKSPACE_VIEW", "support.workspace.view", "SUPPORT", "Support workspace", "Search customers and investigate complaints; no financial adjustments."),
   permission("DASHBOARD_VIEW", "dashboard.view", "DASHBOARD", "View dashboard", "View Admin dashboard summaries."),

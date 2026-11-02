@@ -377,6 +377,8 @@ app.use(
   "/api/transaction-pin",
   transactionPinRoutes
 );
+app.use("/api/admin/account-recovery", require("./routes/accountRecovery.routes").adminRouter);
+app.use("/api/account-recovery", require("./routes/accountRecovery.routes").customerRouter);
 
 
 // ServicePay Fintech Control Enforcement
