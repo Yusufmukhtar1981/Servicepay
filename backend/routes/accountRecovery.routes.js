@@ -32,7 +32,11 @@ const guard = permission => (req, res, next) => {
   next();
 };
 adminRouter.use(protect, loadStaffRole, require("../middleware/adminAccessLog.middleware"), guard(R.PERMISSIONS.VIEW));
-adminRouter.get("/provider-readiness", safe(() => require("../services/twilioVerify.service").probe()));
+adminRouter.get("/provider-readiness", safe(async () => ({
+  ...await require("../services/twilioVerify.service").probe(),
+  smsAdmissionReady: await require("../services/accountRecoveryAdmission.service").ready(),
+  smsDailyLimit: require("../services/accountRecoveryAdmission.service").dailyLimit(),
+})));
 adminRouter.use("/:id", (req, res, next) => {
   if (!mongoose.isObjectIdOrHexString(req.params.id)) {
     return res.status(400).json({ success: false, message: "Invalid customer identifier." });
@@ -67,6 +71,18 @@ customerRouter.get("/page", (req, res) => {
   res.sendFile(path.join(__dirname, "../views/accountRecovery.html"));
 });
 customerRouter.post("/complete", safe(req => S.complete(req.body || {})));
+customerRouter.get("/methods", safe(async () => ({
+  smsAvailable: require("../services/twilioVerify.service").enabled() &&
+    await require("../services/accountRecoveryAdmission.service").ready(),
+  requiresVerifiedPhone: true,
+})));
+customerRouter.post("/phone/challenge", safe(async req => {
+  if (!require("../services/twilioVerify.service").enabled()) {
+    throw R.fail("SMS verification is temporarily unavailable.", 503);
+  }
+  await require("../services/accountRecoveryAdmission.service").reservePublicIp(req.ip);
+  return require("../services/accountRecoveryVerify.service").requestPublic(req.body || {});
+}));
 customerRouter.post("/phone-verification/challenge", protect, safe(req => {
   if (req.user?.role !== "CUSTOMER") throw R.fail("Customer access only.", 403);
   return require("../services/accountRecoveryVerify.service").start(req.user._id, req.user, req.body || {}, true);

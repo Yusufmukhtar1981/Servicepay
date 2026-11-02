@@ -18,6 +18,8 @@ const Phone = require("../services/accountRecoveryPhone.service");
 const Sms = require("../services/accountRecoverySms.service");
 const VerifyFlow = require("../services/accountRecoveryVerify.service");
 const VerifyProvider = require("../services/twilioVerify.service");
+const Admission = require("../services/accountRecoveryAdmission.service");
+const Rate = require("../models/privacyRequestRateLimit.model");
 const { protect } = require("../middleware/auth.middleware");
 const { adminRouter, customerRouter } = require("../routes/accountRecovery.routes");
 const { normalizeStaffPermission } = require("../config/permissionRegistry");
@@ -71,7 +73,8 @@ before(async () => {
   const uri = mongo.getUri();
   assert.match(uri, /^mongodb:\/\/127\.0\.0\.1:/);
   await mongoose.connect(uri, { dbName: "account-recovery-disposable", autoIndex: false });
-  await Promise.all([User, Role, Audit, Login, Notification].map(m => m.createCollection()));
+  await Promise.all([User, Role, Audit, Login, Notification, Rate].map(m => m.createCollection()));
+  await Rate.createIndexes();
   passwordHash = await bcrypt.hash(customerPassword, 12);
   const app = express();
   app.use(express.json({ limit: "16kb" }));
@@ -86,7 +89,11 @@ beforeEach(async () => {
   // Raw cleanup is confined to this newly created local disposable database;
   // production audit immutability remains enabled and is not bypassed in code.
   assert.match(mongoose.connection.host, /^(127\.0\.0\.1|localhost)$/);
-  await Promise.all([User, Role, Audit, Login, Notification].map(m => m.collection.deleteMany({})));
+  await Promise.all([User, Role, Audit, Login, Notification, Rate].map(m => m.collection.deleteMany({})));
+  delete process.env.SERVICEPAY_VERIFY_SMS_DAILY_LIMIT;
+  delete process.env.SERVICEPAY_TWILIO_VERIFY_ENABLED;
+  delete process.env.SERVICEPAY_TWILIO_VERIFY_DELIVERY_VERIFIED;
+  VerifyFlow.hooks.reserveSend = Admission.reserveSend;
   messages = [];
   smsMessages = [];
   VerifyFlow.hooks.ready = () => false;
@@ -139,6 +146,87 @@ const beginManaged = async (action = "PASSWORD_RESET") => {
   });
 };
 const managedProof = challengeId => Phone.verify({ challengeId, otp: "123456" });
+
+function publicPhoneFixture() {
+  process.env.TWILIO_ACCOUNT_SID = "AC" + "1".repeat(32);
+  process.env.TWILIO_AUTH_TOKEN = "disposable-test-only";
+  process.env.TWILIO_VERIFY_SERVICE_SID = "VA" + "2".repeat(32);
+  process.env.SERVICEPAY_TWILIO_VERIFY_ENABLED = "true";
+  process.env.SERVICEPAY_TWILIO_VERIFY_DELIVERY_VERIFIED = "true";
+  managed();
+}
+test("public password OTP completes only through provider approval and preserves wallet and account identity", async () => {
+  publicPhoneFixture(); await enablePhoneFixture();
+  await User.collection.updateOne({ _id: customer._id }, { $set: { authTokenVersion: 5 } });
+  const before = await raw();
+  const started = await request("/api/account-recovery/phone/challenge",
+    { phone: customer.phone, action: "PASSWORD_RESET" }, "", "POST");
+  assert.equal(started.status, 200);
+  assert(!started.body.token && !started.body.otp);
+  assert.equal((await raw()).accountRecoveryState.status, "CHALLENGE_SENT");
+  const checked = await verifyPhone(started.body.challengeId, "123456");
+  assert.equal(checked.status, 200);
+  await S.complete({ action: "PASSWORD_RESET", token: checked.body.token,
+    newPassword: "Public-Recovery-Password-73!", confirmPassword: "Public-Recovery-Password-73!" });
+  const after = await raw();
+  assert.equal(await bcrypt.compare("Public-Recovery-Password-73!", after.password), true);
+  assert.equal(after.walletBalance, before.walletBalance);
+  assert.equal(after.phone, before.phone);
+  assert.equal(after.authTokenVersion, before.authTokenVersion + 1);
+  assert.equal(after.accountRecoveryState.status, "COMPLETED");
+});
+test("public PIN OTP proof cannot replace a PIN without the customer's current password", async () => {
+  publicPhoneFixture(); await enablePhoneFixture();
+  const started = await request("/api/account-recovery/phone/challenge",
+    { phone: customer.phone, action: "PIN_RECOVERY" }, "", "POST");
+  const checked = await verifyPhone(started.body.challengeId, "123456");
+  const before = await raw();
+  await assert.rejects(S.complete({ action: "PIN_RECOVERY", token: checked.body.token, newPin: "5729", confirmPin: "5729" }));
+  assert.equal((await raw()).transactionPin, before.transactionPin);
+  await S.complete({ action: "PIN_RECOVERY", token: checked.body.token, currentPassword: customerPassword,
+    newPin: "5729", confirmPin: "5729" });
+  assert.equal(await bcrypt.compare("5729", (await raw()).transactionPin), true);
+});
+test("unknown and corrected unverified public contacts receive the same response without a provider send", async () => {
+  publicPhoneFixture();
+  let sends = 0;
+  VerifyFlow.hooks.start = async () => { sends++; throw Error("No send expected"); };
+  await User.collection.updateOne({ _id: customer._id }, { $set: {
+    phoneVerified: false, "profileRecoveryBlocked.phone": true } });
+  const first = await request("/api/account-recovery/phone/challenge",
+    { phone: customer.phone, action: "PASSWORD_RESET" }, "", "POST");
+  const second = await request("/api/account-recovery/phone/challenge",
+    { phone: "08000000009", action: "PASSWORD_RESET" }, "", "POST");
+  assert.equal(first.status, 200); assert.equal(second.status, 200);
+  assert.equal(first.body.message, second.body.message);
+  assert.deepEqual(Object.keys(first.body).sort(), Object.keys(second.body).sort());
+  assert.equal(sends, 0);
+});
+test("durable global SMS allowance admits at most the configured count under concurrency", async () => {
+  process.env.SERVICEPAY_VERIFY_SMS_DAILY_LIMIT = "2";
+  const results = await Promise.allSettled(Array.from({ length: 9 }, () => Admission.reserveSend()));
+  assert.equal(results.filter(x => x.status === "fulfilled").length, 2);
+  assert.equal(results.filter(x => x.status === "rejected" && x.reason.code === "SMS_LIMIT_REACHED").length, 7);
+  assert.equal((await Rate.findOne({ key: "verify-sms:global" }).lean()).count, 2);
+});
+test("public requests are IP-limited before account lookup without retaining raw addresses", async () => {
+  publicPhoneFixture();
+  for (let i = 0; i < 5; i++) {
+    assert.equal((await request("/api/account-recovery/phone/challenge",
+      { phone: "08000000009", action: "PASSWORD_RESET" }, "", "POST")).status, 200);
+  }
+  assert.equal((await request("/api/account-recovery/phone/challenge",
+    { phone: "08000000009", action: "PASSWORD_RESET" }, "", "POST")).status, 429);
+  assert(!JSON.stringify(await Rate.find().lean()).includes("127.0.0.1"));
+});
+test("SMS methods and dispatch fail closed for disabled sending and invalid daily limits", async () => {
+  assert.equal((await request("/api/account-recovery/methods", undefined, "")).body.smsAvailable, false);
+  assert.equal((await request("/api/account-recovery/phone/challenge",
+    { phone: customer.phone, action: "PASSWORD_RESET" }, "", "POST")).status, 503);
+  process.env.SERVICEPAY_VERIFY_SMS_DAILY_LIMIT = "not-a-limit";
+  assert.equal(await Admission.ready(), false);
+  await assert.rejects(Admission.reserveSend(), { code: "SMS_ADMISSION_UNAVAILABLE" });
+});
 
 test("Verify managed challenge returns only the customer entry link; provider approval authorizes its bound action", async () => {
   const started = await beginManaged();

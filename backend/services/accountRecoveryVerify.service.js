@@ -4,8 +4,10 @@ const User = require("../models/user.model");
 const R = require("./accountRecovery.rules");
 const S = require("./accountRecovery.service");
 const Provider = require("./twilioVerify.service");
+const Admission = require("./accountRecoveryAdmission.service");
 const OTP_TTL = 300000, PROVIDER_LEASE = 600000;
-const hooks = { ready: Provider.enabled, start: Provider.start, check: Provider.check };
+const hooks = { ready: Provider.enabled, start: Provider.start, check: Provider.check,
+  reserveSend: Admission.reserveSend };
 const available = user => R.eligible(user) && R.verifiedPhone(user) && hooks.ready(user.phone);
 function entryUrl(challengeId) {
   const origin = String(process.env.ACCOUNT_RECOVERY_PUBLIC_API_ORIGIN || "https://api.servicepay.ng").replace(/\/$/, "");
@@ -25,12 +27,13 @@ function valid(user, state, challengeId) {
       ? !!R.normalizePhone(user.phone) && user.profileRecoveryBlocked?.phone !== true
       : ["PASSWORD_RESET", "PIN_RECOVERY"].includes(state.action) && R.verifiedPhone(user));
 }
-async function start(id, actor, body, self = false) {
+async function start(id, actor, body, self = false, publicRecovery = false) {
   const action = self ? "PHONE_VERIFICATION" : body.action;
   if (!["PASSWORD_RESET", "PIN_RECOVERY", "PHONE_VERIFICATION"].includes(action) ||
       (!self && action === "PHONE_VERIFICATION")) throw R.fail("Unsupported phone verification action.");
-  const reason = self ? "Customer requested verification of their existing phone" : R.reason(body.reason);
-  try { await S.reauthenticate(actor, body.currentPassword); }
+  const reason = self ? "Customer requested verification of their existing phone" :
+    publicRecovery ? "Customer requested recovery through their existing verified phone" : R.reason(body.reason);
+  try { if (!publicRecovery) await S.reauthenticate(actor, body.currentPassword); }
   catch (error) {
     if (self && error.statusCode === 401) error.message = "Current customer password verification failed.";
     throw error;
@@ -40,6 +43,8 @@ async function start(id, actor, body, self = false) {
     if (!R.eligible(user) || !R.normalizePhone(user.phone) || user.profileRecoveryBlocked?.phone === true ||
         (!self && !R.verifiedPhone(user))) throw R.fail("An eligible trusted customer phone is required.", 409);
     if (self && (actor.role !== "CUSTOMER" || String(actor._id) !== String(user._id))) throw R.fail("Customer access only.", 403);
+    if (publicRecovery && (self || actor.role !== "CUSTOMER" ||
+        user.role !== "CUSTOMER" || String(actor._id) !== String(user._id))) throw R.fail("Customer access only.", 403);
     if (!hooks.ready(user.phone)) throw R.fail("Twilio Verify sending is not activated.", 503, "VERIFY_UNAVAILABLE");
     if (self) {
       if (user.phoneVerified === true) throw R.fail("Your existing phone is already verified.", 409);
@@ -58,7 +63,13 @@ async function start(id, actor, body, self = false) {
     return { phone: R.normalizePhone(user.phone) };
   });
   let sent;
-  try { sent = await hooks.start(delivery.phone); } catch (_) { sent = { success: false, status: "UNCONFIRMED" }; }
+  try {
+    await hooks.reserveSend();
+    sent = await hooks.start(delivery.phone);
+  } catch (error) {
+    sent = { success: false, status: error.code === "SMS_LIMIT_REACHED" ? "RATE_LIMITED" :
+      error.code === "SMS_ADMISSION_UNAVAILABLE" ? "UNAVAILABLE" : "UNCONFIRMED" };
+  }
   const result = await S.transition(id, actor, "VERIFY_SEND_RESULT", reason, async user => {
     const state = user.accountRecoveryState;
     if (state?.id !== challengeId || state.status !== "OTP_SENDING") throw R.fail("Verification changed.", 409);
@@ -132,4 +143,22 @@ async function verify(found, body) {
     ? { action: result.action, verified: true, requiresLogin: true }
     : { action: result.action, expiresAt: result.expiresAt, token };
 }
-module.exports = { hooks, OTP_TTL, available, busy, start, verify };
+async function requestPublic(body) {
+  if (!["PASSWORD_RESET", "PIN_RECOVERY"].includes(body.action)) throw R.fail("Choose password or transaction PIN recovery.");
+  const phone = R.normalizePhone(body.phone);
+  if (!phone) throw R.fail("Enter a valid Nigerian phone number.");
+  if (!Provider.enabled()) throw R.fail("SMS verification is temporarily unavailable.", 503);
+  const digits = phone.slice(1);
+  const user = await User.findOne({ phone: { $in: [phone, digits, "0" + digits.slice(3)] },
+    role: "CUSTOMER", phoneVerified: true }).select("+profileRecoveryBlocked +authTokenVersion").lean();
+  const message = "If this is an eligible account with that verified phone, a code has been requested. Continue privately; otherwise contact Head Office.";
+  const fallbackId = crypto.randomUUID();
+  let challenge = { challengeId: fallbackId, customerEntryUrl: entryUrl(fallbackId), expiresAt: Date.now() + OTP_TTL };
+  if (user && R.eligible(user) && R.verifiedPhone(user)) {
+    try { challenge = await start(user._id, user, { action: body.action }, false, true); }
+    catch (_) { /* Same response for unknown, blocked, unavailable and rate-limited accounts. */ }
+  }
+  return { challengeId: challenge.challengeId, customerEntryUrl: challenge.customerEntryUrl,
+    expiresAt: challenge.expiresAt, message };
+}
+module.exports = { hooks, OTP_TTL, available, busy, start, verify, requestPublic };
