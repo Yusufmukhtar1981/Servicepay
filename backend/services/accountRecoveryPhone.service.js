@@ -6,13 +6,19 @@ const S = require("./accountRecovery.service");
 const Sms = require("./accountRecoverySms.service");
 const OTP_TTL = 5 * 60 * 1000;
 const hooks = { configured: Sms.configured, sendSms: Sms.send };
-function available(user) { return R.eligible(user) && R.verifiedPhone(user) && hooks.configured(); }
+function available(user) {
+  const Verify = require("./accountRecoveryVerify.service");
+  return Verify.hooks.ready() ? Verify.available(user) :
+    R.eligible(user) && R.verifiedPhone(user) && hooks.configured();
+}
 function publicOrigin() {
   const origin = String(process.env.ACCOUNT_RECOVERY_PUBLIC_API_ORIGIN || "https://api.servicepay.ng").replace(/\/$/, "");
   if (!/^https:\/\/[a-z0-9.-]+(?::\d+)?$/i.test(origin)) throw R.fail("Secure recovery delivery is unavailable.", 503);
   return origin;
 }
 async function start(id, actor, body) {
+  const Verify = require("./accountRecoveryVerify.service");
+  if (Verify.hooks.ready()) return Verify.start(id, actor, body);
   if (body.action !== "PASSWORD_RESET") throw R.fail("Phone OTP supports password recovery only.");
   const recoveryReason = R.reason(body.reason);
   await S.reauthenticate(actor, body.currentPassword);
@@ -31,7 +37,8 @@ async function start(id, actor, body) {
     const bucket = Math.floor(Date.now() / 3600000);
     const count = rate.bucket === bucket ? Number(rate.count || 0) : 0;
     if (count >= 3) throw R.fail("Customer recovery request limit reached. Try later.", 429);
-    if (R.live(user.accountRecoveryState) && ["READY", "LINK_SENDING"].includes(user.accountRecoveryState.status)) {
+    if (Verify.busy(user.accountRecoveryState) ||
+        (R.live(user.accountRecoveryState) && ["READY", "LINK_SENDING"].includes(user.accountRecoveryState.status))) {
       throw R.fail("A customer recovery authorization is already active.", 409);
     }
     user.accountRecoveryRate = { bucket, count: count + 1, lastSentAt: Date.now() };
@@ -74,6 +81,9 @@ async function verify(body) {
   const found = await User.findOne({ "accountRecoveryState.id": body.challengeId })
     .select("+accountRecoveryState").lean();
   if (!found) throw R.fail("Recovery challenge is invalid or expired.");
+  if (found.accountRecoveryState?.provider === "TWILIO_VERIFY") {
+    return require("./accountRecoveryVerify.service").verify(found, body);
+  }
   const token = crypto.randomBytes(32).toString("hex");
   const result = await S.transition(found._id, { _id: found._id, role: "CUSTOMER" },
     "PHONE_CUSTOMER_OWNERSHIP_CHECK", "Customer-controlled phone ownership verification", async user => {

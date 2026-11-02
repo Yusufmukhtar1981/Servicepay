@@ -16,6 +16,8 @@ const S = require("../services/accountRecovery.service");
 const R = require("../services/accountRecovery.rules");
 const Phone = require("../services/accountRecoveryPhone.service");
 const Sms = require("../services/accountRecoverySms.service");
+const VerifyFlow = require("../services/accountRecoveryVerify.service");
+const VerifyProvider = require("../services/twilioVerify.service");
 const { protect } = require("../middleware/auth.middleware");
 const { adminRouter, customerRouter } = require("../routes/accountRecovery.routes");
 const { normalizeStaffPermission } = require("../config/permissionRegistry");
@@ -87,6 +89,9 @@ beforeEach(async () => {
   await Promise.all([User, Role, Audit, Login, Notification].map(m => m.collection.deleteMany({})));
   messages = [];
   smsMessages = [];
+  VerifyFlow.hooks.ready = () => false;
+  VerifyFlow.hooks.start = VerifyProvider.start;
+  VerifyFlow.hooks.check = VerifyProvider.check;
   Phone.hooks.configured = () => true;
   Phone.hooks.sendSms = async input => { smsMessages.push(input); return { success: true, status: "ACCEPTED" }; };
   S.hooks.sendRecoverySms = async input => { smsMessages.push(input); return { success: true, status: "ACCEPTED" }; };
@@ -119,6 +124,199 @@ const beginPhone = async () => {
 const phoneOtp = () => smsMessages[0].message.match(/code: (\d{6})/)[1];
 const verifyPhone = (challenge, otp = phoneOtp()) =>
   request("/api/account-recovery/phone/verify", { challengeId: challenge, otp }, "", "POST");
+
+const managed = () => {
+  VerifyFlow.hooks.ready = () => true;
+  VerifyFlow.hooks.start = async () => ({ success: true, status: "ACCEPTED",
+    verificationSid: "VE" + "a".repeat(32), createdAt: Date.now(),
+    serviceFingerprint: R.hash("disposable-service") });
+  VerifyFlow.hooks.check = async () => ({ success: true, status: "APPROVED" });
+};
+const beginManaged = async (action = "PASSWORD_RESET") => {
+  managed(); await enablePhoneFixture();
+  return request(`/api/admin/account-recovery/${customer._id}/challenge`, {
+    action, channel: "PHONE", reason, currentPassword: adminPassword,
+  });
+};
+const managedProof = challengeId => Phone.verify({ challengeId, otp: "123456" });
+
+test("Verify managed challenge returns only the customer entry link; provider approval authorizes its bound action", async () => {
+  const started = await beginManaged();
+  assert.equal(started.status, 200);
+  assert.match(started.body.customerEntryUrl, /^https:\/\/api\.servicepay\.ng\/api\/account-recovery\/page#challenge=/);
+  assert(!started.body.token && !started.body.otp && !started.body.verificationSid);
+  const state = (await raw()).accountRecoveryState;
+  assert.equal(state.provider, "TWILIO_VERIFY"); assert(!state.otpHash);
+  const checked = await verifyPhone(started.body.challengeId, "123456");
+  assert.equal(checked.status, 200); assert.equal(checked.body.action, "PASSWORD_RESET");
+  assert.match(checked.body.token, /^[a-f0-9]{64}$/);
+  await assert.rejects(() => managedProof(started.body.challengeId));
+  assert.equal((await raw()).password, passwordHash);
+});
+
+test("Verify approval does not weaken PIN recovery: customer password and official PIN policy remain mandatory", async () => {
+  const before = await raw(), started = await beginManaged("PIN_RECOVERY");
+  const proof = await managedProof(started.body.challengeId);
+  assert.equal(proof.action, "PIN_RECOVERY");
+  const body = { token: proof.token, action: "PIN_RECOVERY", newPin: "6381", confirmPin: "6381",
+    currentPassword: "wrong-password" };
+  assert.equal((await request("/api/account-recovery/complete", body, "")).status, 401);
+  body.currentPassword = customerPassword;
+  assert.equal((await request("/api/account-recovery/complete", body, "")).status, 200);
+  const current = await raw();
+  assert(await bcrypt.compare("6381", current.transactionPin));
+  assert.equal(current.password, before.password);
+  assert.equal(current.walletBalance, before.walletBalance);
+  assert.deepEqual(current.virtualAccount, before.virtualAccount);
+  assert.equal(current.authTokenVersion, 1);
+});
+
+test("Verify incorrect results consume five durable attempts and never issue a credential", async () => {
+  const started = await beginManaged();
+  VerifyFlow.hooks.check = async () => ({ success: true, status: "INCORRECT" });
+  for (let i = 0; i < 5; i++) await assert.rejects(() => managedProof(started.body.challengeId));
+  assert.equal((await raw()).accountRecoveryState.attempts, 5);
+  assert.equal((await raw()).accountRecoveryState.status, "LOCKED");
+  VerifyFlow.hooks.check = async () => { throw Error("must not retry provider"); };
+  await assert.rejects(() => managedProof(started.body.challengeId));
+});
+
+test("Verify uncertain checks stay blocked and never automatically repeat or become success on 404", async () => {
+  const started = await beginManaged(); let calls = 0;
+  VerifyFlow.hooks.check = async () => { calls++; return { success: false, status: "UNCONFIRMED" }; };
+  await assert.rejects(() => managedProof(started.body.challengeId));
+  await assert.rejects(() => managedProof(started.body.challengeId));
+  assert.equal(calls, 1);
+  assert.equal((await raw()).accountRecoveryState.status, "CHECK_UNCONFIRMED");
+  assert(!(await raw()).accountRecoveryState.tokenHash);
+});
+
+test("Verify concurrent checks make at most one provider call and one authorization", async () => {
+  const started = await beginManaged(); let calls = 0;
+  VerifyFlow.hooks.check = async () => {
+    calls++; await new Promise(r => setTimeout(r, 60)); return { success: true, status: "APPROVED" };
+  };
+  const results = await Promise.allSettled([managedProof(started.body.challengeId), managedProof(started.body.challengeId)]);
+  assert.equal(results.filter(x => x.status === "fulfilled").length, 1);
+  assert.equal(calls, 1);
+});
+
+test("Verify provider leases survive local expiry and block cross-purpose code reuse", async () => {
+  const started = await beginManaged();
+  await User.collection.updateOne({ _id: customer._id }, { $set: {
+    "accountRecoveryState.expiresAt": Date.now() - 1, "accountRecoveryRate.lastSentAt": Date.now() - 61000,
+  } });
+  await assert.rejects(() => managedProof(started.body.challengeId));
+  const next = await request(`/api/admin/account-recovery/${customer._id}/challenge`, {
+    action: "PIN_RECOVERY", channel: "PHONE", reason, currentPassword: adminPassword,
+  });
+  assert.equal(next.status, 409);
+  const email = await request(`/api/admin/account-recovery/${customer._id}/challenge`, {
+    action: "PASSWORD_RESET", channel: "EMAIL", reason, currentPassword: adminPassword,
+  });
+  assert.notEqual(email.status, 200);
+});
+
+test("Verify send uncertainty has no reset authority and cannot be resent while its provider lease remains", async () => {
+  managed(); await enablePhoneFixture(); let calls = 0;
+  VerifyFlow.hooks.start = async () => { calls++; return { success: false, status: "UNCONFIRMED" }; };
+  const body = { action: "PASSWORD_RESET", channel: "PHONE", reason, currentPassword: adminPassword };
+  assert.equal((await request(`/api/admin/account-recovery/${customer._id}/challenge`, body)).status, 503);
+  await User.collection.updateOne({ _id: customer._id }, { $set: { "accountRecoveryRate.lastSentAt": Date.now() - 61000 } });
+  assert.equal((await request(`/api/admin/account-recovery/${customer._id}/challenge`, body)).status, 409);
+  assert.equal(calls, 1);
+});
+
+test("Verify does not renew a stale provider code or accept approval after its contact binding changed", async () => {
+  managed(); await enablePhoneFixture();
+  VerifyFlow.hooks.start = async () => ({ success: true, verificationSid: "VE" + "a".repeat(32),
+    createdAt: Date.now() - 301000, serviceFingerprint: R.hash("disposable-service") });
+  const body = { action: "PASSWORD_RESET", channel: "PHONE", reason, currentPassword: adminPassword };
+  assert.equal((await request(`/api/admin/account-recovery/${customer._id}/challenge`, body)).status, 503);
+  await User.collection.updateOne({ _id: customer._id }, { $unset: { accountRecoveryState: "", accountRecoveryRate: "" } });
+  const started = await beginManaged();
+  VerifyFlow.hooks.check = async () => {
+    await User.collection.updateOne({ _id: customer._id }, { $set: { phoneVerified: false } });
+    return { success: true, status: "APPROVED" };
+  };
+  await assert.rejects(() => managedProof(started.body.challengeId));
+  assert(!(await raw()).accountRecoveryState.tokenHash);
+});
+
+test("authenticated existing-phone verification requires the customer's password and marks only that unfenced phone verified", async () => {
+  managed();
+  await User.collection.updateOne({ _id: customer._id }, { $set: { phoneVerified: false } });
+  const path = "/api/account-recovery/phone-verification/challenge";
+  assert.equal((await request(path, { currentPassword: customerPassword })).status, 403);
+  assert.equal((await request(path, { currentPassword: "wrong" }, tokenFor(customer))).status, 401);
+  let seenPhone;
+  VerifyFlow.hooks.start = async phone => { seenPhone = phone; return { success: true,
+    verificationSid: "VE" + "a".repeat(32), createdAt: Date.now(), serviceFingerprint: R.hash("disposable-service") }; };
+  const before = await raw();
+  const started = await request(path, { currentPassword: customerPassword, phone: "08099999999" }, tokenFor(customer));
+  assert.equal(started.status, 200);
+  assert.equal(seenPhone, R.normalizePhone(customer.phone));
+  const proof = await managedProof(started.body.challengeId);
+  assert.equal(proof.action, "PHONE_VERIFICATION"); assert.equal(proof.verified, true); assert(!proof.token);
+  const current = await raw();
+  assert.equal(current.phoneVerified, true);
+  assert.equal(current.password, before.password);
+  assert.equal(current.authTokenVersion, 1);
+  assert.equal(current.walletBalance, before.walletBalance);
+  assert.deepEqual(current.virtualAccount, before.virtualAccount);
+  await assert.rejects(() => managedProof(started.body.challengeId));
+});
+
+test("authenticated phone verification never trusts an administratively corrected contact or bypasses account restrictions", async () => {
+  managed();
+  await User.collection.updateOne({ _id: customer._id }, { $set: {
+    phoneVerified: false, "profileRecoveryBlocked.phone": true,
+  } });
+  const path = "/api/account-recovery/phone-verification/challenge";
+  assert.equal((await request(path, { currentPassword: customerPassword }, tokenFor(customer))).status, 409);
+  assert.notEqual((await raw()).phoneVerified, true);
+});
+
+test("Verify transport sends form bodies and binds approval to exact service, account, phone and verification SID", async () => {
+  const keys = ["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_VERIFY_SERVICE_SID",
+    "SERVICEPAY_TWILIO_VERIFY_ENABLED", "SERVICEPAY_TWILIO_VERIFY_DELIVERY_VERIFIED", "TWILIO_VERIFY_TEST_PHONE"];
+  const old = keys.map(k => process.env[k]), original = VerifyProvider.hooks.fetch;
+  const account = "AC" + "a".repeat(32), service = "VA" + "b".repeat(32), verification = "VE" + "c".repeat(32);
+  const phone = "+2348000000002"; let called = 0, bad = false;
+  try {
+    Object.assign(process.env, { TWILIO_ACCOUNT_SID: account, TWILIO_AUTH_TOKEN: "disposable-only",
+      TWILIO_VERIFY_SERVICE_SID: service, SERVICEPAY_TWILIO_VERIFY_ENABLED: "false",
+      SERVICEPAY_TWILIO_VERIFY_DELIVERY_VERIFIED: "false", TWILIO_VERIFY_TEST_PHONE: "" });
+    assert.equal((await VerifyProvider.start(phone)).status, "UNAVAILABLE");
+    process.env.SERVICEPAY_TWILIO_VERIFY_ENABLED = "true";
+    assert.equal(VerifyProvider.enabled(phone), false);
+    process.env.TWILIO_VERIFY_TEST_PHONE = phone;
+    assert.equal(VerifyProvider.enabled("+2348000000003"), false);
+    VerifyProvider.hooks.fetch = async (url, options) => {
+      called++;
+      const body = new URLSearchParams(options.body);
+      assert(!body.has("CustomCode") && !body.has("From"));
+      assert.equal(options.headers["Content-Type"], "application/x-www-form-urlencoded");
+      if (url.endsWith("/VerificationCheck")) {
+        assert.equal(body.get("VerificationSid"), verification); assert.equal(body.get("Code"), "123456");
+      } else { assert.equal(body.get("To"), phone); assert.equal(body.get("RiskCheck"), "enable"); }
+      return { ok: true, status: 200, json: async () => ({ sid: bad ? "VE" + "d".repeat(32) : verification,
+        service_sid: service, account_sid: account, to: phone, channel: "sms",
+        date_created: new Date().toISOString(), status: url.endsWith("/VerificationCheck") ? "approved" : "pending" }) };
+    };
+    const sent = await VerifyProvider.start(phone);
+    assert.equal(sent.success, true);
+    const args = { phone, verificationSid: verification, code: "123456", serviceFingerprint: sent.serviceFingerprint };
+    assert.equal((await VerifyProvider.check(args)).status, "APPROVED");
+    bad = true; assert.equal((await VerifyProvider.check(args)).status, "UNCONFIRMED");
+    VerifyProvider.hooks.fetch = async () => ({ ok: false, status: 404, json: async () => ({ code: 20404 }) });
+    assert.equal((await VerifyProvider.check(args)).success, false);
+    assert.equal(called, 3);
+  } finally {
+    VerifyProvider.hooks.fetch = original;
+    keys.forEach((k, i) => old[i] === undefined ? delete process.env[k] : process.env[k] = old[i]);
+  }
+});
 
 test("phone OTP is private, keyed, five-minute and only customer verification issues a reset token", async () => {
   const result = await beginPhone();

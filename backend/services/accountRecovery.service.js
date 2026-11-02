@@ -21,6 +21,7 @@ const securityFields = [
   "passwordResetToken", "passwordResetExpires", "customerRefreshSessions",
   "transactionPin", "transactionPinSet", "transactionPinUpdatedAt",
   "transactionPinFailedAttempts", "transactionPinLockedUntil", "transactionPinAttemptVersion",
+  "phoneVerified",
 ];
 
 // Every state transition and its keyed audit-chain event commit together.
@@ -51,6 +52,10 @@ async function transition(id, actor, event, recoveryReason, change) {
       challengeId: user.accountRecoveryState?.id || null,
       occurredAt: new Date().toISOString(),
     };
+    if (Number.isInteger(outcome.providerHttpStatus)) metadata.providerHttpStatus = outcome.providerHttpStatus;
+    if (Number.isInteger(outcome.providerErrorCode)) metadata.providerErrorCode = outcome.providerErrorCode;
+    if (["ACCEPTED", "INCORRECT", "APPROVED", "UNCONFIRMED", "REJECTED", "RATE_LIMITED",
+      "EXPIRED_OR_UNAVAILABLE", "UNAVAILABLE"].includes(outcome.providerResult)) metadata.providerResult = outcome.providerResult;
     const payload = {
       customerId: String(id), actorId: String(actor._id), actorRole: actor.role,
       reason: recoveryReason, metadata,
@@ -153,18 +158,23 @@ async function snapshot(id, permissions) {
       mustChangePassword: user.mustChangePassword === true },
     channelAvailable: emailAvailable,
     recoveryMethods: { email: { verified: R.verifiedEmail(user), available: emailAvailable },
-      phone: { verified: R.verifiedPhone(user), available: phoneAvailable } },
+      phone: { verified: R.verifiedPhone(user), available: phoneAvailable,
+        pinRecoveryAvailable: require("./accountRecoveryVerify.service").available(user) } },
     availableRecoveryMethods: [emailAvailable && "EMAIL", phoneAvailable && "PHONE"].filter(Boolean),
     contactVerificationRequired: !R.verifiedEmail(user) && !R.verifiedPhone(user),
     permissions,
     recovery: state ? { status: R.live(state) ? state.status :
-      state.status === "COMPLETED" ? "COMPLETED" : "EXPIRED",
+      ["COMPLETED", "PHONE_VERIFIED"].includes(state.status) ? state.status :
+      Number(state.providerLeaseUntil) > Date.now() ? "AWAITING_PROVIDER_EXPIRY" : "EXPIRED",
       action: state.action, channel: state.channel || "EMAIL",
       deliveryStatus: state.deliveryStatus || null,
+      retryAfter: Number(state.providerLeaseUntil) > Date.now() ? state.providerLeaseUntil : null,
       expiresAt: state.expiresAt } : { status: "NONE" },
     auditIntegrity,
     history: events.map(e => ({ id: String(e._id), actorId: String(e.actorId),
       reason: e.reason, event: e.metadata?.event, action: e.metadata?.recoveryAction,
+      providerHttpStatus: e.metadata?.providerHttpStatus, providerErrorCode: e.metadata?.providerErrorCode,
+      providerResult: e.metadata?.providerResult,
       status: e.metadata?.status, occurredAt: e.createdAt,
       tamperEvidence: { sequence: e.metadata?.sequence, digest: e.metadata?.digest } })),
   };
@@ -196,7 +206,8 @@ async function start(id, actor, body) {
     const count = rate.bucket === bucket ? Number(rate.count || 0) : 0;
     if (count >= 3) throw R.fail("Customer recovery request limit reached. Try later.", 429);
     const old = user.accountRecoveryState;
-    if (R.live(old) && ["LINK_SENDING", "READY"].includes(old.status)) {
+    if (require("./accountRecoveryVerify.service").busy(old) ||
+        (R.live(old) && ["LINK_SENDING", "READY"].includes(old.status))) {
       throw R.fail("A customer recovery link is already active. Let it finish or expire.", 409);
     }
     user.accountRecoveryRate = { bucket, count: count + 1, lastSentAt: Date.now() };
@@ -319,7 +330,8 @@ async function complete(body) {
           state.status !== "READY" || state.action !== action ||
           !R.equal(state.tokenHash, R.hash(body.token)) ||
           !R.equal(state.binding, R.binding(current, state.channel)) ||
-          (state.channel === "PHONE" && action !== "PASSWORD_RESET")) {
+          (state.channel === "PHONE" && action !== "PASSWORD_RESET" &&
+            !(action === "PIN_RECOVERY" && state.provider === "TWILIO_VERIFY"))) {
         throw R.fail("Recovery link is invalid, changed or expired.");
       }
       if (Number(state.completionAttempts || 0) >= 5) throw R.fail("Recovery verification attempts exhausted.", 429);
@@ -368,7 +380,7 @@ async function complete(body) {
 async function notify(id, actor, email, action, phone) {
   const results = await Promise.allSettled([
     phone ? hooks.sendRecoverySms({ phone,
-      message: "Your ServicePay password was reset and existing sessions were revoked. If this was not you, contact support@servicepay.ng immediately." })
+      message: `Your ServicePay ${action === "PIN_RECOVERY" ? "transaction PIN" : "password"} was reset and existing sessions were revoked. If this was not you, contact support@servicepay.ng immediately.` })
       : hooks.sendEmail({ to: email, subject: "ServicePay account security notification",
       text: "Your account recovery was completed. Existing sessions were revoked. " +
         "If you did not request this change, contact support@servicepay.ng immediately." }),
