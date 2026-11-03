@@ -10,9 +10,11 @@ const hiddenLabels = <String>[
   'QR Pay', 'QR Payment', 'Group Ajo', 'Group Wallet / Ajo',
   'Business Wallet', 'Pay-by-Link', 'ServicePay Call', 'Request Money',
   'Financial Services', 'Transfer', 'ServicePay Transfer',
+  'Withdrawal', 'Withdraw', 'Exam PIN', 'Education PIN', 'Cable TV',
+  'TV Subscription', 'Airtime to Cash',
 ];
 const preserved = <String>[
-  'Wallet', 'Virtual Account', 'Data', 'Airtime', 'Electricity', 'Withdrawal',
+  'Wallet', 'Virtual Account', 'Data', 'Airtime', 'Electricity',
   'NIN Verification', 'Marketplace', 'Delivery', 'Logistics', 'Solar',
   'Empowerment', 'ServicePay Amana', 'EduPay', 'Profile', 'Transaction History',
 ];
@@ -33,6 +35,8 @@ void main() {
     for (final name in <String>[
       'OPEN_QR_PAY', '/group-wallet', 'Try Business Wallet today',
       'pay-by-link', 'ServicePayCall', 'Request Money now',
+      'OPEN_EXAM_PIN', 'Subscribe to Cable TV', 'Try Airtime to Cash',
+      '/withdrawal', 'Education PIN now',
     ]) {
       expect(promotesHiddenCustomerService(name), isTrue, reason: name);
     }
@@ -44,6 +48,9 @@ void main() {
     expect(isCustomerMiniAppVisible({'routeKey': 'businessWallet'}), isFalse);
     expect(isCustomerMiniAppVisible({'name': 'Group Wallet / Ajo'}), isFalse);
     expect(isCustomerMiniAppVisible({'slug': 'pay-by-link'}), isFalse);
+    for (final route in ['withdrawal', 'examPin', 'cable', 'airtimeToCash']) {
+      expect(isCustomerMiniAppVisible({'routeKey': route}), isFalse);
+    }
     expect(isCustomerMiniAppVisible({'name': 'Financial Services'}), isFalse);
     expect(isCustomerMiniAppVisible({'routeKey': 'cards', 'name': 'Cards',
       'category': 'Financial Services'}), isTrue);
@@ -71,7 +78,7 @@ void main() {
             findsNothing, reason: label);
       }
       for (final name in <String>[
-        'Electricity', 'Withdrawal', 'Marketplace', 'ServicePay Solar',
+        'Electricity', 'Marketplace', 'ServicePay Solar',
         'Empowerment', 'ServicePay Amana', 'EduPay', 'Delivery',
       ]) {
         await tester.enterText(find.byType(TextField).last, name);
@@ -98,14 +105,16 @@ void main() {
       final source = File('lib/$file').readAsStringSync();
       for (final type in <String>['QrPayScreen', 'GroupWalletScreen',
         'BusinessWalletScreen', 'PayByLinkScreen', 'VoiceCallScreen',
-        'RequestMoneyScreen']) {
+        'RequestMoneyScreen', 'WithdrawalScreen', 'CableScreen',
+        'ExamPinScreen', 'AirtimeToCashScreen']) {
         expect(source.contains('$type('), isFalse, reason: '$file: $type');
       }
     }
     for (final file in <String>['qr_pay_screen.dart', 'group_wallet_screen.dart',
       'business_wallet_screen.dart', 'pay_by_link_screen.dart',
       'voice_call_screen.dart', 'request_money_screen.dart',
-      'transfer_screen.dart', 'transactions_screen.dart']) {
+      'transfer_screen.dart', 'transactions_screen.dart', 'withdrawal_screen.dart',
+      'cable_screen.dart', 'exam_pin_screen.dart', 'airtime_to_cash_screen.dart']) {
       expect(File('lib/$file').existsSync(), isTrue, reason: file);
     }
   });

@@ -28,7 +28,7 @@ void main() {
     expect(find.text('Manual Funding'), findsNothing);
     expect(find.text('Wallet'), findsOneWidget);
     expect(find.text('Transfer'), findsNothing);
-    expect(find.text('Withdrawal'), findsOneWidget);
+    expect(find.text('Withdrawal'), findsNothing);
   });
 
   testWidgets('customer services omit Wallet Funding',
@@ -41,7 +41,7 @@ void main() {
 
     expect(find.text('Wallet Funding'), findsNothing);
     expect(find.byKey(const Key('dashboard-transfer-action')), findsNothing);
-    expect(find.byKey(const Key('dashboard-withdraw-action')), findsOneWidget);
+    expect(find.byKey(const Key('dashboard-withdraw-action')), findsNothing);
   });
 
   testWidgets('legacy manual funding destination resolves to Wallet',
@@ -66,7 +66,8 @@ void main() {
     expect(find.text('Fund Wallet'), findsNothing);
     expect(find.text('Manual Funding'), findsNothing);
     expect(find.text('Transfer'), findsNothing);
-    expect(find.text('Withdraw'), findsWidgets);
+    expect(find.text('Withdraw'), findsNothing);
+    expect(find.text('Account statement'), findsOneWidget);
     expect(find.text('QR Pay'), findsNothing);
   });
 }

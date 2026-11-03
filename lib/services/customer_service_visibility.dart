@@ -8,6 +8,9 @@ bool isHiddenCustomerService(String value) {
     'paybylink', 'paybylinkmerchant',
     'servicepaycall', 'voicecall', 'requestmoney', 'financialservices',
     'transfer', 'servicepaytransfer',
+    'withdraw', 'withdrawal', 'walletwithdrawal', 'bankwithdrawal',
+    'exampin', 'educationpin', 'cable', 'cabletv', 'tvsubscription',
+    'airtimetocash',
   }.contains(key);
 }
 
@@ -16,7 +19,9 @@ bool promotesHiddenCustomerService(String value) {
   return RegExp(
     r'\b(?:qr[\s-]*(?:pay(?:ment)?|scan)|group[\s/-]*(?:wallet|ajo)|'
     r'business[\s-]*wallet|pay[\s-]*by[\s-]*link|servicepay[\s-]*call|'
-    r'request[\s-]*money|financial[\s-]*services)\b',
+    r'request[\s-]*money|financial[\s-]*services|withdraw(?:al)?|'
+    r'(?:exam|education)[\s-]*pin|cable(?:[\s-]*tv)?|'
+    r'tv[\s-]*subscription|airtime[\s-]*to[\s-]*cash)\b',
     caseSensitive: false,
   ).hasMatch(value.replaceAll('_', ' '));
 }

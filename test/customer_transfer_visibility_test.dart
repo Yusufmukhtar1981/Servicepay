@@ -51,10 +51,11 @@ void main() {
       await tester.pumpWidget(const MaterialApp(home: WalletScreen()));
       await tester.pump(const Duration(milliseconds: 150));
       expect(find.text('Transfer'), findsNothing);
-      await tester.scrollUntilVisible(find.text('Withdraw'), 300,
+      await tester.scrollUntilVisible(find.text('Account statement'), 300,
           scrollable: find.byType(Scrollable).first);
       expect(find.text('QR Pay'), findsNothing);
-      expect(find.text('Withdraw'), findsWidgets);
+      expect(find.text('Withdraw'), findsNothing);
+      expect(find.text('Withdrawal'), findsNothing);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
     });
@@ -78,7 +79,8 @@ void main() {
     expect(File('lib/transfer_screen.dart').existsSync(), isTrue);
     expect(File('lib/bank_transfer_screen.dart').existsSync(), isTrue);
     expect(File('lib/transactions_screen.dart').existsSync(), isTrue);
+    expect(File('lib/withdrawal_screen.dart').existsSync(), isTrue);
     expect(File('lib/dashboard_screen.dart').readAsStringSync(),
-        contains('const WithdrawalScreen()'));
+        isNot(contains('const WithdrawalScreen()')));
   });
 }

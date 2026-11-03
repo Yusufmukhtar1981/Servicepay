@@ -81,7 +81,7 @@ void main() {
     expect(find.byKey(const Key('dashboard-header-refresh')), findsOneWidget);
     expect(find.text('Available Balance'), findsOneWidget);
     expect(find.text('Transfer'), findsNothing);
-    expect(find.text('Withdrawal'), findsOneWidget);
+    expect(find.text('Withdrawal'), findsNothing);
     expect(find.byKey(const Key('customer-quick-services')), findsOneWidget);
     expect(find.byKey(const Key('customer-all-services')), findsOneWidget);
     expect(find.text('Data'), findsOneWidget);
@@ -110,7 +110,7 @@ void main() {
     );
   });
 
-  testWidgets('remaining wallet actions fill an equal row on mobile and web',
+  testWidgets('funding remains without hidden wallet actions on mobile and web',
       (WidgetTester tester) async {
     for (final Size size in <Size>[
       const Size(320, 760),
@@ -130,8 +130,9 @@ void main() {
           find.byKey(const Key('dashboard-add-money-action'));
 
       expect(transfer, findsNothing);
-      expect(tester.getCenter(withdraw).dy, tester.getCenter(addMoney).dy);
-      expect(tester.getSize(withdraw).width, tester.getSize(addMoney).width);
+      expect(withdraw, findsNothing);
+      expect(addMoney, findsOneWidget);
+      expect(tester.getSize(addMoney).width, greaterThan(0));
       expect(tester.takeException(), isNull);
     }
 
@@ -381,10 +382,10 @@ void main() {
     expect(find.byWidgetPredicate((widget) =>
         widget is Text && widget.data == 'QR Pay'), findsNothing);
     expect(find.text('ServicePay QR Pay'), findsNothing);
-    await tester.enterText(find.byType(TextField).last, 'Withdrawal');
+    await tester.enterText(find.byType(TextField).last, 'Electricity');
     await tester.pump();
     expect(find.byWidgetPredicate((widget) =>
-        widget is Text && widget.data == 'Withdrawal'), findsOneWidget);
+        widget is Text && widget.data == 'Electricity'), findsOneWidget);
   });
 
   testWidgets('balance can be hidden and shown without changing its value',

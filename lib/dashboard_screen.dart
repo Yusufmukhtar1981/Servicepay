@@ -13,10 +13,8 @@ import 'package:url_launcher/url_launcher.dart';
 import 'airtime_screen.dart';
 import 'ai_support_screen.dart';
 import 'amana_screen.dart';
-import 'cable_screen.dart';
 import 'data_screen.dart';
 import 'electricity_screen.dart';
-import 'exam_pin_screen.dart';
 import 'flight_booking_screen.dart';
 import 'id_verification_screen.dart';
 import 'logistics_screen.dart';
@@ -25,13 +23,11 @@ import 'notifications_screen.dart';
 import 'transactions_screen.dart';
 import 'wallet_screen.dart';
 
-import 'airtime_to_cash_screen.dart';
 
 import 'community_agent_locator_screen.dart';
 import 'help_support_screen.dart';
 import 'profile_screen.dart';
 
-import 'withdrawal_screen.dart';
 
 import 'referral_screen.dart';
 
@@ -1503,30 +1499,6 @@ class _DashboardScreenState extends State<DashboardScreen>
           );
         },
       ),
-      _DashboardService(
-        title: 'Cable TV',
-        icon: Icons.live_tv_rounded,
-        iconColor: const Color(0xFF08783E),
-        backgroundColor: const Color(0xFFEAF7F0),
-        keywords: 'cable tv dstv gotv startimes',
-        onTap: () {
-          openScreen(
-            const CableScreen(),
-          );
-        },
-      ),
-      _DashboardService(
-        title: 'Exam PIN',
-        icon: Icons.workspace_premium_rounded,
-        iconColor: const Color(0xFF08783E),
-        backgroundColor: const Color(0xFFEAF7F0),
-        keywords: 'exam pin waec neco jamb',
-        onTap: () {
-          openScreen(
-            const ExamPinScreen(),
-          );
-        },
-      ),
     ];
   }
 
@@ -1651,18 +1623,6 @@ class _DashboardScreenState extends State<DashboardScreen>
         },
       ),
       _DashboardService(
-        title: 'Airtime to Cash',
-        icon: Icons.currency_exchange_rounded,
-        iconColor: const Color(0xFF08783E),
-        backgroundColor: const Color(0xFFEAF7F0),
-        keywords: 'airtime cash convert airtime wallet mtn airtel glo 9mobile',
-        onTap: () {
-          openScreen(
-            const AirtimeToCashScreen(),
-          );
-        },
-      ),
-      _DashboardService(
         title: 'Partner API',
         icon: Icons.api_rounded,
         iconColor: const Color(0xFF08783E),
@@ -1695,18 +1655,6 @@ class _DashboardScreenState extends State<DashboardScreen>
         onTap: () {
           openScreen(
             const FlightBookingScreen(),
-          );
-        },
-      ),
-      _DashboardService(
-        title: 'Withdrawal',
-        icon: Icons.account_balance_wallet_rounded,
-        iconColor: const Color(0xFF08783E),
-        backgroundColor: const Color(0xFFEAF7F0),
-        keywords: 'bank transfer send money',
-        onTap: () {
-          openScreen(
-            const WithdrawalScreen(),
           );
         },
       ),
@@ -2225,19 +2173,6 @@ class _DashboardScreenState extends State<DashboardScreen>
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _balanceActionButton(
-                  label: 'Withdrawal',
-                  icon: Icons.south_west_rounded,
-                  filled: false,
-                  key: const Key('dashboard-withdraw-action'),
-                  onTap: _guardFeatureTap(
-                    'Withdrawal',
-                    () => openScreen(const WithdrawalScreen()),
-                  ),
-                ),
-              ),
             ],
           ),
         ],
@@ -2309,11 +2244,11 @@ class _DashboardScreenState extends State<DashboardScreen>
         children: <Widget>[
           Expanded(
             child: _premiumWalletAction(
-              icon: Icons.south_west_rounded,
-              label: 'Withdraw',
-              detail: 'Cash out',
-              key: const Key('dashboard-withdraw-action'),
-              onTap: () => openScreen(const WithdrawalScreen()),
+              icon: Icons.add_rounded,
+              label: 'Add Money',
+              detail: 'Fund wallet',
+              key: const Key('dashboard-add-money-action'),
+              onTap: () => openScreen(const WalletScreen()),
             ),
           ),
         ],
@@ -3399,16 +3334,6 @@ class _DashboardScreenState extends State<DashboardScreen>
                   children: [
                     Expanded(
                       child: _WalletAction(
-                        icon: Icons.account_balance_wallet_rounded,
-                        label: 'Withdrawal',
-                        onTap: () {
-                          openScreen(const WithdrawalScreen());
-                        },
-                      ),
-                    ),
-                    _walletDivider(),
-                    Expanded(
-                      child: _WalletAction(
                         icon: Icons.add_card_rounded,
                         label: 'Wallet',
                         onTap: () {
@@ -3422,19 +3347,6 @@ class _DashboardScreenState extends State<DashboardScreen>
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _walletDivider() {
-    return Container(
-      width: 1,
-      height: 38,
-      margin: const EdgeInsets.symmetric(
-        horizontal: 6,
-      ),
-      color: Colors.white.withValues(
-        alpha: 0.16,
       ),
     );
   }
@@ -3566,16 +3478,6 @@ class _DashboardScreenState extends State<DashboardScreen>
       },
     );
 
-    addItem(
-      feature: 'bankTransfer',
-      icon: Icons.account_balance_wallet_rounded,
-      label: 'Withdrawal',
-      onTap: () {
-        openScreen(
-          const WithdrawalScreen(),
-        );
-      },
-    );
 
     addItem(
       feature: 'kyc',
@@ -3684,7 +3586,6 @@ class _DashboardScreenState extends State<DashboardScreen>
       'KYC',
       'Empowerment',
       'Transfer',
-      'Withdrawal',
     ];
 
     final visibleItems = <Widget>[];
@@ -6207,7 +6108,7 @@ class _ServicePayAllServicesScreenState
         t.contains('cash') ||
         t.contains('ajo') ||
         t.contains('group')) {
-      return 'Wallet & Withdrawals';
+      return 'Wallet Services';
     }
 
     if (t.contains('flight') || t.contains('travel') || t.contains('hotel')) {
@@ -6229,7 +6130,7 @@ class _ServicePayAllServicesScreenState
         return Icons.volunteer_activism_rounded;
       case 'Business Services':
         return Icons.business_center_rounded;
-      case 'Wallet & Withdrawals':
+      case 'Wallet Services':
         return Icons.account_balance_wallet_rounded;
       case 'Travel':
         return Icons.flight_takeoff_rounded;
@@ -6261,7 +6162,7 @@ class _ServicePayAllServicesScreenState
 
     const order = <String>[
       'Bills & Utilities',
-      'Wallet & Withdrawals',
+      'Wallet Services',
       'Identity & Verification',
       'Delivery & Logistics',
       'Business Services',

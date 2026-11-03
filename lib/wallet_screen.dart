@@ -8,7 +8,6 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'transactions_screen.dart';
-import 'withdrawal_screen.dart';
 import 'servicepay_theme.dart';
 import 'services/customer_feature_config_service.dart';
 
@@ -465,9 +464,6 @@ class _WalletScreenState extends State<WalletScreen> {
     );
   }
 
-  Future<void> _openWithdrawalScreen() async {
-    await _openWalletDestination(const WithdrawalScreen());
-  }
 
   Future<void> _openTransactionsScreen() async {
     await _openWalletDestination(const TransactionsScreen());
@@ -876,8 +872,6 @@ class _WalletScreenState extends State<WalletScreen> {
                             ],
                             const SizedBox(height: 18),
                             _buildVirtualAccountCard(),
-                            const SizedBox(height: 18),
-                            _buildQuickActions(),
                             const SizedBox(height: 18),
                             _buildAccountStatementEntry(),
                             const SizedBox(height: 26),
@@ -1333,37 +1327,6 @@ class _WalletScreenState extends State<WalletScreen> {
     );
   }
 
-  Widget _buildQuickActions() {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        vertical: 16,
-        horizontal: 14,
-      ),
-      decoration: _whiteCardDecoration(),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final double itemWidth = constraints.maxWidth;
-
-          return Wrap(
-            spacing: 12,
-            runSpacing: 14,
-            children: [
-              SizedBox(
-                width: itemWidth,
-                child: _quickActionItem(
-                  icon: Icons.account_balance_outlined,
-                  label: 'Withdraw',
-                  background: const Color(0xFFFFF1E8),
-                  iconColor: const Color(0xFFC2410C),
-                  onTap: _openWithdrawalScreen,
-                ),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
 
   Widget _buildAccountStatementEntry() {
     return Material(
@@ -1419,52 +1382,6 @@ class _WalletScreenState extends State<WalletScreen> {
     );
   }
 
-  Widget _quickActionItem({
-    required IconData icon,
-    required String label,
-    required Color background,
-    required Color iconColor,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-          vertical: 5,
-        ),
-        child: Column(
-          children: [
-            Container(
-              width: 47,
-              height: 47,
-              decoration: BoxDecoration(
-                color: background,
-                borderRadius: BorderRadius.circular(15),
-              ),
-              child: Icon(
-                icon,
-                color: iconColor,
-                size: 23,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Color(0xFF334155),
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   Widget _buildTransactionsSection() {
     return Column(
