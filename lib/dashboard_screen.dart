@@ -27,11 +27,7 @@ import 'wallet_screen.dart';
 
 import 'airtime_to_cash_screen.dart';
 
-import 'pay_by_link_screen.dart';
-import 'request_money_screen.dart';
-import 'business_wallet_screen.dart';
 import 'community_agent_locator_screen.dart';
-import 'group_wallet_screen.dart';
 import 'help_support_screen.dart';
 import 'profile_screen.dart';
 
@@ -46,7 +42,6 @@ import 'cards_screen.dart';
 
 import 'partner_application_screen.dart';
 
-import 'qr_pay_screen.dart';
 
 import 'mini_apps_screen.dart';
 import 'keke_order_screen.dart';
@@ -58,7 +53,7 @@ import 'marketplace/marketplace_my_orders_screen.dart';
 import 'trust/trust_dashboard_entry.dart';
 import 'trust/trust_search_screen.dart';
 import 'customer_champions_dashboard_entry.dart';
-import 'voice_call_screen.dart';
+import 'services/customer_service_visibility.dart';
 import 'organizations/organizations_screen.dart';
 import 'servicepay_theme.dart';
 import 'services/customer_feature_config_service.dart';
@@ -522,7 +517,8 @@ class _DashboardScreenState extends State<DashboardScreen>
             current: announcements,
             popupCompletedBanners: _sessionPopupCompletedBanners,
             hiddenBannerIds: _sessionHiddenBannerIds,
-          );
+          ).where((item) => !promotesHiddenCustomerService(
+              '${item.title} ${item.message} ${item.cta ?? ''}')).toList();
         });
       }
     } catch (_) {
@@ -1375,6 +1371,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   bool _isServiceVisible(
     String title,
   ) {
+    if (isHiddenCustomerService(title)) return false;
     final String? key = _serviceKeyForTitle(title);
 
     if (key == null) {
@@ -1536,20 +1533,6 @@ class _DashboardScreenState extends State<DashboardScreen>
   List<_DashboardService> moreServices() {
     return <_DashboardService>[
       _DashboardService(
-        title: 'ServicePay Call',
-        subtitle: 'Private customer calling',
-        icon: Icons.call_rounded,
-        iconColor: const Color(0xFF14733E),
-        backgroundColor: const Color(0xFFE4F3E9),
-        keywords: 'voice call private customer phone audio',
-        onTap: () {
-          openScreen(
-            const VoiceCallScreen(),
-            routeName: '/calls',
-          );
-        },
-      ),
-      _DashboardService(
         title: 'ServicePay Solar',
         subtitle: 'Solar power & finance',
         icon: Icons.solar_power_rounded,
@@ -1619,18 +1602,6 @@ class _DashboardScreenState extends State<DashboardScreen>
         },
       ),
       _DashboardService(
-        title: 'QR Pay',
-        icon: Icons.qr_code_scanner_rounded,
-        iconColor: const Color(0xFF08783E),
-        backgroundColor: const Color(0xFFEAF7F0),
-        keywords: 'qr pay scan receive servicepay payment transfer',
-        onTap: () {
-          openScreen(
-            const QrPayScreen(),
-          );
-        },
-      ),
-      _DashboardService(
         title: 'Empowerment',
         icon: Icons.volunteer_activism_rounded,
         iconColor: const Color(0xFF08783E),
@@ -1692,42 +1663,6 @@ class _DashboardScreenState extends State<DashboardScreen>
         },
       ),
       _DashboardService(
-        title: 'Pay-by-Link',
-        icon: Icons.link_rounded,
-        iconColor: const Color(0xFF08783E),
-        backgroundColor: const Color(0xFFEAF7F0),
-        keywords: 'merchant payment link pay by link',
-        onTap: () {
-          openScreen(
-            const PayByLinkScreen(),
-          );
-        },
-      ),
-      _DashboardService(
-        title: 'Request Money',
-        icon: Icons.request_page_rounded,
-        iconColor: const Color(0xFF2563EB),
-        backgroundColor: const Color(0xFFEFF6FF),
-        keywords: 'request money collect payment',
-        onTap: () {
-          openScreen(
-            const RequestMoneyScreen(),
-          );
-        },
-      ),
-      _DashboardService(
-        title: 'Business Wallet',
-        icon: Icons.storefront_rounded,
-        iconColor: const Color(0xFF7C3AED),
-        backgroundColor: const Color(0xFFF5F3FF),
-        keywords: 'business wallet sme merchant',
-        onTap: () {
-          openScreen(
-            const BusinessWalletScreen(),
-          );
-        },
-      ),
-      _DashboardService(
         title: 'Partner API',
         icon: Icons.api_rounded,
         iconColor: const Color(0xFF08783E),
@@ -1748,18 +1683,6 @@ class _DashboardScreenState extends State<DashboardScreen>
         onTap: () {
           openScreen(
             const CommunityAgentLocatorScreen(),
-          );
-        },
-      ),
-      _DashboardService(
-        title: 'Group Wallet / Ajo',
-        icon: Icons.groups_rounded,
-        iconColor: const Color(0xFF0F766E),
-        backgroundColor: const Color(0xFFF0FDFA),
-        keywords: 'group wallet ajo contribution savings',
-        onTap: () {
-          openScreen(
-            const GroupWalletScreen(),
           );
         },
       ),
@@ -2393,26 +2316,8 @@ class _DashboardScreenState extends State<DashboardScreen>
               onTap: () => openScreen(const WithdrawalScreen()),
             ),
           ),
-          _premiumActionDivider(),
-          Expanded(
-            child: _premiumWalletAction(
-              icon: Icons.qr_code_scanner_rounded,
-              label: 'QR Pay',
-              detail: 'Scan & pay',
-              key: const Key('dashboard-qr-pay-action'),
-              onTap: () => openScreen(const QrPayScreen()),
-            ),
-          ),
         ],
       ),
-    );
-  }
-
-  Widget _premiumActionDivider() {
-    return Container(
-      width: 1,
-      height: 46,
-      color: const Color(0xFFE5EEE8),
     );
   }
 
@@ -2962,12 +2867,6 @@ class _DashboardScreenState extends State<DashboardScreen>
             'Organizations',
             Icons.groups_rounded,
             () => openScreen(const OrganizationsScreen()),
-          ),
-        if (_isServiceVisible('QR Pay'))
-          _customerServiceEntry(
-            'QR Pay',
-            Icons.qr_code_scanner_rounded,
-            () => openScreen(const QrPayScreen()),
           ),
         if (_isServiceVisible('Biometrics'))
           _customerServiceEntry(
@@ -6308,7 +6207,7 @@ class _ServicePayAllServicesScreenState
         t.contains('cash') ||
         t.contains('ajo') ||
         t.contains('group')) {
-      return 'Financial Services';
+      return 'Wallet & Withdrawals';
     }
 
     if (t.contains('flight') || t.contains('travel') || t.contains('hotel')) {
@@ -6330,7 +6229,7 @@ class _ServicePayAllServicesScreenState
         return Icons.volunteer_activism_rounded;
       case 'Business Services':
         return Icons.business_center_rounded;
-      case 'Financial Services':
+      case 'Wallet & Withdrawals':
         return Icons.account_balance_wallet_rounded;
       case 'Travel':
         return Icons.flight_takeoff_rounded;
@@ -6362,7 +6261,7 @@ class _ServicePayAllServicesScreenState
 
     const order = <String>[
       'Bills & Utilities',
-      'Financial Services',
+      'Wallet & Withdrawals',
       'Identity & Verification',
       'Delivery & Logistics',
       'Business Services',

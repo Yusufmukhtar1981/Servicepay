@@ -18,7 +18,6 @@ import 'package:url_launcher/url_launcher.dart';
 import 'referral_screen.dart';
 import 'kyc_screen.dart';
 import 'servicepay_theme.dart';
-import 'voice_call_screen.dart';
 import 'biometric_settings_screen.dart';
 import 'customer_leaderboard_privacy_preference.dart';
 import 'services/customer_leaderboard_api.dart';
@@ -56,14 +55,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       );
     }
-  }
-
-  Future<void> openServicePayCall() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => VoiceCallScreen(client: widget.client),
-      ),
-    );
   }
 
   static const String baseUrl = 'https://api.servicepay.ng/api';
@@ -1197,14 +1188,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 ),
                               );
                             },
-                          ),
-                          _ProfileActionTile(
-                            icon: Icons.call_rounded,
-                            title: 'ServicePay Call',
-                            subtitle:
-                                'Call another ServicePay customer privately',
-                            iconColor: primaryGreen,
-                            onTap: openServicePayCall,
                           ),
                           _ProfileActionTile(
                             icon: Icons.chat_rounded,

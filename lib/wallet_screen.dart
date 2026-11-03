@@ -7,7 +7,6 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'qr_pay_screen.dart';
 import 'transactions_screen.dart';
 import 'withdrawal_screen.dart';
 import 'servicepay_theme.dart';
@@ -468,10 +467,6 @@ class _WalletScreenState extends State<WalletScreen> {
 
   Future<void> _openWithdrawalScreen() async {
     await _openWalletDestination(const WithdrawalScreen());
-  }
-
-  Future<void> _openQrPayScreen() async {
-    await _openWalletDestination(const QrPayScreen());
   }
 
   Future<void> _openTransactionsScreen() async {
@@ -1347,7 +1342,7 @@ class _WalletScreenState extends State<WalletScreen> {
       decoration: _whiteCardDecoration(),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final double itemWidth = (constraints.maxWidth - 12) / 2;
+          final double itemWidth = constraints.maxWidth;
 
           return Wrap(
             spacing: 12,
@@ -1361,16 +1356,6 @@ class _WalletScreenState extends State<WalletScreen> {
                   background: const Color(0xFFFFF1E8),
                   iconColor: const Color(0xFFC2410C),
                   onTap: _openWithdrawalScreen,
-                ),
-              ),
-              SizedBox(
-                width: itemWidth,
-                child: _quickActionItem(
-                  icon: Icons.qr_code_scanner_rounded,
-                  label: 'QR Pay',
-                  background: const Color(0xFFF3E8FF),
-                  iconColor: const Color(0xFF7E22CE),
-                  onTap: _openQrPayScreen,
                 ),
               ),
             ],

@@ -6,11 +6,10 @@ import 'package:http/http.dart' as http;
 import 'airtime_data_screen.dart';
 import 'cards_screen.dart';
 import 'empowerment_screen.dart';
-import 'group_wallet_screen.dart';
 import 'keke_order_screen.dart';
 import 'logistics_screen.dart';
 import 'marketplace/marketplace_screen.dart';
-import 'business_wallet_screen.dart';
+import 'services/customer_service_visibility.dart';
 
 Widget? miniAppScreenForRouteKey(String routeKey) {
   switch (routeKey.trim()) {
@@ -18,14 +17,10 @@ Widget? miniAppScreenForRouteKey(String routeKey) {
       return const CardsScreen();
     case 'empowerment':
       return const EmpowermentScreen();
-    case 'businessWallet':
-      return const BusinessWalletScreen();
     case 'delivery':
       return const LogisticsScreen();
     case 'airtimeData':
       return const AirtimeDataScreen();
-    case 'groupWallet':
-      return const GroupWalletScreen();
     case 'marketplace':
       return const MarketplaceScreen();
     case 'transport':
@@ -106,7 +101,10 @@ class _MiniAppsScreenState extends State<MiniAppsScreen> {
         }
 
         setState(() {
-          apps = loaded;
+          apps = loaded.where(isCustomerMiniAppVisible).map((app) =>
+              <String, dynamic>{...app,
+                'category': customerMiniAppCategory(app['category']),
+              }).toList();
           isLoading = false;
         });
 

@@ -2,24 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:servicepay_app/airtime_data_screen.dart';
-import 'package:servicepay_app/business_wallet_screen.dart';
 import 'package:servicepay_app/cards_screen.dart';
 import 'package:servicepay_app/empowerment_screen.dart';
-import 'package:servicepay_app/group_wallet_screen.dart';
 import 'package:servicepay_app/keke_order_screen.dart';
 import 'package:servicepay_app/logistics_screen.dart';
 import 'package:servicepay_app/marketplace/marketplace_screen.dart';
 import 'package:servicepay_app/mini_apps_screen.dart';
 
 void main() {
-  test('every active backend Mini App route has a real destination', () {
+  test('every retained Mini App route has a real destination', () {
     final destinations = <String, Type>{
       'cards': CardsScreen,
       'empowerment': EmpowermentScreen,
-      'businessWallet': BusinessWalletScreen,
       'delivery': LogisticsScreen,
       'airtimeData': AirtimeDataScreen,
-      'groupWallet': GroupWalletScreen,
       'marketplace': MarketplaceScreen,
       'transport': KekeOrderScreen,
     };
@@ -34,6 +30,8 @@ void main() {
       'unknown Mini App routes stay unavailable instead of showing a fake flow',
       () {
     expect(miniAppScreenForRouteKey('not-implemented'), isNull);
+    expect(miniAppScreenForRouteKey('businessWallet'), isNull);
+    expect(miniAppScreenForRouteKey('groupWallet'), isNull);
   });
 
   testWidgets('Airtime & Data chooser launches existing purchase modules', (

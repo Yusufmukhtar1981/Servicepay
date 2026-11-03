@@ -55,7 +55,7 @@ void main() {
     expect(find.text('Manual Funding'), findsNothing);
   });
 
-  testWidgets('Wallet hides Transfer and preserves withdrawal and QR Pay',
+  testWidgets('Wallet hides Transfer and QR Pay but preserves withdrawal',
       (WidgetTester tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -67,6 +67,6 @@ void main() {
     expect(find.text('Manual Funding'), findsNothing);
     expect(find.text('Transfer'), findsNothing);
     expect(find.text('Withdraw'), findsWidgets);
-    expect(find.text('QR Pay'), findsWidgets);
+    expect(find.text('QR Pay'), findsNothing);
   });
 }

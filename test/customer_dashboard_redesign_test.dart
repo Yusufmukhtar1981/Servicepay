@@ -340,7 +340,7 @@ void main() {
   });
 
   testWidgets(
-      'keeps customer navigation to four fixed destinations and QR in All Services',
+      'keeps four customer destinations and hides QR from All Services',
       (WidgetTester tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
@@ -378,12 +378,13 @@ void main() {
     await tester.pump(const Duration(milliseconds: 1000));
     await tester.enterText(find.byType(TextField).last, 'QR Pay');
     await tester.pump();
-    await tester.ensureVisible(find.text('QR Pay').last);
-    await tester.tap(find.text('QR Pay').last);
+    expect(find.byWidgetPredicate((widget) =>
+        widget is Text && widget.data == 'QR Pay'), findsNothing);
+    expect(find.text('ServicePay QR Pay'), findsNothing);
+    await tester.enterText(find.byType(TextField).last, 'Withdrawal');
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 500));
-
-    expect(find.text('ServicePay QR Pay'), findsOneWidget);
+    expect(find.byWidgetPredicate((widget) =>
+        widget is Text && widget.data == 'Withdrawal'), findsOneWidget);
   });
 
   testWidgets('balance can be hidden and shown without changing its value',

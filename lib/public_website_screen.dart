@@ -4,7 +4,6 @@ import 'package:url_launcher/url_launcher.dart';
 import 'login_screen.dart';
 import 'register_screen.dart';
 
-import 'pay_by_link_screen.dart';
 import 'privacy_policy_screen.dart';
 
 class PublicWebsiteScreen extends StatefulWidget {
@@ -33,13 +32,9 @@ class _PublicWebsiteScreenState extends State<PublicWebsiteScreen> {
 
     if (!mounted) return;
 
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => PayByLinkScreen(
-          initialPaymentCode: code,
-        ),
-      ),
-    );
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('That payment link is not available in this customer portal.'),
+    ));
   }
 
   static const Color primaryGreen = Color(0xFF08783E);
