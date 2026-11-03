@@ -8,7 +8,6 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'qr_pay_screen.dart';
-import 'transfer_screen.dart';
 import 'transactions_screen.dart';
 import 'withdrawal_screen.dart';
 import 'servicepay_theme.dart';
@@ -464,21 +463,6 @@ class _WalletScreenState extends State<WalletScreen> {
     _showMessage(
       'Account number copied.',
       isError: false,
-    );
-  }
-
-  Future<void> _openTransferScreen() async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => const TransferScreen(),
-      ),
-    );
-
-    if (!mounted) return;
-
-    await _loadWallet(
-      showRefreshLoader: true,
     );
   }
 
@@ -1025,18 +1009,6 @@ class _WalletScreenState extends State<WalletScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 24),
-          Row(
-            children: [
-              Expanded(
-                child: _walletButton(
-                  icon: Icons.swap_horiz_rounded,
-                  label: 'Transfer',
-                  onTap: _openTransferScreen,
-                ),
-              ),
-            ],
-          ),
         ],
       ),
     );
@@ -1366,49 +1338,6 @@ class _WalletScreenState extends State<WalletScreen> {
     );
   }
 
-  Widget _walletButton({
-    required IconData icon,
-    required String label,
-    required VoidCallback? onTap,
-  }) {
-    return Material(
-      color: Colors.white.withValues(
-        alpha: 0.14,
-      ),
-      borderRadius: BorderRadius.circular(14),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          height: 48,
-          alignment: Alignment.center,
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                icon,
-                color: Colors.white,
-                size: 21,
-              ),
-              const SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                  label,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
   Widget _buildQuickActions() {
     return Container(
       padding: const EdgeInsets.symmetric(
@@ -1424,16 +1353,6 @@ class _WalletScreenState extends State<WalletScreen> {
             spacing: 12,
             runSpacing: 14,
             children: [
-              SizedBox(
-                width: itemWidth,
-                child: _quickActionItem(
-                  icon: Icons.send_rounded,
-                  label: 'Transfer',
-                  background: const Color(0xFFDBEAFE),
-                  iconColor: const Color(0xFF1D4ED8),
-                  onTap: _openTransferScreen,
-                ),
-              ),
               SizedBox(
                 width: itemWidth,
                 child: _quickActionItem(

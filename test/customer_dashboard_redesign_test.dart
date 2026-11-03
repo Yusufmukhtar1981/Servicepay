@@ -80,7 +80,7 @@ void main() {
     expect(find.text('Ada'), findsOneWidget);
     expect(find.byKey(const Key('dashboard-header-refresh')), findsOneWidget);
     expect(find.text('Available Balance'), findsOneWidget);
-    expect(find.text('Transfer'), findsOneWidget);
+    expect(find.text('Transfer'), findsNothing);
     expect(find.text('Withdrawal'), findsOneWidget);
     expect(find.byKey(const Key('customer-quick-services')), findsOneWidget);
     expect(find.byKey(const Key('customer-all-services')), findsOneWidget);
@@ -110,11 +110,13 @@ void main() {
     );
   });
 
-  testWidgets('keeps wallet actions in one equal row on mobile',
+  testWidgets('remaining wallet actions fill an equal row on mobile and web',
       (WidgetTester tester) async {
     for (final Size size in <Size>[
+      const Size(320, 760),
       const Size(360, 800),
       const Size(390, 844),
+      const Size(1440, 1000),
     ]) {
       await tester.binding.setSurfaceSize(size);
       await tester.pumpWidget(const MaterialApp(home: DashboardScreen()));
@@ -127,9 +129,8 @@ void main() {
       final Finder addMoney =
           find.byKey(const Key('dashboard-add-money-action'));
 
-      expect(tester.getCenter(transfer).dy, tester.getCenter(withdraw).dy);
+      expect(transfer, findsNothing);
       expect(tester.getCenter(withdraw).dy, tester.getCenter(addMoney).dy);
-      expect(tester.getSize(transfer).width, tester.getSize(withdraw).width);
       expect(tester.getSize(withdraw).width, tester.getSize(addMoney).width);
       expect(tester.takeException(), isNull);
     }

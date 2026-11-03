@@ -23,7 +23,6 @@ import 'logistics_screen.dart';
 import 'delivery_history_screen.dart';
 import 'notifications_screen.dart';
 import 'transactions_screen.dart';
-import 'transfer_screen.dart';
 import 'wallet_screen.dart';
 
 import 'airtime_to_cash_screen.dart';
@@ -1789,18 +1788,6 @@ class _DashboardScreenState extends State<DashboardScreen>
         },
       ),
       _DashboardService(
-        title: 'ServicePay Transfer',
-        icon: Icons.send_rounded,
-        iconColor: const Color(0xFF08783E),
-        backgroundColor: const Color(0xFFEAF7F0),
-        keywords: 'servicepay transfer send money',
-        onTap: () {
-          openScreen(
-            const TransferScreen(),
-          );
-        },
-      ),
-      _DashboardService(
         title: 'Marketplace',
         icon: Icons.storefront_rounded,
         iconColor: const Color(0xFF08783E),
@@ -2318,19 +2305,6 @@ class _DashboardScreenState extends State<DashboardScreen>
               const SizedBox(width: 8),
               Expanded(
                 child: _balanceActionButton(
-                  label: 'Transfer',
-                  icon: Icons.swap_horiz_rounded,
-                  filled: false,
-                  key: const Key('dashboard-transfer-action'),
-                  onTap: _guardFeatureTap(
-                    'ServicePay Transfer',
-                    () => openScreen(const TransferScreen()),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _balanceActionButton(
                   label: 'Withdrawal',
                   icon: Icons.south_west_rounded,
                   filled: false,
@@ -2410,16 +2384,6 @@ class _DashboardScreenState extends State<DashboardScreen>
       ),
       child: Row(
         children: <Widget>[
-          Expanded(
-            child: _premiumWalletAction(
-              icon: Icons.swap_horiz_rounded,
-              label: 'Transfer',
-              detail: 'Send funds',
-              key: const Key('dashboard-transfer-action'),
-              onTap: () => openScreen(const TransferScreen()),
-            ),
-          ),
-          _premiumActionDivider(),
           Expanded(
             child: _premiumWalletAction(
               icon: Icons.south_west_rounded,
@@ -3534,16 +3498,6 @@ class _DashboardScreenState extends State<DashboardScreen>
                 ),
                 child: Row(
                   children: [
-                    Expanded(
-                      child: _WalletAction(
-                        icon: Icons.swap_horiz_rounded,
-                        label: 'Transfer',
-                        onTap: () {
-                          openScreen(const TransferScreen());
-                        },
-                      ),
-                    ),
-                    _walletDivider(),
                     Expanded(
                       child: _WalletAction(
                         icon: Icons.account_balance_wallet_rounded,

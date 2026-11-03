@@ -27,7 +27,7 @@ void main() {
     expect(find.text('Fund Wallet'), findsNothing);
     expect(find.text('Manual Funding'), findsNothing);
     expect(find.text('Wallet'), findsOneWidget);
-    expect(find.text('Transfer'), findsOneWidget);
+    expect(find.text('Transfer'), findsNothing);
     expect(find.text('Withdrawal'), findsOneWidget);
   });
 
@@ -40,7 +40,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 150));
 
     expect(find.text('Wallet Funding'), findsNothing);
-    expect(find.byKey(const Key('dashboard-transfer-action')), findsOneWidget);
+    expect(find.byKey(const Key('dashboard-transfer-action')), findsNothing);
     expect(find.byKey(const Key('dashboard-withdraw-action')), findsOneWidget);
   });
 
@@ -55,7 +55,7 @@ void main() {
     expect(find.text('Manual Funding'), findsNothing);
   });
 
-  testWidgets('Wallet preserves transfer and withdrawal without manual funding',
+  testWidgets('Wallet hides Transfer and preserves withdrawal and QR Pay',
       (WidgetTester tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -65,7 +65,8 @@ void main() {
 
     expect(find.text('Fund Wallet'), findsNothing);
     expect(find.text('Manual Funding'), findsNothing);
-    expect(find.text('Transfer'), findsWidgets);
+    expect(find.text('Transfer'), findsNothing);
     expect(find.text('Withdraw'), findsWidgets);
+    expect(find.text('QR Pay'), findsWidgets);
   });
 }

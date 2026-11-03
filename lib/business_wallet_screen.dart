@@ -1557,15 +1557,6 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
                       const SizedBox(width: 9),
                       Expanded(
                         child: _ActionCard(
-                          icon: Icons.swap_horiz_rounded,
-                          title: 'Transfer',
-                          onTap:
-                              isSubmitting ? null : showBusinessTransferSheet,
-                        ),
-                      ),
-                      const SizedBox(width: 9),
-                      Expanded(
-                        child: _ActionCard(
                           icon: Icons.account_balance_wallet_outlined,
                           title: 'To Personal',
                           onTap: isSubmitting
