@@ -61,6 +61,14 @@ void main() {
   });
 
   group('TransactionPresentation status', () {
+    test('manual refund label preserves the existing financial status category', () {
+      final transaction = TransactionPresentation(
+          {'status': 'REVERSED', 'statusLabel': 'REFUNDED'});
+      expect(transaction.status, 'REVERSED');
+      expect(transaction.statusLabel, 'REFUNDED');
+      expect(TransactionPresentation(
+          {'status': 'PENDING', 'statusLabel': 'REFUNDED'}).statusLabel, 'PENDING');
+    });
     test('normalizes only known status values', () {
       expect(TransactionPresentation({'status': 'successful'}).status,
           'SUCCESSFUL');

@@ -548,7 +548,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         builder: (_) => ReceiptScreen(
           serviceName: presentation.title,
           amount: presentation.amount.toStringAsFixed(2),
-          status: presentation.status,
+          status: presentation.statusLabel,
           reference: presentation.reference,
           date: _formatDate(presentation.date),
           details: details,

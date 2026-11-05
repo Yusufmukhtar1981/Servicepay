@@ -77,6 +77,11 @@ class TransactionPresentation {
 
   /// Keep financial status unchanged for filters/polling; only label bill stages.
   String get statusLabel {
+    // A canonical manual refund keeps the existing REVERSED filter category
+    // while showing the server-verified REFUNDED outcome to the customer.
+    if (status == 'REVERSED' && raw['statusLabel'] == 'REFUNDED') {
+      return 'REFUNDED';
+    }
     final stage = raw['processingStatus']?.toString().toUpperCase();
     final service =
         _first(raw, const ['serviceType', 'type']).toString().toUpperCase();
