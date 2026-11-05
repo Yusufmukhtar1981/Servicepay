@@ -25,6 +25,7 @@ router.get("/transactions/:id", respond(async req => ({
 })));
 router.post("/transactions/:id/refund", requireExplicitPermission("transactions.refund"), respond(req => refund(req.params.id, {
   reason: req.body?.reason, confirmation: req.body?.confirmation,
+  providerRiskAcknowledged: req.body?.providerRiskAcknowledged,
   idempotencyKey: req.get("X-Idempotency-Key") || req.body?.idempotencyKey,
 }, req.user)));
 module.exports = router;

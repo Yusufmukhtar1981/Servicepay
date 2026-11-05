@@ -6,8 +6,7 @@ const User = require("../models/user.model");
 const Audit = require("../models/adminAuditLog.model");
 const Notification = require("../models/notification.model");
 const Commission = require("../models/commission.model");
-const { blockersFor, money, clean } = require("./manualRefund.rules");
-const provider = require("./manualRefundProvider.service");
+const { blockersFor, money, clean, OVERRIDE_WARNING } = require("./manualRefund.rules");
 
 const fail = (statusCode, code, message) => Object.assign(new Error(message), { statusCode, code });
 const queryFor = id => mongoose.isValidObjectId(id) ? { _id: id } : { reference: clean(id) };
@@ -48,26 +47,19 @@ const serialize = audit => ({
   amount: audit.metadata.amount, reason: audit.reason,
   administrator: audit.actorName || String(audit.actorId),
   customerName: audit.targetUserName, createdAt: audit.createdAt,
+  providerRiskAcknowledged: audit.metadata.providerRiskAcknowledged === true,
+  mode: audit.metadata.mode || "PROVIDER_CONFIRMED_FAILURE",
   status: "COMPLETED",
 });
-const detail = async (id, verifyFailure = provider.verifyFailure) => {
+const detail = async id => {
   const t = await Transaction.findOne(queryFor(id)).lean();
   if (!t) throw fail(404, "TRANSACTION_NOT_FOUND", "Transaction not found.");
   const [s, customer] = await Promise.all([
     state(t), User.findById(t.customerId).select("fullName name phone").lean(),
   ]);
-  let providerStatus = t.providerStatus || "UNKNOWN";
-  if (!s.blockers.length) {
-    const evidence = await verifyFailure(t);
-    const correlated = evidence.requestId === t.providerRequestId;
-    if (correlated && evidence.outcome === "FAILED") providerStatus = "FAILED";
-    else {
-      providerStatus = correlated && evidence.outcome === "SUCCESS" ? "SUCCESSFUL" : "UNKNOWN";
-      s.blockers.push(providerStatus === "SUCCESSFUL"
-        ? "Provider-confirmed success blocks a refund."
-        : "Provider outcome is unknown or processing. Authorized reconciliation and correlated terminal failure evidence are required.");
-    }
-  }
+  // Deliberately no provider call: unavailable verification must not prevent
+  // an explicitly acknowledged manual override. Saved success still blocks.
+  const providerStatus = t.providerStatus || "UNKNOWN";
   return {
     id: String(t._id), reference: t.reference, serviceType: t.serviceType,
     amount: t.amount, status: t.status, createdAt: t.createdAt,
@@ -76,11 +68,11 @@ const detail = async (id, verifyFailure = provider.verifyFailure) => {
     verifiedDebitAmount: s.blockers.some(x => /debit|amount/.test(x)) ? null : s.debit?.amount,
     providerStatus,
     refund: {
-      // Button is available for preflight-eligible records; POST performs a fresh
-      // read-only provider check and atomically revalidates all custody evidence.
       eligible: s.blockers.length === 0,
       blockers: s.blockers,
-      providerCheck: "A fresh, correlated terminal failure is required at confirmation. Unknown outcomes must be reconciled first.",
+      overrideAcknowledgementRequired: true,
+      overrideWarning: OVERRIDE_WARNING,
+      providerCheck: "No provider verification is performed. Exact debit custody and administrator risk acknowledgement are mandatory.",
     },
   };
 };
@@ -93,7 +85,7 @@ const history = async query => {
   ]);
   return { items: rows.map(serialize), page, total, pages: Math.max(1, Math.ceil(total / limit)) };
 };
-const createRefundService = ({ verifyFailure = provider.verifyFailure } = {}) => {
+const createRefundService = () => {
   const refund = async (id, body, actor) => {
     if (actor?.role !== "HEAD_OFFICE" || !mongoose.isValidObjectId(actor._id)) {
       throw fail(403, "HEAD_OFFICE_REQUIRED", "Only an authenticated Head Office administrator may refund.");
@@ -103,10 +95,14 @@ const createRefundService = ({ verifyFailure = provider.verifyFailure } = {}) =>
         !/^[A-Za-z0-9_-]{16,128}$/.test(key)) {
       throw fail(400, "REFUND_CONFIRMATION_REQUIRED", "A 10–500 character reason, confirmation and stable idempotency key are required.");
     }
+    if (body.providerRiskAcknowledged !== true) {
+      throw fail(400, "PROVIDER_RISK_ACKNOWLEDGEMENT_REQUIRED", OVERRIDE_WARNING);
+    }
     const initial = await Transaction.findOne(queryFor(id)).lean();
     if (!initial) throw fail(404, "TRANSACTION_NOT_FOUND", "Transaction not found.");
     const requestHash = crypto.createHash("sha256").update(JSON.stringify({
       transaction: String(initial._id), actor: String(actor._id), reason, key,
+      providerRiskAcknowledged: true,
     })).digest("hex");
     const claimId = auditIdFor(initial._id);
     const completed = async session => {
@@ -124,12 +120,6 @@ const createRefundService = ({ verifyFailure = provider.verifyFailure } = {}) =>
     if (replay) return replay;
     const preflight = await state(initial);
     if (preflight.blockers.length) throw fail(422, "REFUND_NOT_ELIGIBLE", preflight.blockers.join(" "));
-    const evidence = await verifyFailure(initial);
-    if (evidence.outcome !== "FAILED" || evidence.requestId !== initial.providerRequestId) {
-      throw fail(422, evidence.outcome === "SUCCESS" ? "PROVIDER_SUCCESS_BLOCKS_REFUND" : "AUTHORITATIVE_FAILURE_REQUIRED",
-        evidence.outcome === "SUCCESS" ? "Provider-confirmed success cannot be refunded." :
-          "Provider outcome is unknown or still processing. Authorized reconciliation and correlated failure evidence are required; no wallet credit was made.");
-    }
     const observedAt = new Date();
     const session = await mongoose.startSession();
     let result;
@@ -139,7 +129,6 @@ const createRefundService = ({ verifyFailure = provider.verifyFailure } = {}) =>
         result = null;
         const saved = await completed(session);
         if (saved) { result = saved; return; }
-        if (Date.now() - observedAt.getTime() > 60000) throw fail(409, "EVIDENCE_EXPIRED", "Provider evidence expired. Refresh and retry safely.");
         const t = await Transaction.findById(initial._id).session(session).lean();
         if (!t || t.providerRequestId !== initial.providerRequestId || t.provider !== initial.provider ||
             t.providerOrderId !== initial.providerOrderId || t.reference !== initial.reference) {
@@ -194,7 +183,11 @@ const createRefundService = ({ verifyFailure = provider.verifyFailure } = {}) =>
           previousData: { status: t.status, debitLedgerId: s.debit._id },
           newData: { status: "REFUNDED", refundTransactionId: refundId, creditLedgerId: ledgerId },
           metadata: { requestHash, originalTransactionId: t._id, originalReference: t.reference,
-            refundReference: reference, amount, evidence: { ...evidence, observedAt } },
+            refundReference: reference, amount, mode: "HEAD_OFFICE_MANUAL_OVERRIDE",
+            providerRiskAcknowledged: true, warning: OVERRIDE_WARNING,
+            evidence: { source: "SAVED_TRANSACTION_ONLY", outcome: "UNCONFIRMED",
+              savedProviderStatus: t.providerStatus || "UNKNOWN",
+              requestId: t.providerRequestId || null, observedAt } },
         }], { session });
         await Notification.create([{
           userId: t.customerId, title: "Transaction refunded",

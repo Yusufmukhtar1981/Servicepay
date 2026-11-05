@@ -1,5 +1,8 @@
 // Deliberately fail closed: a pending status is not proof of refundable custody.
-const SUPPORTED = new Set(["AIRTIME:CLUBKONNECT", "DATA:CLUBKONNECT", "DATA:TELECOM_ABODE"]);
+// Only lifecycles whose terminal transition competes atomically with this
+// refund are supported. Escrow/payout services require separate cancellation.
+const SUPPORTED = new Set(["AIRTIME:CLUBKONNECT", "AIRTIME:TELECOM_ABODE", "DATA:CLUBKONNECT", "DATA:TELECOM_ABODE"]);
+const OVERRIDE_WARNING = "Provider outcome has not been confirmed. This manual refund may result in a financial loss if the service was delivered.";
 const clean = value => String(value ?? "").trim();
 const money = value => {
   const n = Number(value);
@@ -20,7 +23,7 @@ const hasSuccessEvidence = (value, depth = 0) => {
   if (!value || typeof value !== "object" || depth > 12) return false;
   for (const [key, item] of Object.entries(value)) {
     if (/^(?:status|providerStatus|orderStatus|outcome|transactionStatus)$/i.test(key) &&
-        ["SUCCESS", "SUCCESSFUL", "COMPLETED", "DELIVERED", "ORDER_COMPLETED"].includes(
+        ["SUCCESS", "SUCCESSFUL", "SUCCEEDED", "COMPLETED", "DELIVERED", "ORDER_COMPLETED"].includes(
           clean(item).toUpperCase())) return true;
     if (item && typeof item === "object" && hasSuccessEvidence(item, depth + 1)) return true;
   }
@@ -32,7 +35,6 @@ const blockersFor = ({ transaction: t, debit, debitCount, priorCredit, priorRefu
   if (!SUPPORTED.has(`${t.serviceType}:${t.provider}`)) {
     reasons.push("This service requires its own verified settlement/reconciliation workflow; a generic wallet credit is not safe.");
   }
-  if (!clean(t.providerRequestId)) reasons.push("The original provider request identifier is missing; reconcile it first.");
   if (["DISPATCHING", "ADMITTED"].includes(t.dispatchState) && !t.dispatchClaimedAt &&
       !t.providerRequestedAt) reasons.push("Provider dispatch is not proven complete.");
   if (t.dispatchState === "DISPATCHING" || t.dispatchStatus === "DISPATCHING" ||
@@ -43,7 +45,7 @@ const blockersFor = ({ transaction: t, debit, debitCount, priorCredit, priorRefu
   }
   if (t.provider === "TELECOM_ABODE" &&
       (t.dispatchStatus !== "UNKNOWN" || !t.dispatchClaimedAt || !t.debitLedgerEntryId)) {
-    reasons.push("The Telecom Abode purchase is not in its canonical uncertain-outcome reconciliation state.");
+    reasons.push("The Telecom Abode purchase has not reached its canonical inactive uncertain-outcome state.");
   }
   if (priorRefund || priorCredit || t.reversalLedgerEntryId || t.reversalTransactionId ||
       hasPriorRefund(t.providerResponse) || hasPriorRefund(t.metadata)) {
@@ -67,11 +69,12 @@ const blockersFor = ({ transaction: t, debit, debitCount, priorCredit, priorRefu
       Number(t.zonalManagerCommission || 0) || Number(t.servicepayProfit || 0)) {
     reasons.push("Recorded earnings require service-specific accounting reconciliation before refund.");
   }
-  if (["SUCCESS", "SUCCESSFUL", "COMPLETED", "DELIVERED"].includes(clean(t.providerStatus).toUpperCase()) ||
+  if (["SUCCESS", "SUCCESSFUL", "SUCCEEDED", "COMPLETED", "DELIVERED", "ORDER_COMPLETED"].includes(clean(t.providerStatus).toUpperCase()) ||
+      t.dispatchStatus === "SUCCEEDED" ||
       t.providerResponse?.telecomAbodeSettlement?.outcome === "SUCCESS" ||
       t.providerEvidenceOutcome === "SUCCESS" || hasSuccessEvidence(t.providerResponse)) {
     reasons.push("Provider success evidence blocks a refund.");
   }
   return reasons;
 };
-module.exports = { SUPPORTED, clean, money, hasPriorRefund, blockersFor };
+module.exports = { SUPPORTED, OVERRIDE_WARNING, clean, money, hasPriorRefund, blockersFor };

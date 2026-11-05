@@ -16,10 +16,10 @@ const { createVerifier } = require("../services/manualRefundProvider.service");
 const { settleTelecomAbodeDataOutcome } = require("../services/telecomAbodeDataSettlement.service");
 const actor = { _id: new mongoose.Types.ObjectId(), role: "HEAD_OFFICE", fullName: "Test Administrator" };
 const body = { reason: "Provider confirmed non-delivery for this exact request.", confirmation: true,
-  idempotencyKey: "test-refund-1234567890" };
+  idempotencyKey: "test-refund-1234567890", providerRiskAcknowledged: true };
 const verifyFailure = async t => ({ outcome: "FAILED", source: "TEST_READ_ONLY_QUERY",
   requestId: t.providerRequestId, httpStatus: 200 });
-const service = createRefundService({ verifyFailure });
+const service = createRefundService();
 let mongo, count = 0;
 before(async () => {
   for (const key of ["MONGODB_URI", "MONGO_URI", "MONGO_URL", "DATABASE_URL"]) {
@@ -49,7 +49,7 @@ const fixture = async (changes = {}) => {
 };
 const reject = async (f, code) =>
   assert.rejects(service.refund(f.id, body, actor), e => e.code === code);
-test("confirmed failed purchase creates exactly one credit, refund transaction, audit and in-app notice atomically", async () => {
+test("acknowledged unknown purchase creates exactly one credit, refund transaction, audit and in-app notice atomically", async () => {
   const f = await fixture();
   const r = await service.refund(f.id, body, actor);
   assert.equal(r.walletBalance, 1000); assert.equal(r.refund.amount, 150);
@@ -65,6 +65,10 @@ test("confirmed failed purchase creates exactly one credit, refund transaction, 
   assert.equal(await A.countDocuments({ "metadata.originalTransactionId": f.id }), 1);
   assert.equal(await N.countDocuments({ userId: f.uid }), 1);
   assert.equal(refund.providerResponse.email.status, "PENDING");
+  const audit = await A.findOne({ "metadata.originalTransactionId": f.id }).lean();
+  assert.equal(audit.metadata.providerRiskAcknowledged, true);
+  assert.equal(audit.metadata.mode, "HEAD_OFFICE_MANUAL_OVERRIDE");
+  assert.equal(audit.metadata.evidence.outcome, "UNCONFIRMED");
   assert.equal((await history({})).items.some(x => x.reference === refund.reference), true);
 });
 test("lost HTTP response / exact request replay cannot credit twice", async () => {
@@ -102,19 +106,79 @@ for (const status of ["SUCCESSFUL", "REFUNDED", "FAILED"]) {
     assert.equal((await U.findById(f.uid)).walletBalance, 850);
   });
 }
-test("provider confirmed success blocks refund", async () => {
-  const f = await fixture();
-  const s = createRefundService({ verifyFailure: async t => ({ ...await verifyFailure(t), outcome: "SUCCESS" }) });
-  await assert.rejects(s.refund(f.id, body, actor), e => e.code === "PROVIDER_SUCCESS_BLOCKS_REFUND");
-  assert.equal((await U.findById(f.uid)).walletBalance, 850);
-});
-test("unknown, processing, mismatched or unavailable provider evidence cannot authorize credit", async () => {
-  for (const result of [{ outcome: "UNKNOWN" }, { outcome: "PENDING" }, { outcome: "FAILED", requestId: "WRONG" }]) {
-    const f = await fixture();
-    const s = createRefundService({ verifyFailure: async () => result });
-    await assert.rejects(s.refund(f.id, body, actor), e => e.code === "AUTHORITATIVE_FAILURE_REQUIRED");
+test("saved provider success blocks refund", async () => {
+  for (const change of [{ providerStatus: "SUCCESSFUL" }, { providerStatus: "ORDER_COMPLETED" },
+    { providerStatus: "SUCCEEDED" }, { dispatchStatus: "SUCCEEDED" }]) {
+    const f = await fixture(change);
+    await reject(f, "REFUND_NOT_ELIGIBLE");
     assert.equal((await U.findById(f.uid)).walletBalance, 850);
   }
+});
+test("unknown/unconfirmed provider outcomes need no provider request for detail or override", async () => {
+  const transport = require("../services/manualRefundProvider.service");
+  const spy = mock.method(transport, "verifyFailure", async () => { throw Error("Provider MUST NOT be called."); });
+  try {
+    for (const providerStatus of ["UNKNOWN", "UNCONFIRMED", "PENDING", "PROCESSING", "FAILED"]) {
+      const f = await fixture({ providerStatus });
+      const d = await detail(f.id);
+      assert.equal(d.refund.eligible, true);
+      assert.equal(d.refund.overrideAcknowledgementRequired, true);
+      assert.match(d.refund.overrideWarning, /financial loss/);
+      await service.refund(f.id, body, actor);
+      assert.equal((await U.findById(f.uid)).walletBalance, 1000);
+    }
+    assert.equal(spy.mock.callCount(), 0);
+  } finally { spy.mock.restore(); }
+});
+test("separate risk acknowledgement must be literal true and cannot be inferred from ordinary confirmation", async () => {
+  for (const providerRiskAcknowledged of [undefined, false, "true", 1]) {
+    const f = await fixture();
+    await assert.rejects(service.refund(f.id, { ...body, providerRiskAcknowledged }, actor),
+      e => e.code === "PROVIDER_RISK_ACKNOWLEDGEMENT_REQUIRED");
+    assert.equal((await U.findById(f.uid)).walletBalance, 850);
+    assert.equal(await L.countDocuments({ reversalOf: f.debitId }), 0);
+  }
+});
+test("canonical Airtime supports both existing providers without provider confirmation", async () => {
+  for (const provider of ["CLUBKONNECT", "TELECOM_ABODE"]) {
+    const f = await fixture({ serviceType: "AIRTIME", provider });
+    await L.collection.updateOne({ _id: f.debitId }, { $set: { service: "AIRTIME" } });
+    await service.refund(f.id, body, actor);
+    assert.equal((await U.findById(f.uid)).walletBalance, 1000);
+  }
+});
+test("real Airtime admission timeout can be overridden once; recovery and retries never reopen it", async () => {
+  const { createTelecomAbodeBillsProvider } = require("../services/telecomAbodeBillsProvider.service");
+  const { createTelecomAbodeAirtimeLifecycle } = require("../services/telecomAbodeAirtimeLifecycle.service");
+  const f = await fixture();
+  await U.collection.updateOne({ _id: f.uid }, { $set: { status: "ACTIVE" } });
+  let sends = 0;
+  const bills = createTelecomAbodeBillsProvider({
+    credentials: () => "disposable-test-credential",
+    transport: async options => {
+      if (options.method === "POST") { sends++; throw Error("Injected timeout"); }
+      return { status: 200, data: [{ id: 7, network: "MTN" }] };
+    },
+  });
+  const lifecycle = createTelecomAbodeAirtimeLifecycle({
+    bills, readConfig: async () => ({ primaryProvider: "TELECOM_ABODE", airtimeMarkupBps: 0,
+      providerStates: [{ provider: "TELECOM_ABODE", enabled: true }] }),
+  });
+  const input = { customerId: f.uid, network: 7, phone: "08012345678", amount: 50,
+    customerSellingPrice: 50, idempotencyKey: `manual-override-airtime-${count}` };
+  const purchase = await lifecycle.executePurchase(input);
+  assert.equal((await U.findById(f.uid)).walletBalance, 800);
+  assert.equal(purchase.transaction.status, "PENDING");
+  const id = purchase.transaction._id;
+  assert.equal((await detail(id)).refund.eligible, true);
+  await service.refund(id, body, actor);
+  await assert.rejects(lifecycle.reconcilePendingPurchase({ transactionId: id }),
+    { code: "AIRTIME_TRANSACTION_NOT_PENDING" });
+  await lifecycle.executePurchase(input);
+  assert.equal(sends, 1);
+  assert.equal((await T.findById(id)).status, "REFUNDED");
+  assert.equal((await U.findById(f.uid)).walletBalance, 850);
+  assert.equal(await T.countDocuments({ reversedTransactionId: id }), 1);
 });
 test("legacy prior refund metadata blocks credit even without a canonical reversal", async () => {
   const f = await fixture({ providerResponse: { legacy: { refundedAt: new Date(), refundAmount: 150 } } });
@@ -149,17 +213,37 @@ test("active dispatch and existing earnings block refund", async () => {
   }
 });
 test("unsupported service cannot bypass its settlement obligations", async () => {
-  const f = await fixture({ serviceType: "MARKETPLACE" });
-  await reject(f, "REFUND_NOT_ELIGIBLE");
+  for (const serviceType of ["MARKETPLACE", "DELIVERY", "BANK_TRANSFER", "WALLET_FUNDING", "ELECTRICITY"]) {
+    const f = await fixture({ serviceType });
+    await L.collection.updateOne({ _id: f.debitId }, { $set: { service: serviceType } });
+    await reject(f, "REFUND_NOT_ELIGIBLE");
+    assert.equal((await U.findById(f.uid)).walletBalance, 850);
+  }
 });
 test("provider state race to success defeats stale refund preflight", async () => {
   const f = await fixture();
-  const s = createRefundService({ verifyFailure: async t => {
+  const start = mongoose.startSession.bind(mongoose);
+  const spy = mock.method(mongoose, "startSession", async () => {
     await T.updateOne({ _id: f.id }, { $set: { status: "SUCCESSFUL" } });
-    return verifyFailure(t);
-  } });
-  await assert.rejects(s.refund(f.id, body, actor), e => e.code === "TRANSACTION_STATE_CHANGED");
+    return start();
+  });
+  try { await assert.rejects(service.refund(f.id, body, actor), e => e.code === "TRANSACTION_STATE_CHANGED"); }
+  finally { spy.mock.restore(); }
   assert.equal((await U.findById(f.uid)).walletBalance, 850);
+});
+test("late automatic provider success/failure cannot overwrite or credit an acknowledged refund", async () => {
+  const f = await fixture();
+  await service.refund(f.id, body, actor);
+  for (const outcome of ["SUCCESS", "FAILED"]) {
+    await settleTelecomAbodeDataOutcome({
+      requestId: f.reference, outcome, source: "WEBHOOK",
+      evidence: { requestId: f.reference, service: "data", documentedDataStatus: true,
+        providerStatus: outcome, httpStatus: 200, amount: "120" },
+    });
+  }
+  assert.equal((await T.findById(f.id)).status, "REFUNDED");
+  assert.equal((await U.findById(f.uid)).walletBalance, 1000);
+  assert.equal(await L.countDocuments({ reversalOf: f.debitId }), 1);
 });
 test("existing automatic DATA settlement races with manual refund without a second wallet credit", async () => {
   const f = await fixture();
