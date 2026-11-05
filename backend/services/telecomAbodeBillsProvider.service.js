@@ -137,13 +137,13 @@ const createTelecomAbodeBillsProvider = ({
     verified.add(result);
     return result;
   };
-  const send = async (method, path, body) => {
+  const send = async (method, path, body, timeout = 30000) => {
     const key = text(credentials());
     if (!key) throw error("BILLS_PROVIDER_NOT_CONFIGURED", "Telecom Abode credentials are not configured.");
     try {
       const r = await transport({ method, url: BASE_URL + path,
         headers: { Authorization: "Token " + key, "Content-Type": "application/json", Accept: "application/json" },
-        ...(body ? { data: body } : {}), timeout: 30000, maxRedirects: 0, validateStatus: () => true });
+        ...(body ? { data: body } : {}), timeout, maxRedirects: 0, validateStatus: () => true });
       return { httpStatus: r.status, data: r.data };
     } catch (_) {
       // Never propagate axios errors containing credentials or personal data.
@@ -238,7 +238,8 @@ const createTelecomAbodeBillsProvider = ({
     if (!SERVICES.has(service)) throw error("BILLS_INVALID_SERVICE", "An explicit service is required.", 400);
     const reference = requestKey(requestId);
     // Read-only: never resend, settle, debit, refund, or pay a commission here.
-    const response = await send("GET", "/transaction/" + encodeURIComponent(reference));
+    const response = await send("GET", "/transaction/" + encodeURIComponent(reference),
+      undefined, service === "AIRTIME" ? 10000 : 30000);
     return seal({ source: "STATUS_QUERY", ...classify({ ...response, service, reference, meterType }) });
   };
   return { getAirtimeNetworks, getElectricityProviders, validateMeter,

@@ -60,12 +60,17 @@ function createTelecomAbodeReconciliationWorker({
           provider: "TELECOM_ABODE", serviceType: { $in: ["DATA", "AIRTIME", "ELECTRICITY"] },
           status: "PENDING", dispatchStatus: { $in: ["SENDING", "UNKNOWN"] },
           debitLedgerEntryId: { $ne: null }, providerRequestId: { $type: "string" },
-          createdAt: { $lte: new Date(date.getTime() - 120000) },
+          // UNKNOWN has already returned from dispatch. It need not wait for
+          // the crash-recovery grace period reserved for an active SENDING.
+          createdAt: { $lte: new Date(date.getTime() - 15000) },
           $and: [
             // A recently claimed dispatch is still in flight even when the
             // admission itself is older. Never race its provider response.
             { $or: [
-              { dispatchStatus: "UNKNOWN" },
+              { dispatchStatus: "UNKNOWN", $or: [
+                { serviceType: { $in: ["DATA", "AIRTIME"] } },
+                { createdAt: { $lte: new Date(date.getTime() - 120000) } },
+              ] },
               { dispatchStatus: "SENDING", dispatchClaimedAt: {
                 $lte: new Date(date.getTime() - 120000),
               } },
@@ -134,7 +139,10 @@ function createTelecomAbodeReconciliationWorker({
         const schedule = ["DATA", "AIRTIME"].includes(tx.serviceType)
           ? recoverySchedule(tx, outcome, checkedAt,
             { initialBackoffMs, maxBackoffMs, escalationAfterMs }) : null;
-        await model.updateOne({ _id: tx._id }, { $set: {
+        await model.updateOne({ _id: tx._id, status: "PENDING",
+          providerRequestId: tx.providerRequestId,
+          "providerResponse.statusReconciliation.leaseUntil":
+            new Date(date.getTime() + 300000) }, { $set: {
           "providerResponse.statusReconciliation.checkedAt": checkedAt,
           "providerResponse.statusReconciliation.outcome": outcome,
           ...(lookupEvidence ? {
@@ -169,7 +177,7 @@ function startTelecomAbodeReconciliationWorker() {
   const worker = createTelecomAbodeReconciliationWorker();
   void worker.run().catch(() => console.warn("[BILL_RECONCILIATION] pass unavailable"));
   timer = setInterval(() => void worker.run().catch(() =>
-    console.warn("[BILL_RECONCILIATION] pass unavailable")), 60000);
+    console.warn("[BILL_RECONCILIATION] pass unavailable")), 15000);
   timer.unref?.();
   return timer;
 }

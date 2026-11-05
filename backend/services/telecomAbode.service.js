@@ -733,7 +733,7 @@ const createTelecomAbodeService = ({
   const configuredApiKey = () =>
     String(apiKey === undefined ? process.env.TELECOM_ABODE_API_KEY || "" : apiKey).trim();
 
-  const request = async ({ method, endpoint, data, returnDataHttpResponse = false }) => {
+  const request = async ({ method, endpoint, data, returnDataHttpResponse = false, requestTimeout = timeout }) => {
     const key = configuredApiKey();
     if (!key) {
       throw new TelecomAbodeError("Telecom Abode API key is not configured.", {
@@ -752,7 +752,7 @@ const createTelecomAbodeService = ({
           Accept: "application/json",
         },
         ...(data === undefined ? {} : { data }),
-        timeout,
+        timeout: requestTimeout,
         validateStatus: () => true,
       });
     } catch (error) {
@@ -1046,6 +1046,9 @@ const createTelecomAbodeService = ({
         method: "GET",
         endpoint: `/transaction/${encodeURIComponent(targetRequestId)}`,
         returnDataHttpResponse: true,
+        // Status queries must not occupy a recovery slot for a full purchase
+        // timeout. An unavailable lookup remains UNKNOWN, never refundable.
+        requestTimeout: Math.min(timeout, 10000),
       });
       if (response.httpStatus === 202) {
         throw new TelecomAbodeError(
