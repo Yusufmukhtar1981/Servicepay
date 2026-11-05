@@ -90,6 +90,11 @@ void main() {
               .widget<PurchaseProcessing>(find.byType(PurchaseProcessing))
               .processing,
           isTrue);
+      expect(
+          tester
+              .widget<PurchaseProcessing>(find.byType(PurchaseProcessing))
+              .nonBlocking,
+          isTrue);
       await tester.pump(const Duration(milliseconds: 200));
       final bounds = tester
           .getRect(find.text('Processing your transaction. Please wait.'));
@@ -180,7 +185,8 @@ void main() {
       final phoneField = tester.widget<TextField>(find.byType(TextField).first);
       expect(phoneField.enabled, true,
           reason: 'processing does not disable the next beneficiary input');
-      expect(await tester.binding.handlePopRoute(), true);
+      // Bill-payment progress is informational and does not veto route pops.
+      await tester.binding.handlePopRoute();
       await tester.pump();
       expect(find.byType(DataScreen), findsOneWidget);
       result.complete({
@@ -228,6 +234,52 @@ void main() {
       }
     });
   }
+  testWidgets('DATA timeout remains PROCESSING with its durable key',
+      (tester) async {
+    tester.view.physicalSize = const Size(1000, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final storage = MemoryIntent();
+    final intent = DataPurchaseIntent(
+        storage: storage, accountId: () async => 'timeout-customer');
+    final response = Completer<Map<String, dynamic>>();
+    var submits = 0;
+    await tester.pumpWidget(MaterialApp(
+        home: DataScreen(
+      purchaseIntent: intent,
+      loadBeneficiaries: () async => [],
+      loadPlans: (_) async => {
+        'success': true,
+        'plans': [
+          {'code': 'timeout-plan', 'name': '1GB SME', 'price': 100}
+        ]
+      },
+      purchase: (_) {
+        submits++;
+        return response.future;
+      },
+    )));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, '08012345678');
+    await tester.tap(find.text('Buy').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Buy Data').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, '0000');
+    await tester.tap(find.text('Confirm'));
+    await tester.pump();
+    expect(submits, 1);
+    final key = (await intent.pending())!['key'];
+    await tester.pump(const Duration(seconds: 26));
+    await tester.pumpAndSettle();
+    expect(submits, 1, reason: 'timeout must not trigger a resend');
+    expect((await intent.pending())!['key'], key);
+    expect(find.textContaining('PROCESSING'), findsWidgets);
+    expect(find.text('Data Purchase Successful'), findsNothing);
+    response.complete({'status': 'PENDING', 'pending': true});
+    await tester.pumpWidget(const SizedBox());
+  });
   test('acceptance, a missing reference and unknown failure are not delivery',
       () {
     expect(purchaseOutcome({'success': true, 'status': 'PENDING'}),

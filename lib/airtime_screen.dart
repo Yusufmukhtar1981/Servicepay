@@ -45,6 +45,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
   String selectedNetwork = 'MTN';
   bool isLoading = false;
   bool _processingPurchase = false;
+  bool _purchasePending = false;
   late final AirtimePurchaseIntent _purchaseIntent;
 
   @override
@@ -86,14 +87,16 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
             int.tryParse((row['networkId'] ?? row['providerId']).toString());
         if (label != null && id != null && id > 0) mapped[label] = id;
       }
-      if (mapped.isEmpty)
+      if (mapped.isEmpty) {
         throw Exception('Airtime networks could not be verified.');
+      }
       if (!mounted) return;
       setState(() {
         providerNetworkIds.addAll(mapped);
         networks = mapped.keys.toList();
-        if (!networks.contains(selectedNetwork))
+        if (!networks.contains(selectedNetwork)) {
           selectedNetwork = networks.first;
+        }
         _catalogLoading = false;
         _catalogError = null;
       });
@@ -166,19 +169,14 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
     final String network = selectedNetwork;
     setState(() {
       isLoading = true;
+      _purchasePending = false;
     });
 
     try {
-      final previous = await _purchaseIntent.retainedKeys();
+      // Read prior requests for safety, but never requery or resend them here.
+      await _purchaseIntent.retainedKeys();
       final previousActiveKey = await _purchaseIntent.pendingKey();
       if (!mounted) return;
-      final acknowledged = await acknowledgeNewBillPurchase(context,
-          load: widget.pendingContext ?? ApiService.pendingPurchaseContext,
-          service: 'AIRTIME',
-          phone: phone,
-          network: network,
-          localPending: previousActiveKey != null || previous.isNotEmpty);
-      if (acknowledged == null || !mounted) return;
       final providerId = providerNetworkIds[network];
       if (providerId == null) {
         showMessage('Load the current Airtime networks before buying.');
@@ -211,7 +209,9 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
             ),
             content: Text(
               'Purchase ₦${amount.toStringAsFixed(0)} '
-              '$network airtime for $phone?\nWallet charge: ₦${sellingPrice.toStringAsFixed(2)}',
+              '$network airtime for $phone?\n'
+              'Wallet charge: ₦${sellingPrice.toStringAsFixed(2)}\n\n'
+              'Confirming authorizes ONE NEW purchase and a separate wallet charge.',
             ),
             actions: [
               TextButton(
@@ -324,18 +324,19 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
         dispatch: (String idempotencyKey) => ApiService.buyAirtime(
           transactionPin: transactionPin,
           network: network,
-          acknowledgePendingPurchase: acknowledged,
+          acknowledgePendingPurchase: true,
           providerNetworkId: providerId,
           customerSellingPrice: sellingPrice,
           phone: phone,
           amount: purchaseAmount,
           idempotencyKey: idempotencyKey,
-        ),
+        ).timeout(const Duration(seconds: 25)),
       );
-      if (mounted)
+      if (mounted) {
         setState(() {
           _processingPurchase = false;
         });
+      }
 
       if (!mounted) return;
 
@@ -347,6 +348,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
           (responseStatus == 'FAILED' &&
               result['dispatchStatus'] == 'REFUNDED');
       final bool unresolved = !purchaseTerminal;
+      _purchasePending = unresolved;
       const successfulStatuses = <String>{
         'SUCCESS',
         'SUCCESSFUL',
@@ -365,7 +367,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
 
       if (unresolved) {
         showMessage(
-            'We’re verifying this purchase. You can check its status in Transactions.');
+            'We’re verifying this purchase. You can check its status in History.');
       } else if (purchaseSucceeded) {
         showMessage(message);
         await SavedBeneficiaries.offerSave(
@@ -394,13 +396,14 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
         showMessage(finalMessage);
       }
     } catch (error) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _processingPurchase = false;
+          if (error is TimeoutException) _purchasePending = true;
         });
+      }
       final String message = error is TimeoutException
-          ? 'The airtime request timed out. Its request key is retained; '
-              'check Transactions for verification.'
+          ? 'PROCESSING: The airtime result is not confirmed. Its request key is saved; check History. Do not submit again.'
           : error.toString().replaceFirst('Exception: ', '');
       showMessage(message);
     } finally {
@@ -429,6 +432,8 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
       ),
       body: PurchaseProcessing(
         processing: _processingPurchase,
+        pending: _purchasePending,
+        nonBlocking: true,
         service: 'airtime',
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(20),
@@ -843,8 +848,9 @@ class AirtimePurchaseIntent {
     if ((result['deliveryStatus'] == 'SUCCEEDED' ||
             (result['provider'] == 'TELECOM_ABODE' &&
                 result['dispatchStatus'] == 'SUCCEEDED')) &&
-        ['SUCCESS', 'SUCCESSFUL', 'COMPLETED'].contains(deliveryStatus))
+        ['SUCCESS', 'SUCCESSFUL', 'COMPLETED'].contains(deliveryStatus)) {
       return true;
+    }
     final httpStatus =
         result['httpStatus'] is int ? result['httpStatus'] as int : 0;
     final status = result['status']?.toString().toUpperCase() ?? '';

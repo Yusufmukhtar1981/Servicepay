@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'widgets/pending_purchase_warning.dart';
 
@@ -378,16 +380,8 @@ class _DataScreenState extends State<DataScreen> {
     String? preparedKey;
     try {
       final old = await _purchaseIntent.pending();
-      final retained = await _purchaseIntent.retained();
+      await _purchaseIntent.retained();
       if (!mounted) return;
-      final acknowledged = await acknowledgeNewBillPurchase(context,
-          load: widget.pendingContext ?? ApiService.pendingPurchaseContext,
-          service: 'DATA',
-          phone: phone,
-          network: network,
-          planCode: code,
-          localPending: old != null || retained.isNotEmpty);
-      if (acknowledged == null || !mounted) return;
       bool confirmationSubmitted = false;
       final bool? confirmed = await showDialog<bool>(
         context: context,
@@ -424,6 +418,10 @@ class _DataScreenState extends State<DataScreen> {
                     fontSize: 22,
                     fontWeight: FontWeight.w900,
                   ),
+                ),
+                const SizedBox(height: 10),
+                const Text(
+                  'Confirming authorizes ONE NEW purchase and a separate wallet charge.',
                 ),
               ],
             ),
@@ -547,13 +545,13 @@ class _DataScreenState extends State<DataScreen> {
               'planCode': code,
               'productQuote': productQuote,
               'amount': price,
-              'acknowledgePendingPurchase': acknowledged,
+              'acknowledgePendingPurchase': true,
               'idempotencyKey': idempotencyKey
-            })
+            }).timeout(const Duration(seconds: 25))
           : await ApiService.buyData(
               transactionPin: transactionPin,
               network: network,
-              acknowledgePendingPurchase: acknowledged,
+              acknowledgePendingPurchase: true,
               phone: phone,
               planCode: code,
               productQuote: productQuote,
@@ -562,22 +560,24 @@ class _DataScreenState extends State<DataScreen> {
               // Backend now determines real selling price.
               amount: price,
               idempotencyKey: idempotencyKey,
-            );
+            ).timeout(const Duration(seconds: 25));
 
       await _presentDataResult(result,
           network: network, phone: phone, code: code, name: name, price: price);
     } catch (error) {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _phase = _pendingKey == null
               ? PurchasePhase.failed
               : PurchasePhase.pending;
         });
-      showMessage(
-          _pendingKey == null
+      }
+      showMessage(error is TimeoutException && _pendingKey != null
+          ? 'PROCESSING: We could not confirm the result yet. The request key is saved; check History. Do not submit again.'
+          : _pendingKey == null
               ? '${error.toString().replaceFirst('Exception: ', '')} '
                   'No new purchase was started.'
-              : 'The request is not confirmed. It remains available in Transactions.',
+              : 'PROCESSING: The request is not confirmed. Its key remains saved; check History.',
           isError: _pendingKey == null);
     } finally {
       try {
@@ -585,11 +585,12 @@ class _DataScreenState extends State<DataScreen> {
           await _purchaseIntent.cancelPreparation(preparedKey);
         }
       } finally {
-        if (mounted)
+        if (mounted) {
           setState(() {
             isBuyingData = false;
             if (_phase == PurchasePhase.confirming) _phase = PurchasePhase.idle;
           });
+        }
       }
     }
   }
@@ -611,7 +612,7 @@ class _DataScreenState extends State<DataScreen> {
         _phase = PurchasePhase.idle;
       });
       showMessage(result['message']?.toString() ??
-          'No new purchase was admitted. Acknowledge the earlier purchase warning to continue.');
+          'No new purchase was admitted. Check History for the earlier request before trying again.');
       return;
     }
     final outcome =
@@ -640,16 +641,17 @@ class _DataScreenState extends State<DataScreen> {
     }
     if (outcome == PurchasePhase.success || outcome == PurchasePhase.failed) {
       if (_pendingKey != null) await _purchaseIntent.finish(_pendingKey!);
-      if (mounted)
+      if (mounted) {
         setState(() {
           _pendingKey = null;
         });
+      }
     }
     if (!mounted) return;
 
     if (outcome == PurchasePhase.pending) {
       message =
-          'We’re verifying this purchase. You can check its status in Transactions.';
+          'We’re verifying this purchase. You can check its status in History.';
     }
     if (!success && (status == 'REFUNDED' || status == 'REVERSED')) {
       message = '$message Your wallet has been refunded.';
@@ -993,10 +995,10 @@ class _DataScreenState extends State<DataScreen> {
           ),
         ],
       ),
-      body: PopScope(
-        canPop: _phase != PurchasePhase.processing,
-        child: PurchaseProcessing(
+      body: PurchaseProcessing(
           processing: _phase == PurchasePhase.processing,
+          pending: _phase == PurchasePhase.pending,
+          nonBlocking: true,
           requestId: _pendingKey,
           service: 'data',
           child: RefreshIndicator(
@@ -1151,7 +1153,6 @@ class _DataScreenState extends State<DataScreen> {
               ],
             ),
           ),
-        ),
       ),
     );
   }

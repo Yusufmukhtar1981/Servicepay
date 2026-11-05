@@ -33,49 +33,84 @@ class PurchaseProcessing extends StatelessWidget {
     required this.service,
     required this.child,
     this.requestId,
+    this.pending = false,
+    this.nonBlocking = false,
   });
   final bool processing;
+  final bool pending;
+  final bool nonBlocking;
   final String service;
   final Widget child;
   final String? requestId;
 
   @override
-  Widget build(BuildContext context) => PopScope(
-        canPop: !processing,
-        child: Stack(
-          children: [
-            child,
-            if (processing) ...[
-              const Positioned.fill(
-                child: ModalBarrier(dismissible: false, color: Colors.black54),
-              ),
-              Positioned.fill(
-                child: Center(
+  Widget build(BuildContext context) {
+    final visible = processing || pending;
+    final isBillPayment =
+        const ['DATA', 'AIRTIME'].contains(service.toUpperCase());
+    final statusLabel = pending
+        ? 'PROCESSING — check History for updates.'
+        : isBillPayment
+            ? 'Processing your transaction. Please wait.'
+            : 'Processing your $service purchase...';
+
+    if (nonBlocking) {
+      return Stack(
+        children: [
+          child,
+          if (visible)
+            Positioned(
+              top: 8,
+              left: 12,
+              right: 12,
+              child: IgnorePointer(
+                child: SafeArea(
+                  bottom: false,
                   child: Semantics(
                     liveRegion: true,
-                    label: 'Processing your $service purchase',
-                    child: Dialog(
+                    label: pending
+                        ? 'Purchase status processing. Check History for updates.'
+                        : 'Processing your $service purchase',
+                    child: Material(
+                      elevation: 4,
+                      color: Theme.of(context).colorScheme.surface,
+                      borderRadius: BorderRadius.circular(14),
                       child: Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 12),
+                        child: Row(
                           children: [
-                            const CircularProgressIndicator(),
-                            const SizedBox(height: 20),
-                            Text(
-                                ['DATA', 'AIRTIME']
-                                        .contains(service.toUpperCase())
-                                    ? 'Processing your transaction. Please wait.'
-                                    : 'Processing your $service purchase...',
-                                textAlign: TextAlign.center,
-                                style: Theme.of(context).textTheme.titleMedium),
-                            const SizedBox(height: 12),
-                            if (requestId?.isNotEmpty == true)
-                              Text('Request ID: $requestId',
-                                  textAlign: TextAlign.center),
-                            const Text(
-                              'Please wait. Do not close this page or submit again.',
-                              textAlign: TextAlign.center,
+                            if (processing)
+                              const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2.2),
+                              )
+                            else
+                              const Icon(Icons.pending_actions_rounded),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(statusLabel,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .titleSmall),
+                                  if (pending)
+                                    const Text(
+                                      'Your request key is saved. Do not submit again.',
+                                    ),
+                                  if (requestId?.isNotEmpty == true)
+                                    Text(
+                                      'Request ID: $requestId',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                ],
+                              ),
                             ),
                           ],
                         ),
@@ -84,8 +119,54 @@ class PurchaseProcessing extends StatelessWidget {
                   ),
                 ),
               ),
-            ],
-          ],
-        ),
+            ),
+        ],
       );
+    }
+
+    return PopScope(
+      canPop: !processing,
+      child: Stack(
+        children: [
+          child,
+          if (processing) ...[
+            const Positioned.fill(
+              child: ModalBarrier(dismissible: false, color: Colors.black54),
+            ),
+            Positioned.fill(
+              child: Center(
+                child: Semantics(
+                  liveRegion: true,
+                  label: 'Processing your $service purchase',
+                  child: Dialog(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const CircularProgressIndicator(),
+                          const SizedBox(height: 20),
+                          Text(statusLabel,
+                              textAlign: TextAlign.center,
+                              style: Theme.of(context).textTheme.titleMedium),
+                          const SizedBox(height: 12),
+                          if (requestId?.isNotEmpty == true)
+                            Text('Request ID: $requestId',
+                                textAlign: TextAlign.center),
+                          const Text(
+                            'Please wait. Do not close this page or submit again.',
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 }

@@ -71,7 +71,7 @@ void main() {
     expect(await intent.pending(), isNull);
   });
   testWidgets(
-      'pending same-plan DATA requires acknowledgement then submits once with a fresh key',
+      'normal DATA confirmation authorizes one new charged request without preflight warning',
       (tester) async {
     tester.view.physicalSize = const Size(1000, 1500);
     tester.view.devicePixelRatio = 1;
@@ -82,11 +82,14 @@ void main() {
     final old = await intent.keyForSubmission(
         network: 'MTN', phone: '08012345678', planCode: 'x', price: 100);
     final sent = <Map<String, dynamic>>[];
+    var preflightCalls = 0;
     await tester.pumpWidget(MaterialApp(
         home: DataScreen(
       purchaseIntent: intent,
-      pendingContext: (_) async =>
-          {'success': true, 'pendingCount': 1, 'matchingPendingCount': 1},
+      pendingContext: (_) async {
+        preflightCalls++;
+        return {'success': true, 'pendingCount': 1, 'matchingPendingCount': 1};
+      },
       loadBeneficiaries: () async => [],
       loadPlans: (_) async => {
         'success': true,
@@ -113,13 +116,11 @@ void main() {
         isNotNull);
     await tester.tap(find.text('Buy').first);
     await tester.pumpAndSettle();
-    expect(find.textContaining('same number and plan'), findsOneWidget);
+    expect(find.text('Confirm a new purchase'), findsNothing);
+    expect(find.textContaining('ONE NEW purchase'), findsOneWidget);
+    expect(preflightCalls, 0);
     expect(sent, isEmpty);
     expect((await intent.pending())!['key'], old);
-    await tester.tap(find.text('I understand — new purchase'));
-    await tester.tap(find.text('I understand — new purchase'),
-        warnIfMissed: false);
-    await tester.pumpAndSettle();
     await tester.tap(find.text('Buy Data').last);
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).last, '0000');
@@ -166,8 +167,6 @@ void main() {
         network: 'MTN', phone: '08012345678', planCode: 'x', price: 100);
     final sent = <Map<String, dynamic>>[];
     await _pumpDataBuy(tester, intent, sent);
-    await tester.tap(find.text('I understand — new purchase'));
-    await tester.pumpAndSettle();
     await tester.tap(find.text('Buy Data').last);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Cancel').last);
@@ -187,8 +186,6 @@ void main() {
         network: 'MTN', phone: '08012345678', planCode: 'x', price: 100);
     final sent = <Map<String, dynamic>>[];
     await _pumpDataBuy(tester, intent, sent);
-    await tester.tap(find.text('I understand — new purchase'));
-    await tester.pumpAndSettle();
     await tester.tap(find.text('Buy Data').last);
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).last, '0000');

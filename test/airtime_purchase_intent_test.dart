@@ -364,7 +364,7 @@ void main() {
   });
 
   testWidgets(
-    'same AIRTIME product Buy acknowledges a separate charge and uses a fresh key',
+    'normal AIRTIME confirmation authorizes a separate charge and uses a fresh key',
     (tester) async {
       SharedPreferences.setMockInitialValues(<String, Object>{
         'auth_token': 'test-session-token',
@@ -385,13 +385,17 @@ void main() {
       final requests = <http.Request>[];
       await http.runWithClient(
         () async {
+          var preflightCalls = 0;
           await tester.pumpWidget(MaterialApp(
             home: AirtimeScreen(
               purchaseIntent: intent,
-              pendingContext: (_) async => {
-                'success': true,
-                'pendingCount': 1,
-                'matchingPendingCount': 1,
+              pendingContext: (_) async {
+                preflightCalls++;
+                return {
+                  'success': true,
+                  'pendingCount': 1,
+                  'matchingPendingCount': 1,
+                };
               },
               loadNetworks: () async => {
                 'success': true,
@@ -406,18 +410,14 @@ void main() {
           await tester.enterText(find.byType(TextField).last, '50');
           await tester.tap(find.widgetWithText(ElevatedButton, 'Buy Airtime'));
           await tester.pumpAndSettle();
-          expect(find.text('Confirm a new purchase'), findsOneWidget,
-              reason: tester
-                  .widgetList<Text>(find.byType(Text))
-                  .map((text) => text.data)
-                  .join(' | '));
+          expect(find.text('Confirm a new purchase'), findsNothing);
+          expect(find.textContaining('ONE NEW purchase'), findsOneWidget);
+          expect(preflightCalls, 0);
           expect(
             requests.where((r) => r.url.path.endsWith('/clubkonnect/airtime')),
             isEmpty,
           );
 
-          await tester.tap(find.text('I understand — new purchase'));
-          await tester.pumpAndSettle();
           await tester.tap(find.text('Confirm').last);
           await tester.pumpAndSettle();
           await tester.enterText(find.byType(TextField).last, '0000');

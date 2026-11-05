@@ -9,6 +9,7 @@ class ApiService {
   static const String baseUrl = 'https://api.servicepay.ng/api';
 
   static const Duration requestTimeout = Duration(seconds: 60);
+  static const Duration billPaymentTimeout = Duration(seconds: 25);
   static const Duration secondaryReadTimeout = Duration(seconds: 4);
 
   static Future<List<Map<String, dynamic>>> cachedBeneficiaries() async {
@@ -197,7 +198,7 @@ class ApiService {
             if (deviceId != null) 'deviceId': deviceId,
           }),
         )
-        .timeout(requestTimeout);
+        .timeout(billPaymentTimeout);
 
     return _handleResponse(response);
   }
@@ -301,7 +302,7 @@ class ApiService {
             if (deviceId != null) 'deviceId': deviceId,
           }),
         )
-        .timeout(requestTimeout);
+        .timeout(billPaymentTimeout);
 
     final result = _handleResponse(response);
     if (result['code'] == 'IDEMPOTENCY_KEY_REQUIRED' ||

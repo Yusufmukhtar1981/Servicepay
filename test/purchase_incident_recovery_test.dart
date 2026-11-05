@@ -113,4 +113,40 @@ void main() {
     expect(find.text('Start a separate purchase'), findsNothing);
     expect((await intent.pending())!['key'], key);
   });
+
+  testWidgets('History automatically checks retained requests and removes only final results',
+      (tester) async {
+    tester.view.physicalSize = const Size(1000, 1400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final intent = DataPurchaseIntent(
+        storage: _DataStorage(), accountId: () async => 'customer');
+    final first = await intent.keyForSubmission(
+        network: 'MTN', phone: '08012345678', planCode: 'x', price: 100);
+    await intent.markSubmitted(first);
+    await intent.rememberReference(first, 'DATA-confirmed-reference');
+    await intent.retainForSeparatePurchase(first);
+    final second = await intent.keyForSubmission(
+        network: 'MTN', phone: '08012345678', planCode: 'x', price: 100);
+    await intent.markSubmitted(second);
+    await intent.retainForSeparatePurchase(second);
+    final queried = <String>[];
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: BillPurchaseRecovery(
+      isActive: true, dataIntent: intent,
+      airtimeIntent: AirtimePurchaseIntent(storage: _AirtimeStorage()),
+      dataStatusQuery: (reference) async {
+        queried.add(reference);
+        return reference == 'DATA-confirmed-reference'
+            ? {'success': true, 'httpStatus': 200, 'status': 'SUCCESSFUL',
+                'reference': reference}
+            : {'httpStatus': 404, 'status': 'UNKNOWN'};
+      },
+    ))));
+    await tester.pumpAndSettle();
+    expect(queried, containsAll(['DATA-confirmed-reference', second]));
+    expect((await intent.retained()).map((entry) => entry['key']),
+        [second]);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 }

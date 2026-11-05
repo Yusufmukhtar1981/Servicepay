@@ -48,6 +48,7 @@ class _BillPurchaseRecoveryState extends State<BillPurchaseRecovery>
   bool _loading = true;
   bool _loadInProgress = false;
   bool _reloadAfterLoad = false;
+  int _retainedCursor = 0;
   String? _storageError;
 
   @override
@@ -125,6 +126,26 @@ class _BillPurchaseRecoveryState extends State<BillPurchaseRecovery>
         if (activeAirtime != null) {
           await _checkAirtime(activeAirtime, quiet: true);
         }
+        // Older requests moved out of the active slot must not be forgotten.
+        // Rotate a bounded, status-only batch while History is visible; never
+        // send a purchase or discard an unresolved key during this scan.
+        final retainedChecks = <Future<void> Function()>[
+          for (final request in retainedData)
+            () => _checkData(request, retained: true, quiet: true),
+          for (final key in airtimeKeys.where((key) => key != activeAirtime))
+            () => _checkAirtime(key, quiet: true),
+        ];
+        if (retainedChecks.isNotEmpty && _isVisible) {
+          final count = retainedChecks.length < 2 ? retainedChecks.length : 2;
+          final checks = <Future<void>>[];
+          for (var i = 0; i < count; i++) {
+            final index = (_retainedCursor + i) % retainedChecks.length;
+            checks.add(retainedChecks[index]());
+          }
+          _retainedCursor =
+              (_retainedCursor + count) % retainedChecks.length;
+          await Future.wait(checks);
+        }
       }
     } catch (error) {
       if (mounted && _isVisible) {
@@ -171,7 +192,7 @@ class _BillPurchaseRecoveryState extends State<BillPurchaseRecovery>
       final result =
           await (widget.dataStatusQuery ?? ApiService.dataPurchaseStatus)(
         request['statusReference']?.toString() ?? key,
-      ).timeout(const Duration(seconds: 8));
+      ).timeout(const Duration(seconds: 12));
       if (!mounted || !_isVisible) return;
       final httpStatus =
           result['httpStatus'] is int ? result['httpStatus'] as int : 0;
