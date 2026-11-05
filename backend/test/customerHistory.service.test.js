@@ -11,6 +11,28 @@ const {
 
 const customerId = "customer-1";
 const otherCustomerId = "customer-2";
+test("manual refund history shows one credit and labels the original without reclassifying legacy history", () => {
+  const rows = mergeCustomerHistory({
+    transactions: [
+      { _id: "original", customerId, reference: "ORIGINAL", amount: 150, serviceType: "DATA",
+        status: "REFUNDED", createdAt: new Date(), providerResponse: { manualRefund: { reference: "REFUND-original" } } },
+      { _id: "refund", customerId, reference: "REFUND-original", amount: 150, serviceType: "REFUND",
+        status: "SUCCESSFUL", createdAt: new Date() },
+    ],
+    ledgerEntries: [{ _id: "credit", user: customerId, reference: "REFUND-original",
+      transactionId: "refund", service: "REFUND", direction: "CREDIT", amount: 150,
+      status: "POSTED", reversalOf: "debit", createdAt: new Date(), metadata: { manualRefund: true } }],
+  });
+  assert.equal(rows.length, 2);
+  const original = rows.find(x => x.reference === "ORIGINAL");
+  assert.equal(original.status, "REVERSED");
+  assert.equal(original.statusLabel, "REFUNDED");
+  assert.equal(rows.filter(x => x.direction === "CREDIT").length, 1);
+  const legacy = mergeCustomerHistory({ transactions: [{ _id: "legacy", customerId,
+    reference: "LEGACY", serviceType: "DATA", amount: 150, status: "REFUNDED", createdAt: new Date() }] });
+  assert.equal(legacy[0].statusLabel, undefined);
+  assert.equal(legacy[0].status, "REVERSED");
+});
 
 const createdAt = (day) => `2026-08-${String(day).padStart(2, "0")}T12:00:00.000Z`;
 

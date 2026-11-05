@@ -73,6 +73,7 @@ const adminAuditLogSchema =
           "TRANSACTION_PIN_RESET",
           "PASSWORD_RESET_REQUESTED",
           "WALLET_CREDITED",
+          "TRANSACTION_MANUAL_REFUNDED",
           "WALLET_DEBITED",
           "USER_CREATED",
            "HIERARCHY_ASSIGNMENT_UPDATED",

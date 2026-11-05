@@ -512,6 +512,7 @@ async function startServer() {
   });
   console.log(`ServicePay API listening on 0.0.0.0:${PORT}`);
   require("./services/revenueAccount.service").startWorker();
+  require("./services/manualRefundEmail.service").startWorker();
   require("./services/telecomAbodeReconciliationWorker.service").startTelecomAbodeReconciliationWorker();
   logFirebaseConfigurationStatus();
 

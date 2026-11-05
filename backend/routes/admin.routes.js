@@ -65,6 +65,7 @@ const {
 } = require("../controllers/adminWalletAdjustment.controller");
 
 const router = express.Router();
+router.use("/manual-refunds", require("./manualRefund.routes"));
 const customerProfile = require("../controllers/customerProfile.controller");
 const contactProposal = require("../controllers/customerContactProposal.controller");
 const adminVirtualAccount = require("../controllers/adminVirtualAccount.controller");

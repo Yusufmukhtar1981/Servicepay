@@ -70,6 +70,7 @@ const STAFF_PERMISSION_CATALOG = Object.freeze([
   permission("WITHDRAWALS_APPROVE", "withdrawals.approve", "WITHDRAWALS", "Approve withdrawals", "Approve, reject, or mark withdrawals paid.", "CRITICAL"),
   permission("FINANCE_VIEW", "finance.view", "FINANCE", "View finance controls", "View financial operations and controls."),
   permission("FINANCE_RECONCILE", "finance.reconcile", "FINANCE", "Reconcile finance", "Perform supported reconciliation actions.", "CRITICAL"),
+  permission("TRANSACTIONS_REFUND", "transactions.refund", "FINANCE", "Refund verified failed transactions", "Head Office only: return a verified original wallet debit after authoritative failure evidence.", "CRITICAL"),
   permission("FINANCE_EXPORT", "finance.export", "FINANCE", "Export finance data", "Export permitted financial reports.", "PRIVILEGED"),
   permission("FINANCE_APPROVE", "finance.approve", "FINANCE", "Approve financial actions", "Approve high-risk financial operations.", "CRITICAL"),
   permission("DELIVERY_VIEW", "delivery.view", "DELIVERY", "View deliveries", "View deliveries and available riders."),

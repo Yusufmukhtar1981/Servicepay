@@ -220,6 +220,8 @@ const toTransactionItem = (transaction) => {
     ),
     fee: asAmount(details.fee || details.transferFee) || null,
     status: normalizeStatus(transaction.status || transaction.paymentStatus),
+    ...(transaction.status === "REFUNDED" && details.manualRefund?.reference
+      ? { statusLabel: "REFUNDED" } : {}),
     ...billPurchaseState(transaction),
     description: transactionDescription(transaction),
     counterparty: transactionCounterparty(transaction),
@@ -577,6 +579,11 @@ const mergeCustomerHistory = ({
 
   for (const entry of ledgerEntries) {
     const item = toLedgerItem(entry);
+    // The new manual refund has both a canonical Transaction and a reversal
+    // ledger. Preserve legacy reversal presentation, but do not show this one
+    // wallet credit twice when its canonical transaction is already present.
+    if (entry.metadata?.manualRefund === true &&
+        knownTransactionIds.has(asId(entry.transactionId))) continue;
     const isReversal =
       Boolean(item.reversalOf) || item.type.endsWith("_REVERSAL");
 
