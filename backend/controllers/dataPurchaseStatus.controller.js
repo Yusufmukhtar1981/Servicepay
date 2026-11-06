@@ -2,6 +2,7 @@ const Transaction = require("../models/transaction.model");
 const User = require("../models/user.model");
 const mongoose = require("mongoose");
 const { billPurchaseState } = require("../services/billPurchaseState.service");
+const { automaticVerificationBlocked } = require("../services/billVerificationPolicy.service");
 const { createTelecomAbodeDataReconciliationService } =
   require("../services/telecomAbodeDataReconciliation.service");
 const reconciliation = createTelecomAbodeDataReconciliationService();
@@ -17,7 +18,7 @@ async function reconcileOnce(reference) {
 
 // Query only: use the existing correlated settlement service, never redispatch.
 function createDataPurchaseStatus({ lookup = query => Transaction.findOne(query)
-  .select("serviceType provider providerRequestId dispatchClaimedAt phone amount status reference dispatchStatus createdAt providerResponse").lean(),
+  .select("serviceType provider providerRequestId dispatchClaimedAt phone amount status reference dispatchStatus createdAt providerResponse debitLedgerEntryId reversalLedgerEntryId").lean(),
   reconcile = reconcileOnce,
   isRetired = async (customerId, key) =>
     Boolean(await User.exists({ _id: customerId, retiredDataRequestKeys: key }))
@@ -49,7 +50,8 @@ function createDataPurchaseStatus({ lookup = query => Transaction.findOne(query)
         message: "Original request is not yet recorded. Do not submit another purchase." });
       let checked;
       if (tx.provider === "TELECOM_ABODE" && tx.status === "PENDING" &&
-          tx.dispatchStatus === "UNKNOWN" && tx.dispatchClaimedAt) {
+          tx.dispatchStatus === "UNKNOWN" && tx.dispatchClaimedAt &&
+          !automaticVerificationBlocked(tx)) {
         checked = await reconcile(tx.reference);
         // Settlement is atomic and request-bound. Re-read custody, not a
         // provider message, before claiming delivery or a confirmed refund.

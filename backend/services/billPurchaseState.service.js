@@ -1,4 +1,5 @@
 // Presentation only. Never use a display state to authorize settlement/refunds.
+const { paymentLifecycleState } = require("./billVerificationPolicy.service");
 function billPurchaseState(transaction) {
   if (!["DATA", "AIRTIME"].includes(transaction?.serviceType)) return {};
   const status = String(transaction.status || "").toUpperCase();
@@ -12,6 +13,7 @@ function billPurchaseState(transaction) {
   } else processingStatus = "PENDING_VERIFICATION";
   return {
     processingStatus,
+    lifecycleState: paymentLifecycleState(transaction),
     verificationRequired: processingStatus === "PENDING_VERIFICATION",
     ...(processingStatus === "PENDING_VERIFICATION" ? {
       verificationMessage:

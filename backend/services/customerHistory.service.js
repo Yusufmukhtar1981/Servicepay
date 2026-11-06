@@ -1,6 +1,7 @@
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
 const { billPurchaseState } = require("./billPurchaseState.service");
+const { paymentLifecycleState } = require("./billVerificationPolicy.service");
 
 const getDefaultModels = () => {
   return {
@@ -223,6 +224,8 @@ const toTransactionItem = (transaction) => {
     ...(transaction.status === "REFUNDED" && details.manualRefund?.reference
       ? { statusLabel: "REFUNDED" } : {}),
     ...billPurchaseState(transaction),
+    ...(transaction.serviceType === "ELECTRICITY"
+      ? { lifecycleState: paymentLifecycleState(transaction) } : {}),
     description: transactionDescription(transaction),
     counterparty: transactionCounterparty(transaction),
     createdAt,

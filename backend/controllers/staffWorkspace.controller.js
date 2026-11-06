@@ -57,6 +57,20 @@ const audit = (req, action, reason, metadata, session) => Audit.create([{
   metadata, requestMethod: req.method, requestPath: req.originalUrl,
 }], { session });
 const workspacePermissions = ["support.view", "support.assign", "support.resolve"];
+const reliability = require("../services/transactionReliability.service").createTransactionReliabilityService();
+exports.transactionReliability = async (req, res) => {
+  if (!req.staffAccess?.isHeadOffice &&
+      !req.staffAccess?.permissions?.includes("operations.workspace.view")) {
+    return fail(res, 403, "Operations workspace permission required.");
+  }
+  try {
+    const { page } = paging(req.query);
+    // The queue is capped at 5,000 to bound diagnostics; do not return fake
+    // empty pages beyond that explicit coverage bound.
+    if (page > 250) return fail(res, 400, "Maximum diagnostic page is 250.");
+    return ok(res, await reliability({ page, limit: 20 }));
+  } catch (_) { return fail(res, 503, "Transaction reliability diagnostics are unavailable. Please retry."); }
+};
 
 // Existing STAFF authentication, role lifecycle and token revocation remain authoritative.
 // New capabilities never grant wallet/provider/reconciliation write permissions.

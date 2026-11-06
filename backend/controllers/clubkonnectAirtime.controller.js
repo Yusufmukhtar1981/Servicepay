@@ -62,6 +62,8 @@ const respondWithTransaction = async (res, transaction) => {
   const customer = await User.findById(transaction.customerId).select("walletBalance").lean();
   const successful = transaction.status === "SUCCESSFUL";
   const failed = ["FAILED", "REFUNDED"].includes(transaction.status);
+  const refundRecorded = transaction.status === "REFUNDED" ||
+    transaction.dispatchStatus === "REFUNDED" && transaction.reversalLedgerEntryId;
   const metadata = transaction.providerResponse?.airtimeLifecycle || {};
   const effect = transaction.providerResponse?.airtimeCommissionRecovery;
   // HTTP 200 confirms a processed request, not business success. A bound FAILED
@@ -74,12 +76,14 @@ const respondWithTransaction = async (res, transaction) => {
           ? "Airtime delivered successfully. Provider cost, profit and commission are awaiting accounting reconciliation."
           : "Airtime purchase was successful.")
       : failed
-        ? "The provider confirmed failure. Your wallet was refunded once."
+        ? refundRecorded ? "The provider confirmed failure. Your wallet was refunded once."
+          : "The provider reported failure. Check transaction history for the recorded wallet outcome."
         : "The Airtime result is awaiting confirmation. Do not make another purchase for this request.",
     reference: transaction.reference,
     requestId: transaction.providerRequestId,
     status: transaction.status,
     dispatchStatus: transaction.dispatchStatus,
+    ...require("../services/billPurchaseState.service").billPurchaseState(transaction),
     walletBalance: customer?.walletBalance,
     accountingStatus: transaction.providerResponse?.financialAccounting?.status ||
       effect?.status || (successful ? "PENDING" : "NOT_DUE"),
@@ -167,6 +171,9 @@ exports.requeryAirtime = async (req, res) => {
     const accountingComplete = transaction.providerResponse?.airtimeCommissionRecovery?.status === "COMPLETE";
     if (transaction.status !== "PENDING" &&
         (transaction.status !== "SUCCESSFUL" || accountingComplete || transaction.provider === "TELECOM_ABODE")) {
+      return respondWithTransaction(res, transaction);
+    }
+    if (require("../services/billVerificationPolicy.service").automaticVerificationBlocked(transaction)) {
       return respondWithTransaction(res, transaction);
     }
     const result = await lifecycleFor(transaction).reconcilePendingPurchase({ transactionId: transaction._id });

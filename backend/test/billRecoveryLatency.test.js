@@ -48,6 +48,10 @@ test("recent uncertain bills recover promptly without racing active sends or his
   assert.equal(filter.$and[0].$or[1].dispatchClaimedAt.$lte.toISOString(),
     "2026-11-05T11:58:00.000Z");
   assert.equal(filter.$and.at(-1).$or[1].createdAt.$gte instanceof Date, true);
+  const budget = filter.$and.find(v => v.$or?.some(x =>
+    x["providerResponse.statusReconciliation.attemptCount"]?.$lt));
+  assert.equal(budget.$or[2]["providerResponse.statusReconciliation.attemptCount"].$lt, 12);
+  assert.equal(budget.$or[0].serviceType, "ELECTRICITY");
   // Electricity preserves its existing two-minute grace.
   assert.equal(filter.$and[0].$or[0].$or[1].createdAt.$lte.toISOString(),
     "2026-11-05T11:58:00.000Z");

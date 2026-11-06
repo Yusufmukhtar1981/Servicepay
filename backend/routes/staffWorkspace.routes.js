@@ -17,6 +17,7 @@ router.use((req, res, next) => {
   next();
 });
 router.get("/overview", c.overview);
+router.get("/transaction-reliability", c.transactionReliability);
 router.get("/support-summary", c.supportSummary);
 router.get("/virtual-accounts", c.virtualAccounts);
 router.get("/customers", c.customers);

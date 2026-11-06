@@ -1,5 +1,6 @@
 const Transaction = require("../models/transaction.model");
 const { HISTORICAL_BILL_REVIEW_BEFORE } = require("./historicalBillManualReview.service");
+const { MAX_AUTOMATIC_VERIFICATION_ATTEMPTS } = require("./billVerificationPolicy.service");
 const { createTelecomAbodeDataReconciliationService } = require("./telecomAbodeDataReconciliation.service");
 const { createTelecomAbodeAirtimeLifecycle } = require("./telecomAbodeAirtimeLifecycle.service");
 const { createTelecomAbodeElectricity } = require("./telecomAbodeElectricity.service");
@@ -79,6 +80,12 @@ function createTelecomAbodeReconciliationWorker({
               { "providerResponse.statusReconciliation.nextCheckAt": { $lte: date } }] },
             { $or: [{ "providerResponse.statusReconciliation.leaseUntil": { $exists: false } },
               { "providerResponse.statusReconciliation.leaseUntil": { $lte: date } }] },
+            { $or: [
+              { serviceType: "ELECTRICITY" },
+              { "providerResponse.statusReconciliation.attemptCount": { $exists: false } },
+              { "providerResponse.statusReconciliation.attemptCount":
+                { $lt: MAX_AUTOMATIC_VERIFICATION_ATTEMPTS } },
+            ] },
             // Do not even lease or update historical incident records.
             { $or: [
               { serviceType: "ELECTRICITY" },

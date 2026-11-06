@@ -70,7 +70,7 @@ test("worker selection excludes historical billing without excluding Electricity
   });
   await worker.run();
   const boundary = filter.$and.find(clause =>
-    clause.$or?.some(branch => branch.serviceType === "ELECTRICITY")).$or;
+    clause.$or?.some(branch => branch.createdAt?.$gte)).$or;
   assert.deepEqual(boundary[0], { serviceType: "ELECTRICITY" });
   assert.equal(boundary[1].createdAt.$gte.toISOString(), "2026-10-22T00:00:00.000Z");
   assert.equal(filter.status, "PENDING");

@@ -48,6 +48,57 @@ test("customer browsing permits blank searches with bounded disjoint pages and s
   assert.equal((await call(c.customers, { query: { status: "$ne" } })).status, 400);
 });
 
+test("reliability monitoring is read-only Operations/Head Office and uses real paginated records", async () => {
+  const record = await Transaction.create({ customerId: customer._id,
+    reference: "RELIABILITY-LOCAL-ONLY", serviceType: "DATA", provider: "TELECOM_ABODE",
+    amount: 200, status: "PENDING", dispatchStatus: "UNKNOWN",
+    providerResponse: { statusReconciliation: { attemptCount: 99, reason: "NOT_FOUND" } } });
+  const before = await Transaction.findById(record._id).lean();
+  const result = await call(c.transactionReliability);
+  assert.equal(result.status, 200);
+  const row = result.body.data.items.find(v => v.reference === record.reference);
+  assert.equal(row.lifecycleState, "MANUAL_REVIEW");
+  assert.equal(row.financialStatus, "PENDING");
+  assert.equal(result.body.data.backlog.automaticVerificationLimit, 12);
+  assert.ok(!JSON.stringify(row).includes("customerId"));
+  assert.deepEqual(await Transaction.findById(record._id).lean(), before);
+  const denied = await call(c.transactionReliability, { staffAccess: {
+    isHeadOffice: false, permissions: ["support.workspace.view"] } });
+  assert.equal(denied.status, 403);
+  const operations = await call(c.transactionReliability, { staffAccess: {
+    isHeadOffice: false, permissions: ["operations.workspace.view"] } });
+  assert.equal(operations.status, 200);
+  assert.equal((await call(c.transactionReliability, { query: { page: 251 } })).status, 400);
+});
+
+test("automatic verification exhausts at twelve checks without changing custody or resending", async () => {
+  const { createTelecomAbodeReconciliationWorker } = require("../services/telecomAbodeReconciliationWorker.service");
+  let time = new Date("2026-11-06T12:00:00Z");
+  for (const [reference, attempts] of [["BUDGET-EXHAUSTED-LOCAL", 99], ["BUDGET-FRESH-LOCAL", 11]]) {
+    await Transaction.create({ customerId: customer._id, reference,
+      providerRequestId: reference, serviceType: "DATA", provider: "TELECOM_ABODE",
+      status: "PENDING", dispatchStatus: "UNKNOWN", amount: 200,
+      createdAt: new Date("2026-11-05"), dispatchClaimedAt: new Date("2026-11-05"),
+      debitLedgerEntryId: new mongoose.Types.ObjectId(),
+      providerResponse: { statusReconciliation: { attemptCount: attempts } } });
+  }
+  const calls = [];
+  const worker = createTelecomAbodeReconciliationWorker({ model: Transaction, now: () => time,
+    data: { async reconcileByReference(reference) {
+      calls.push(reference); return { body: { outcome: "UNKNOWN" } };
+    } }, onAlert() {} });
+  await worker.run();
+  time = new Date("2026-11-06T12:30:00Z");
+  await worker.run();
+  assert.deepEqual(calls, ["BUDGET-FRESH-LOCAL"]);
+  const fresh = await Transaction.findOne({ reference: "BUDGET-FRESH-LOCAL" }).lean();
+  assert.equal(fresh.providerResponse.statusReconciliation.attemptCount, 12);
+  assert.equal(fresh.status, "PENDING");
+  assert.equal(fresh.dispatchStatus, "UNKNOWN");
+  assert.equal(fresh.reversalLedgerEntryId, null);
+  assert.equal(fresh.providerRequestId, "BUDGET-FRESH-LOCAL");
+});
+
 test("recent transaction browsing includes customer names and searches beyond the former 100-customer cap", async () => {
   await Transaction.create({ customerId: customer._id, reference: "PAGED-OLDER-TRANSACTION",
     serviceType: "DATA", amount: 200, status: "SUCCESSFUL", createdAt: new Date("2026-01-01") });
