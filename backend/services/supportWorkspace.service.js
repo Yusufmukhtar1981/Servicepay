@@ -20,8 +20,9 @@ const diagnostic = (code, status) => {
   if (status === "PENDING") return "Outcome pending. Escalate for review; this does not authorize a retry.";
   return "Recorded status only. No provider request was made by this investigation.";
 };
-const account = (v = {}) => {
-  const status = v.status || "NOT_CREATED";
+const account = (value) => {
+  const v = value && typeof value === "object" ? value : {};
+  const status = v.status || (v.accountNumber ? "UNKNOWN" : "NOT_CREATED");
   const errorCode = safeCode(v.failureReason);
   return {
     status, bankName: v.bankName || "",

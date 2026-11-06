@@ -24,6 +24,8 @@ const ok = (res, data) => res.json({ success: true, data });
 const id = (v) => String(v?._id || v || "");
 const customer = (v) => ({
   id: id(v), fullName: v.fullName, phone: v.phone, email: v.email, status: v.status,
+  kycStatus: v.kycVerified === true ? "VERIFIED" : "NOT_VERIFIED",
+  createdAt: v.createdAt || null,
 });
 const transaction = (v) => ({
   id: id(v), reference: v.reference, type: v.serviceType || v.type, status: v.status,
@@ -33,7 +35,14 @@ const transaction = (v) => ({
   diagnostic: safe.diagnostic(safe.safeCode(v.providerResponse?.code || v.providerResponse?.errorCode), v.status),
 });
 const txFields = "_id reference serviceType type status amount createdAt updatedAt customerId providerStatus providerResponse.code providerResponse.errorCode";
-const customerFields = "_id fullName phone email status";
+const customerFields = "_id fullName phone email status kycVerified createdAt";
+const customerSearch = (q) => {
+  if (validId(q)) return [{ _id: q }];
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(q)) return [{ email: q.toLowerCase() }];
+  if (/^\+?\d{10,15}$/.test(q)) return [{ phone: q }];
+  const regex = new RegExp(escape(q), "i");
+  return [{ fullName: regex }, { phone: regex }, { email: regex }];
+};
 const customerFor = (req, v) => {
   const result = customer(v);
   if (!req.staffAccess?.isHeadOffice) {
@@ -149,14 +158,26 @@ exports.overview = async (req, res) => {
 exports.customers = async (req, res) => {
   try {
     const q = clean(req.query.q, 100);
-    if (q.length < 3) return fail(res, 400, "Enter at least three characters to search.");
+    if (q && q.length < 3) return fail(res, 400, "Enter at least three characters to search.");
     const { page, limit } = paging(req.query);
-    const regex = new RegExp(escape(q), "i");
-    const clauses = [{ fullName: regex }, { phone: regex }, { email: regex }];
-    if (validId(q)) clauses.push({ _id: q });
-    const match = await Transaction.findOne({ reference: q }).select("customerId").lean();
-    if (match?.customerId) clauses.push({ _id: match.customerId });
-    const filter = { role: "CUSTOMER", $or: clauses };
+    const filter = { role: "CUSTOMER" };
+    if (q) {
+      const clauses = customerSearch(q);
+      const match = await Transaction.findOne({ reference: q }).select("customerId").maxTimeMS(5000).lean();
+      if (match?.customerId) clauses.push({ _id: match.customerId });
+      filter.$or = clauses;
+    }
+    const status = clean(req.query.status, 30).toUpperCase();
+    if (status) {
+      if (!["ACTIVE", "SUSPENDED", "PENDING", "INACTIVE", "DEACTIVATED", "LOCKED"].includes(status))
+        return fail(res, 400, "Invalid customer status.");
+      filter.status = status;
+    }
+    const kyc = clean(req.query.kycStatus, 30).toUpperCase();
+    if (kyc) {
+      if (!["VERIFIED", "NOT_VERIFIED"].includes(kyc)) return fail(res, 400, "Invalid KYC status.");
+      filter.kycVerified = kyc === "VERIFIED" ? true : { $ne: true };
+    }
     const [rows, total] = await Promise.all([
       User.find(filter).select(customerFields).sort({ _id: -1 }).skip((page - 1) * limit).limit(limit).maxTimeMS(5000).lean(),
       User.countDocuments(filter).maxTimeMS(5000),
@@ -177,7 +198,7 @@ exports.customerDetail = async (req, res) => {
         .select("_id caseReference subject status priority").sort({ createdAt: -1 }).limit(50).lean(),
     ]);
     return ok(res, { customer: { ...customerFor(req, user), kycStatus: user.kycVerified ? "VERIFIED" : "NOT_VERIFIED", walletBalance: user.walletBalance },
-      virtualAccount: safe.account(user.virtualAccount), transactions: rows.map(transaction),
+      virtualAccount: safe.account(user.virtualAccount), transactions: rows.map(v => ({ ...transaction(v), customerName: user.fullName })),
       tickets: tickets.map((v) => ({ id: id(v), caseReference: v.caseReference, subject: v.subject, status: v.status, priority: v.priority })) });
   } catch (_) { return fail(res, 503, "Customer details are temporarily unavailable."); }
 };
@@ -190,11 +211,14 @@ exports.transactions = async (req, res) => {
     if (query) {
       if (query.length < 3) return fail(res, 400, "Enter at least three characters.");
       const regex = new RegExp(escape(query), "i");
-      const customers = await User.find({ role: "CUSTOMER", $or: [
-        { fullName: regex }, { phone: regex }, { email: regex },
-        ...(validId(query) ? [{ _id: query }] : []),
-      ] }).select("_id").limit(100).maxTimeMS(5000).lean();
-      filter.$or = [{ reference: regex }, { customerId: { $in: customers.map((v) => v._id) } }];
+      const exact = await Transaction.findOne({ reference: query }).select("_id").maxTimeMS(5000).lean();
+      if (exact) filter._id = exact._id;
+      else {
+        // Only matching IDs are read internally; actual records remain paged.
+        // No silent first-100-customer truncation of transaction searches.
+        const customers = await User.distinct("_id", { role: "CUSTOMER", $or: customerSearch(query) }).maxTimeMS(5000);
+        filter.$or = [{ reference: regex }, { customerId: { $in: customers } }];
+      }
     }
     if (req.query.customerId) {
       if (!validId(req.query.customerId)) return fail(res, 400, "Invalid customer.");
@@ -209,10 +233,13 @@ exports.transactions = async (req, res) => {
       }
     }
     const [rows, total] = await Promise.all([
-      Transaction.find(filter).select(txFields).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).maxTimeMS(5000).lean(),
+      Transaction.find(filter).select(txFields).sort({ createdAt: -1, _id: -1 }).skip((page - 1) * limit).limit(limit).maxTimeMS(5000).lean(),
       Transaction.countDocuments(filter).maxTimeMS(5000),
     ]);
-    return ok(res, { items: rows.map(transaction), total, page, limit });
+    const names = await User.find({ _id: { $in: rows.map(v => v.customerId).filter(Boolean) } })
+      .select("_id fullName").maxTimeMS(5000).lean();
+    const byId = new Map(names.map(v => [id(v), v.fullName]));
+    return ok(res, { items: rows.map(v => ({ ...transaction(v), customerName: byId.get(id(v.customerId)) || "Customer unavailable" })), total, page, limit });
   } catch (_) { return fail(res, 503, "Transactions are temporarily unavailable."); }
 };
 
@@ -320,10 +347,7 @@ exports.virtualAccounts = async (req, res) => {
     const query = clean(req.query.q, 100);
     if (query) {
       if (query.length < 3) return fail(res, 400, "Enter at least three characters.");
-      const regex = new RegExp(escape(query), "i");
-      filter.$or = [{ fullName: regex }, { phone: regex }, { email: regex },
-        { "virtualAccount.accountNumber": query },
-        ...(validId(query) ? [{ _id: query }] : [])];
+      filter.$or = [...customerSearch(query), { "virtualAccount.accountNumber": query }];
     }
     const status = clean(req.query.status, 30).toUpperCase();
     if (status) {
@@ -331,13 +355,23 @@ exports.virtualAccounts = async (req, res) => {
         return fail(res, 400, "Invalid account status.");
       filter["virtualAccount.status"] = status === "NOT_CREATED"
         ? { $in: ["NOT_CREATED", null] } : status;
+    } else {
+      // Never-created user defaults are not virtual-account records. Include
+      // genuine provisioning failures/pending attempts for support investigation.
+      filter.$and = [{ $or: [
+        { "virtualAccount.accountNumber": { $type: "string", $ne: "" } },
+        { "virtualAccount.status": { $in: ["ACTIVE", "PENDING", "FAILED", "DISABLED", "UNKNOWN"] } },
+      ] }];
     }
     const [rows, total] = await Promise.all([
-      User.find(filter).select("_id fullName virtualAccount.status virtualAccount.bankName virtualAccount.accountNumber virtualAccount.failureReason virtualAccount.updatedAt virtualAccount.createdAt")
+      User.find(filter).select("_id fullName virtualAccount.status virtualAccount.bankName virtualAccount.accountNumber virtualAccount.accountName virtualAccount.failureReason virtualAccount.updatedAt virtualAccount.createdAt")
         .sort({ _id: -1 }).skip((page - 1) * limit).limit(limit).maxTimeMS(5000).lean(),
       User.countDocuments(filter).maxTimeMS(5000),
     ]);
-    return ok(res, { items: rows.map((v) => ({ id: id(v), fullName: v.fullName, ...safe.account(v.virtualAccount) })), total, page, limit });
+    return ok(res, { items: rows.map((v) => ({ id: id(v), fullName: v.fullName,
+      ...safe.account(v.virtualAccount), accountNumber: v.virtualAccount?.accountNumber || "",
+      accountName: v.virtualAccount?.accountName || "", createdAt: v.virtualAccount?.createdAt || null,
+    })), total, page, limit });
   } catch (_) { return fail(res, 503, "Virtual account records are temporarily unavailable."); }
 };
 

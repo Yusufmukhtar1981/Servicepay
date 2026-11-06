@@ -31,6 +31,72 @@ const middleware = async (fn, req) => {
   await fn(req, { status(s) { result.status = s; return this; }, json(body) { result.body = body; } }, () => { result.next = true; });
   return result;
 };
+
+test("customer browsing permits blank searches with bounded disjoint pages and status/KYC filters", async () => {
+  await Promise.all(Array.from({ length: 3 }, () => makeUser("CUSTOMER")));
+  const first = await call(c.customers, { query: { page: 1, limit: 2 } });
+  const second = await call(c.customers, { query: { page: 2, limit: 2 } });
+  assert.equal(first.status, 200); assert.equal(second.status, 200);
+  assert.equal(first.body.data.items.length, 2);
+  assert.ok(first.body.data.total > 2);
+  assert.ok(!second.body.data.items.some(v => first.body.data.items.some(a => a.id === v.id)));
+  const verified = await makeUser("CUSTOMER", { kycVerified: true, status: "SUSPENDED" });
+  const filtered = await call(c.customers, { query: { status: "SUSPENDED", kycStatus: "VERIFIED" } });
+  assert.ok(filtered.body.data.items.some(v => v.id === String(verified._id)));
+  assert.ok(filtered.body.data.items.every(v => v.kycStatus === "VERIFIED" && v.status === "SUSPENDED"));
+  assert.equal((await call(c.customers, { query: { kycStatus: "$ne" } })).status, 400);
+  assert.equal((await call(c.customers, { query: { status: "$ne" } })).status, 400);
+});
+
+test("recent transaction browsing includes customer names and searches beyond the former 100-customer cap", async () => {
+  await Transaction.create({ customerId: customer._id, reference: "PAGED-OLDER-TRANSACTION",
+    serviceType: "DATA", amount: 200, status: "SUCCESSFUL", createdAt: new Date("2026-01-01") });
+  const prefix = "Many Matching Support Fixture";
+  const users = await User.insertMany(Array.from({ length: 102 }, (_, n) => ({
+    fullName: prefix + n, phone: "099" + String(n).padStart(8, "0"),
+    email: `many-match-${n}@example.test`, password: head.password, role: "CUSTOMER", status: "ACTIVE",
+  })));
+  const record = await Transaction.create({ customerId: users[101]._id, reference: "PAGED-NAMED-TRANSACTION",
+    serviceType: "DATA", amount: 250, status: "SUCCESSFUL" });
+  const before = await Transaction.findById(record._id).lean();
+  const recent = await call(c.transactions, { query: { limit: 2 } });
+  assert.equal(recent.body.data.items.length, 2);
+  assert.equal(recent.body.data.items[0].reference, record.reference);
+  assert.equal(recent.body.data.items[0].customerName, prefix + 101);
+  const searched = await call(c.transactions, { query: { q: prefix, status: "SUCCESS" } });
+  assert.equal(searched.body.data.total, 1);
+  assert.equal(searched.body.data.items[0].customerId, String(users[101]._id));
+  assert.equal((await call(c.transactions, { query: { q: record.reference } })).body.data.total, 1);
+  assert.deepEqual(await Transaction.findById(record._id).lean(), before);
+});
+
+test("virtual-account browsing separates real records from never-created defaults and preserves bank data", async () => {
+  const user = await makeUser("CUSTOMER", { virtualAccount: {
+    status: "ACTIVE", provider: "SECUREWAVENG", accountNumber: "9988776655",
+    accountName: "Fixture Account", bankName: "Fixture Bank", createdAt: new Date("2026-10-01"),
+  } });
+  const blank = await makeUser("CUSTOMER");
+  await makeUser("CUSTOMER", { virtualAccount: { status: "FAILED", failureReason: "TIMEOUT" } });
+  const before = await User.findById(user._id).lean();
+  const rows = (await call(c.virtualAccounts)).body.data.items;
+  assert.ok(!rows.some(v => v.id === String(blank._id)));
+  const account = rows.find(v => v.id === String(user._id));
+  assert.equal(account.accountNumber, "9988776655");
+  assert.equal(account.accountName, "Fixture Account");
+  assert.equal(account.bankName, "Fixture Bank");
+  assert.equal(new Date(account.createdAt).toISOString(), "2026-10-01T00:00:00.000Z");
+  assert.ok(!("providerCustomerId" in account) && !("customerReference" in account));
+  assert.equal((await call(c.virtualAccounts, { query: { q: "9988776655" } })).body.data.total, 1);
+  assert.equal((await call(c.virtualAccounts, { query: { q: String(blank._id) } })).body.data.total, 0);
+  assert.equal((await call(c.virtualAccounts, { query: { q: String(blank._id), status: "NOT_CREATED" } })).body.data.total, 1);
+  const one = await call(c.virtualAccounts, { query: { limit: 1, page: 1 } });
+  const two = await call(c.virtualAccounts, { query: { limit: 1, page: 2 } });
+  assert.equal(one.body.data.items.length, 1); assert.equal(two.body.data.items.length, 1);
+  assert.notEqual(one.body.data.items[0].id, two.body.data.items[0].id);
+  const legacy = require("../services/supportWorkspace.service").account(null);
+  assert.equal(legacy.status, "NOT_CREATED");
+  assert.deepEqual(await User.findById(user._id).lean(), before);
+});
 test.before(async () => {
   // Deliberately ignore every ambient application database URI.
   mongo = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: "wiredTiger" } });
@@ -82,14 +148,14 @@ test("assigned active staff load least-privilege role; deactivated role cannot a
 test("customer search uses allowlist projection and escapes regex input", async () => {
   const response = await call(c.customers, { query: { q: customer.email } });
   assert.equal(response.status, 200); assert.equal(response.body.data.total, 1);
-  assert.deepEqual(Object.keys(response.body.data.items[0]).sort(), ["email", "fullName", "id", "phone", "status"]);
+  assert.deepEqual(Object.keys(response.body.data.items[0]).sort(), ["createdAt", "email", "fullName", "id", "kycStatus", "phone", "status"]);
   assert.equal((await call(c.customers, { query: { q: ".*[" } })).status, 200);
   assert.equal((await call(c.customers, { query: { q: "a" } })).status, 400);
 });
 test("customer detail exposes authorized KYC state and balance without secrets or identity documents", async () => {
   const response = await call(c.customerDetail, { params: { id: String(customer._id) } });
   assert.equal(response.status, 200);
-  assert.deepEqual(Object.keys(response.body.data.customer).sort(), ["email", "fullName", "id", "kycStatus", "phone", "status", "walletBalance"]);
+  assert.deepEqual(Object.keys(response.body.data.customer).sort(), ["createdAt", "email", "fullName", "id", "kycStatus", "phone", "status", "walletBalance"]);
   assert.equal((await call(c.customerDetail, { params: { id: "$ne" } })).status, 404);
 });
 let ticket;
@@ -271,7 +337,9 @@ test("support investigation uses sanitized evidence, masks accounts and preserve
   assert.equal((await call(c.transactions, { query: { q: ".*[" } })).body.data.total, 0);
   const accounts = await call(c.virtualAccounts, { staffAccess: access, query: { q: customer.phone } });
   assert.equal(accounts.body.data.items[0].maskedAccountNumber, "••••••7890");
-  assert.doesNotMatch(JSON.stringify(accounts.body), /1234567890/);
+  assert.equal(accounts.body.data.items[0].accountNumber, "1234567890");
+  const detail = await call(c.customerDetail, { params: { id: String(customer._id) }, staffAccess: access });
+  assert.equal(detail.body.data.virtualAccount.accountNumber, undefined);
   assert.equal((await call(c.virtualAccounts, { query: { status: "$ne" } })).status, 400);
   assert.deepEqual(await User.findById(customer._id).lean(), beforeUser);
   assert.deepEqual(await Transaction.findById(record._id).lean(), beforeTx);
