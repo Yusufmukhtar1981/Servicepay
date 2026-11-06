@@ -31,7 +31,10 @@ const hasSuccessEvidence = (value, depth = 0) => {
 };
 const blockersFor = ({ transaction: t, debit, debitCount, priorCredit, priorRefund }) => {
   const reasons = [];
-  if (t.status !== "PENDING") reasons.push("Only a PENDING transaction can be manually refunded.");
+  const failedWithCanonicalEvidence = t.status === "FAILED" && t.dispatchStatus === "FAILED" &&
+    t.providerStatus === "FAILED";
+  if (t.status !== "PENDING" && !failedWithCanonicalEvidence)
+    reasons.push("Only an eligible PENDING or canonically FAILED transaction can be manually refunded.");
   if (!SUPPORTED.has(`${t.serviceType}:${t.provider}`)) {
     reasons.push("This service requires its own verified settlement/reconciliation workflow; a generic wallet credit is not safe.");
   }
@@ -44,7 +47,7 @@ const blockersFor = ({ transaction: t, debit, debitCount, priorCredit, priorRefu
     reasons.push("A provider dispatch or reconciliation operation is still in flight.");
   }
   if (t.provider === "TELECOM_ABODE" &&
-      (t.dispatchStatus !== "UNKNOWN" || !t.dispatchClaimedAt || !t.debitLedgerEntryId)) {
+      ((!failedWithCanonicalEvidence && t.dispatchStatus !== "UNKNOWN") || !t.dispatchClaimedAt || !t.debitLedgerEntryId)) {
     reasons.push("The Telecom Abode purchase has not reached its canonical inactive uncertain-outcome state.");
   }
   if (priorRefund || priorCredit || t.reversalLedgerEntryId || t.reversalTransactionId ||

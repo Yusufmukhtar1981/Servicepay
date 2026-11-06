@@ -2,6 +2,11 @@ const permission = (key, value, module, label, description, risk = "STANDARD") =
   Object.freeze({ key, value, module, label, description, risk });
 
 const STAFF_PERMISSION_CATALOG = Object.freeze([
+  permission("OPERATIONS_REFUND", "operations.refund", "OPERATIONS", "Execute eligible Operations refunds", "Explicit GLOBAL Operations Manager grant only; atomic custody and duplicate protection remain mandatory.", "CRITICAL"),
+  permission("OPERATIONS_CUSTOMERS_MANAGE", "operations.customers.manage", "OPERATIONS", "Suspend and restore operational customer holds", "Requires reason; restore only holds imposed through this workflow.", "HIGH"),
+  permission("OPERATIONS_SERVICES_CONTROL", "operations.services.control", "OPERATIONS", "Pause ordinary service admissions", "Existing non-protected feature controls only; no provider settings or prices.", "HIGH"),
+  permission("OPERATIONS_REPORTS_EXPORT", "operations.reports.export", "OPERATIONS", "Export operational financial reports", "Bounded recorded aggregates; no credentials or customer account details."),
+  permission("OPERATIONS_STAFF_VIEW", "operations.staff.view", "OPERATIONS", "View staff operational activity", "Read-only staff history; not role or credential administration."),
   permission("VIEW_ACCOUNT_RECOVERY", "VIEW_ACCOUNT_RECOVERY", "CUSTOMER_SECURITY", "View account recovery", "Explicit Head Office-only recovery diagnostics; never granted by wildcard.", "CRITICAL"),
   permission("INITIATE_PASSWORD_RESET", "INITIATE_PASSWORD_RESET", "CUSTOMER_SECURITY", "Initiate customer password recovery", "Head Office-only verified customer recovery with fresh authentication.", "CRITICAL"),
   permission("UNLOCK_CUSTOMER_ACCOUNT", "UNLOCK_CUSTOMER_ACCOUNT", "CUSTOMER_SECURITY", "Unlock ordinary login failures", "Never overrides security, fraud or compliance restrictions.", "CRITICAL"),

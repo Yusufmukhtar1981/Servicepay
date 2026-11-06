@@ -79,6 +79,15 @@ test("lost HTTP response / exact request replay cannot credit twice", async () =
   assert.equal(await L.countDocuments({ reversalOf: f.debitId }), 1);
   assert.equal((await U.findById(f.uid)).walletBalance, 1000);
 });
+test("canonically failed purchase with unreversed original debit can be explicitly refunded once", async () => {
+  const f = await fixture({ status: "FAILED", dispatchStatus: "FAILED", providerStatus: "FAILED" });
+  const result = await service.refund(f.id, body, actor);
+  assert.equal(result.walletBalance, 1000);
+  assert.equal((await T.findById(f.id)).status, "REFUNDED");
+  await service.refund(f.id, body, actor);
+  assert.equal(await L.countDocuments({ reversalOf: f.debitId }), 1);
+  assert.equal((await U.findById(f.uid)).walletBalance, 1000);
+});
 test("six simultaneous administrators with different keys can produce only one refund", async () => {
   const f = await fixture();
   const results = await Promise.allSettled(Array.from({ length: 6 }, (_, n) =>

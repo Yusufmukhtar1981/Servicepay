@@ -16,17 +16,31 @@ const respond = handler => async (req, res) => {
     });
   }
 };
-router.use(protect, loadStaffRole, headOffice, requirePermission("finance.view"));
+const authorizedOperations = req => req.user?.role === "STAFF" && req.user?.isStaff === true &&
+  req.staffAccess?.roleName === "OPERATIONS_MANAGER" && req.staffAccess?.scope?.type === "GLOBAL" &&
+  req.staffAccess?.permissions?.includes("operations.workspace.view");
+const refundRead = (req, res, next) => authorizedOperations(req) ? next() :
+  headOffice(req, res, () => requirePermission("finance.view")(req, res, next));
+const refundWrite = (req, res, next) => authorizedOperations(req)
+  ? requireExplicitPermission("operations.refund")(req, res, next)
+  : requireExplicitPermission("transactions.refund")(req, res, next);
+router.use(protect, loadStaffRole, refundRead);
 router.use((_req, res, next) => { res.set("Cache-Control", "no-store"); next(); });
 router.get("/history", respond(async req => ({ success: true, ...await service.history(req.query) })));
 router.get("/transactions/:id", respond(async req => ({
   success: true, transaction: await service.detail(req.params.id),
-  canExecute: req.staffRole?.permissions?.includes("transactions.refund") === true,
+  canExecute: req.staffRole?.permissions?.includes(authorizedOperations(req) ? "operations.refund" : "transactions.refund") === true,
 })));
-router.post("/transactions/:id/refund", requireExplicitPermission("transactions.refund"), respond(req => refund(req.params.id, {
+router.post("/transactions/:id/refund", refundWrite, respond(req => refund(req.params.id, {
   reason: req.body?.reason, confirmation: req.body?.confirmation,
   providerRiskAcknowledged: req.body?.providerRiskAcknowledged,
   idempotencyKey: req.get("X-Idempotency-Key") || req.body?.idempotencyKey,
-}, req.user)));
+}, req.user, authorizedOperations(req) ? {
+  roleName: req.staffAccess.roleName, scope: req.staffAccess.scope,
+  explicitPermissions: req.staffRole.permissions,
+} : undefined)));
 module.exports = router;
 module.exports.headOffice = headOffice;
+module.exports.authorizedOperations = authorizedOperations;
+module.exports.refundRead = refundRead;
+module.exports.refundWrite = refundWrite;

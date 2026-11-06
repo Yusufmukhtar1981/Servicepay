@@ -86,8 +86,11 @@ const history = async query => {
   return { items: rows.map(serialize), page, total, pages: Math.max(1, Math.ceil(total / limit)) };
 };
 const createRefundService = () => {
-  const refund = async (id, body, actor) => {
-    if (actor?.role !== "HEAD_OFFICE" || !mongoose.isValidObjectId(actor._id)) {
+  const refund = async (id, body, actor, authorization) => {
+    const authorizedOperations = actor?.role === "STAFF" && actor.isStaff === true &&
+      authorization?.roleName === "OPERATIONS_MANAGER" && authorization?.scope?.type === "GLOBAL" &&
+      authorization?.explicitPermissions?.includes("operations.refund");
+    if ((actor?.role !== "HEAD_OFFICE" && !authorizedOperations) || !mongoose.isValidObjectId(actor._id)) {
       throw fail(403, "HEAD_OFFICE_REQUIRED", "Only an authenticated Head Office administrator may refund.");
     }
     const reason = clean(body.reason), key = clean(body.idempotencyKey);
@@ -149,7 +152,7 @@ const createRefundService = () => {
         // This conditional write conflicts with existing provider settlement
         // workers. Exactly one terminal state wins the transaction.
         const changed = await Transaction.updateOne({
-          _id: t._id, status: "PENDING", providerRequestId: initial.providerRequestId,
+          _id: t._id, status: t.status, providerRequestId: initial.providerRequestId,
         }, { $set: {
           status: "REFUNDED", reversalTransactionId: refundId, reversalLedgerEntryId: ledgerId,
           reversalReference: reference,
@@ -176,14 +179,14 @@ const createRefundService = () => {
           narration: `Refund of ${t.reference}`, metadata: { originalTransactionId: t._id, actorId: actor._id, manualRefund: true },
         }], { session });
         const [audit] = await Audit.create([{
-          _id: claimId, actorId: actor._id, actorRole: "HEAD_OFFICE",
+          _id: claimId, actorId: actor._id, actorRole: authorizedOperations ? "OPERATIONS_MANAGER" : "HEAD_OFFICE",
           actorName: actor.fullName || actor.name || "", targetUserId: t.customerId,
           targetUserName: customer.fullName || customer.name || "",
           action: "TRANSACTION_MANUAL_REFUNDED", reason, status: "SUCCESSFUL",
           previousData: { status: t.status, debitLedgerId: s.debit._id },
           newData: { status: "REFUNDED", refundTransactionId: refundId, creditLedgerId: ledgerId },
           metadata: { requestHash, originalTransactionId: t._id, originalReference: t.reference,
-            refundReference: reference, amount, mode: "HEAD_OFFICE_MANUAL_OVERRIDE",
+            refundReference: reference, amount, mode: authorizedOperations ? "OPERATIONS_MANUAL_OVERRIDE" : "HEAD_OFFICE_MANUAL_OVERRIDE",
             providerRiskAcknowledged: true, warning: OVERRIDE_WARNING,
             evidence: { source: "SAVED_TRANSACTION_ONLY", outcome: "UNCONFIRMED",
               savedProviderStatus: t.providerStatus || "UNKNOWN",

@@ -221,11 +221,30 @@ exports.transactions = async (req, res) => {
   try {
     const { page, limit } = paging(req.query);
     const filter = {};
+    for (const [key, operator] of [["from", "$gte"], ["to", "$lte"]]) {
+      if (req.query[key]) {
+        const raw = String(req.query[key]);
+        if (!/^\d{4}-\d{2}-\d{2}(?:T[\d:.]+Z)?$/.test(raw) || !Number.isFinite(Date.parse(raw)))
+          return fail(res, 400, "Invalid transaction date.");
+        const value = new Date(raw.length === 10 ? `${raw}T${key === "to" ? "23:59:59.999" : "00:00:00.000"}Z` : raw);
+        if (value.toISOString().slice(0, 10) !== raw.slice(0, 10)) return fail(res, 400, "Invalid calendar date.");
+        filter.createdAt = { ...filter.createdAt, [operator]: value };
+      }
+    }
+    if (filter.createdAt?.$gte > filter.createdAt?.$lte) return fail(res, 400, "Date range is reversed.");
+    for (const [key, operator] of [["minAmount", "$gte"], ["maxAmount", "$lte"]]) {
+      if (req.query[key] !== undefined && req.query[key] !== "") {
+        const value = Number(req.query[key]);
+        if (!Number.isFinite(value) || value < 0 || value > 1e12) return fail(res, 400, "Invalid amount filter.");
+        filter.amount = { ...filter.amount, [operator]: value };
+      }
+    }
+    if (filter.amount?.$gte > filter.amount?.$lte) return fail(res, 400, "Amount range is reversed.");
     const query = clean(req.query.q, 100);
     if (query) {
       if (query.length < 3) return fail(res, 400, "Enter at least three characters.");
       const regex = new RegExp(escape(query), "i");
-      const exact = await Transaction.findOne({ reference: query }).select("_id").maxTimeMS(5000).lean();
+      const exact = await Transaction.findOne(validId(query) ? { $or: [{ _id: query }, { reference: query }] } : { reference: query }).select("_id").maxTimeMS(5000).lean();
       if (exact) filter._id = exact._id;
       else {
         // Only matching IDs are read internally; actual records remain paged.
@@ -339,7 +358,9 @@ exports.escalate = async (req, res) => {
 exports._test = { paging, customer, transaction, validId, escape };
 
 exports.staffHistory = async (req, res) => {
-  if (!req.staffAccess?.isHeadOffice) return fail(res, 403, "Head Office access required.");
+  if (!req.staffAccess?.isHeadOffice &&
+      !(req.staffAccess?.roleName === "OPERATIONS_MANAGER" && req.staffAccess?.scope?.type === "GLOBAL" &&
+        req.staffAccess.permissions?.includes("operations.staff.view"))) return fail(res, 403, "Staff activity permission required.");
   if (!validId(req.params.id)) return fail(res, 404, "Staff member not found.");
   try {
     const member = await User.findOne({ _id: req.params.id, isStaff: true }).select("_id fullName status").lean();
