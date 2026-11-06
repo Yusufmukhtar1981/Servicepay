@@ -2,6 +2,8 @@ const crypto = require("crypto");
 const FintechCase = require("../models/fintechCase.model");
 const User = require("../models/user.model");
 const AdminAuditLog = require("../models/adminAuditLog.model");
+const safeSupport = require("../services/supportWorkspace.service");
+const escapedSearch = (v) => v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const {
   getCustomerHistoryItem,
 } = require("../services/customerHistory.service");
@@ -108,9 +110,16 @@ const transactionDescription = (description, context) => {
     5000
   );
 };
-const adminCase = (item) => ({
+const adminCase = (item, req) => ({
   ...item.toObject(),
   id: String(item._id),
+  ...(req && !req.staffAccess?.isHeadOffice && item.customer?.fullName ? {
+    customer: { _id: item.customer._id, fullName: item.customer.fullName,
+      phone: safeSupport.maskPhone(item.customer.phone), email: safeSupport.maskEmail(item.customer.email) },
+  } : {}),
+  ...(req && !req.staffAccess?.isHeadOffice && item.assignedTo?.fullName ? {
+    assignedTo: { _id: item.assignedTo._id, fullName: item.assignedTo.fullName, role: item.assignedTo.role },
+  } : {}),
   publicReplies: (item.publicReplies || []).map(adminReply),
 });
 const audit = async (req, action, previousData, newData, metadata) => {
@@ -154,12 +163,13 @@ const ticketFilter = (query, ownCustomer) => {
   const category = value(query.category);
   if (category && SUPPORT_CATEGORIES.includes(category)) filter.category = category;
   if (query.assignedTo && !ownCustomer) filter.assignedTo = query.assignedTo;
-  const search = clean(query.search, 200);
+  const search = escapedSearch(clean(query.search, 100));
   if (search) filter.$or = [{ caseReference: { $regex: search, $options: "i" } }, { subject: { $regex: search, $options: "i" } }];
   return filter;
 };
 const addAdminCustomerSearch = async (filter, search) => {
   if (!search) return filter;
+  search = escapedSearch(search.slice(0, 100));
   const customers = await User.find({
     $or: [{ fullName: { $regex: search, $options: "i" } }, { phone: { $regex: search, $options: "i" } }, { email: { $regex: search, $options: "i" } }],
   }).select("_id");
@@ -303,14 +313,14 @@ exports.listAdminTickets = async (req, res) => {
       FintechCase.find(filter).populate("customer", "fullName phone email").populate("assignedTo", "fullName phone email role").sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit),
       FintechCase.countDocuments(filter),
     ]);
-    res.json({ success: true, data: { page, limit, total, items: items.map(adminCase) } });
+    res.json({ success: true, data: { page, limit, total, items: items.map((item) => adminCase(item, req)) } });
   } catch (_) { error(res, 500, "Unable to load support tickets."); }
 };
 exports.getAdminTicket = async (req, res) => {
   try {
     const ticket = await FintechCase.findOne({ _id: req.params.id, type: "COMPLAINT" }).populate("customer", "fullName phone email").populate("assignedTo", "fullName phone email role").populate("notes.authorId", "fullName role");
     if (!ticket) return error(res, 404, "Support ticket not found.");
-    return res.json({ success: true, data: adminCase(ticket) });
+    return res.json({ success: true, data: adminCase(ticket, req) });
   } catch (_) { return error(res, 404, "Support ticket not found."); }
 };
 exports.updateTicket = async (req, res) => {
@@ -322,8 +332,9 @@ exports.updateTicket = async (req, res) => {
     if (priority && !PRIORITIES.includes(priority)) return error(res, 400, "Invalid priority.");
     if (
       req.body.assignedTo !== undefined &&
-      req.user.role !== "HEAD_OFFICE" &&
-      !new Set(req.staffAccess?.permissions || []).has("support.assign")
+      (safeSupport.isSupportAgent(req) ||
+        (!req.staffAccess?.isHeadOffice && req.user.role !== "HEAD_OFFICE" &&
+        !new Set(req.staffAccess?.permissions || []).has("support.assign")))
     ) {
       return error(res, 403, "You do not have permission to assign support tickets.");
     }
@@ -412,10 +423,11 @@ exports.addNote = async (req, res) => {
 };
 exports.staff = async (req, res) => {
   try {
-    const search = clean(req.query.search, 200);
+    if (safeSupport.isSupportAgent(req)) return error(res, 403, "Support manager assignment permission required.");
+    const search = escapedSearch(clean(req.query.search, 100));
     const filter = { status: "ACTIVE", role: { $ne: "CUSTOMER" }, $or: [{ isStaff: true }, { role: "HEAD_OFFICE" }] };
     if (search) filter.$and = [{ $or: [{ fullName: { $regex: search, $options: "i" } }, { phone: { $regex: search, $options: "i" } }, { email: { $regex: search, $options: "i" } }] }];
-    const items = await User.find(filter).select("fullName phone email role isStaff department").sort({ fullName: 1 }).limit(100);
+    const items = await User.find(filter).select("fullName role isStaff department").sort({ fullName: 1 }).limit(100);
     res.json({ success: true, data: { items } });
   } catch (_) { error(res, 500, "Unable to load support staff."); }
 };

@@ -17,13 +17,12 @@ router.use((req, res, next) => {
   next();
 });
 router.get("/overview", c.overview);
+router.get("/support-summary", c.supportSummary);
+router.get("/virtual-accounts", c.virtualAccounts);
 router.get("/customers", c.customers);
 router.get("/customers/:id", c.customerDetail);
 router.get("/staff/:id/history", c.staffHistory);
-router.get("/transactions", (req, res, next) => {
-  if (req.staffAccess.isHeadOffice || req.staffAccess.permissions.includes("operations.workspace.view")) return next();
-  return res.status(403).json({ success: false, message: "Operations permission required. Investigate transactions through a selected customer." });
-}, c.transactions);
+router.get("/transactions", c.transactions);
 router.post("/tickets", requirePermission("support.resolve"), c.createTicket);
 router.post("/tickets/:id/escalate", requirePermission("support.resolve"), c.escalate);
 router.post("/provision-roles", c.provisionRoles);

@@ -10,6 +10,7 @@ const Audit = require("../models/adminAuditLog.model");
 const LoginEvent = require("../models/loginSecurityEvent.model");
 const AccessLog = require("../models/adminAccessLog.model");
 const { getCustomerHistoryItem } = require("../services/customerHistory.service");
+const safe = require("../services/supportWorkspace.service");
 
 const clean = (v, max = 300) => String(v || "").trim().slice(0, max);
 const validId = (v) => /^[a-f0-9]{24}$/i.test(String(v || ""));
@@ -26,10 +27,21 @@ const customer = (v) => ({
 });
 const transaction = (v) => ({
   id: id(v), reference: v.reference, type: v.serviceType || v.type, status: v.status,
-  amount: v.amount, createdAt: v.createdAt,
+  amount: v.amount, createdAt: v.createdAt, updatedAt: v.updatedAt,
+  customerId: id(v.customerId), providerStatus: safe.safeCode(v.providerStatus),
+  errorCode: safe.safeCode(v.providerResponse?.code || v.providerResponse?.errorCode),
+  diagnostic: safe.diagnostic(safe.safeCode(v.providerResponse?.code || v.providerResponse?.errorCode), v.status),
 });
-const txFields = "_id reference serviceType type status amount createdAt";
+const txFields = "_id reference serviceType type status amount createdAt updatedAt customerId providerStatus providerResponse.code providerResponse.errorCode";
 const customerFields = "_id fullName phone email status";
+const customerFor = (req, v) => {
+  const result = customer(v);
+  if (!req.staffAccess?.isHeadOffice) {
+    result.phone = safe.maskPhone(v.phone);
+    result.email = safe.maskEmail(v.email);
+  }
+  return result;
+};
 const audit = (req, action, reason, metadata, session) => Audit.create([{
   actorId: req.user._id, actorRole: req.user.role,
   actorName: clean(req.user.fullName, 200), action, reason,
@@ -49,6 +61,7 @@ exports.provisionRoles = async (req, res) => {
       for (const definition of [
         { name: "OPERATIONS_MANAGER", displayName: "Operations Manager", department: "OPERATIONS", hierarchyLevel: 60, capability: "operations.workspace.view" },
         { name: "CUSTOMER_SUPPORT", displayName: "Customer Support", department: "CUSTOMER_SUPPORT", hierarchyLevel: 25, capability: "support.workspace.view" },
+        { name: "SUPPORT_MANAGER", displayName: "Support Manager", department: "CUSTOMER_SUPPORT", hierarchyLevel: 40, capability: "support.workspace.view" },
       ]) {
         let role = await Role.findOne({ name: definition.name }).session(session);
         if (!role) {
@@ -148,21 +161,23 @@ exports.customers = async (req, res) => {
       User.find(filter).select(customerFields).sort({ _id: -1 }).skip((page - 1) * limit).limit(limit).maxTimeMS(5000).lean(),
       User.countDocuments(filter).maxTimeMS(5000),
     ]);
-    return ok(res, { items: rows.map(customer), total, page, limit });
+    return ok(res, { items: rows.map((v) => customerFor(req, v)), total, page, limit });
   } catch (_) { return fail(res, 503, "Customer search is temporarily unavailable."); }
 };
 
 exports.customerDetail = async (req, res) => {
   try {
     if (!validId(req.params.id)) return fail(res, 404, "Customer not found.");
-    const user = await User.findOne({ _id: req.params.id, role: "CUSTOMER" }).select(customerFields).lean();
+    const user = await User.findOne({ _id: req.params.id, role: "CUSTOMER" })
+      .select(`${customerFields} kycVerified walletBalance virtualAccount.status virtualAccount.bankName virtualAccount.accountNumber virtualAccount.failureReason virtualAccount.updatedAt virtualAccount.createdAt`).lean();
     if (!user) return fail(res, 404, "Customer not found.");
     const [rows, tickets] = await Promise.all([
       Transaction.find({ customerId: user._id }).select(txFields).sort({ createdAt: -1 }).limit(50).lean(),
       FintechCase.find({ customer: user._id, type: "COMPLAINT" })
         .select("_id caseReference subject status priority").sort({ createdAt: -1 }).limit(50).lean(),
     ]);
-    return ok(res, { customer: customer(user), transactions: rows.map(transaction),
+    return ok(res, { customer: { ...customerFor(req, user), kycStatus: user.kycVerified ? "VERIFIED" : "NOT_VERIFIED", walletBalance: user.walletBalance },
+      virtualAccount: safe.account(user.virtualAccount), transactions: rows.map(transaction),
       tickets: tickets.map((v) => ({ id: id(v), caseReference: v.caseReference, subject: v.subject, status: v.status, priority: v.priority })) });
   } catch (_) { return fail(res, 503, "Customer details are temporarily unavailable."); }
 };
@@ -171,6 +186,20 @@ exports.transactions = async (req, res) => {
   try {
     const { page, limit } = paging(req.query);
     const filter = {};
+    const query = clean(req.query.q, 100);
+    if (query) {
+      if (query.length < 3) return fail(res, 400, "Enter at least three characters.");
+      const regex = new RegExp(escape(query), "i");
+      const customers = await User.find({ role: "CUSTOMER", $or: [
+        { fullName: regex }, { phone: regex }, { email: regex },
+        ...(validId(query) ? [{ _id: query }] : []),
+      ] }).select("_id").limit(100).maxTimeMS(5000).lean();
+      filter.$or = [{ reference: regex }, { customerId: { $in: customers.map((v) => v._id) } }];
+    }
+    if (req.query.customerId) {
+      if (!validId(req.query.customerId)) return fail(res, 400, "Invalid customer.");
+      filter.customerId = req.query.customerId;
+    }
     for (const field of ["status", "type"]) {
       const input = clean(req.query[field], 80);
       if (input) {
@@ -259,7 +288,7 @@ exports.escalate = async (req, res) => {
       ticket.statusEvents.push({ status: "ESCALATED", actorId: req.user._id, actorRole: req.user.role, actorName: clean(req.user.fullName) });
       ticket.notes.push({ body: reason, authorId: req.user._id });
       await ticket.save({ session });
-      await audit(req, "FINTECH_CASE_UPDATED", reason, { caseId: id(ticket), escalatedTo: "HEAD_OFFICE" }, session);
+      await audit(req, "FINTECH_CASE_UPDATED", reason, { caseId: id(ticket), escalatedTo: "OPERATIONS_MANAGER" }, session);
     });
     return ok(res, { id: id(ticket), caseReference: ticket.caseReference, status: ticket.status });
   } catch (err) { return fail(res, err.httpStatus || 500, err.httpStatus ? err.message : "Unable to escalate ticket."); }
@@ -282,4 +311,106 @@ exports.staffHistory = async (req, res) => {
     ]);
     return ok(res, { staff: { id: id(member), fullName: member.fullName, status: member.status }, logins, activities, access });
   } catch (_) { return fail(res, 503, "Staff history is temporarily unavailable."); }
+};
+
+exports.virtualAccounts = async (req, res) => {
+  try {
+    const { page, limit } = paging(req.query);
+    const filter = { role: "CUSTOMER" };
+    const query = clean(req.query.q, 100);
+    if (query) {
+      if (query.length < 3) return fail(res, 400, "Enter at least three characters.");
+      const regex = new RegExp(escape(query), "i");
+      filter.$or = [{ fullName: regex }, { phone: regex }, { email: regex },
+        { "virtualAccount.accountNumber": query },
+        ...(validId(query) ? [{ _id: query }] : [])];
+    }
+    const status = clean(req.query.status, 30).toUpperCase();
+    if (status) {
+      if (!["NOT_CREATED", "ACTIVE", "PENDING", "FAILED", "DISABLED", "UNKNOWN"].includes(status))
+        return fail(res, 400, "Invalid account status.");
+      filter["virtualAccount.status"] = status === "NOT_CREATED"
+        ? { $in: ["NOT_CREATED", null] } : status;
+    }
+    const [rows, total] = await Promise.all([
+      User.find(filter).select("_id fullName virtualAccount.status virtualAccount.bankName virtualAccount.accountNumber virtualAccount.failureReason virtualAccount.updatedAt virtualAccount.createdAt")
+        .sort({ _id: -1 }).skip((page - 1) * limit).limit(limit).maxTimeMS(5000).lean(),
+      User.countDocuments(filter).maxTimeMS(5000),
+    ]);
+    return ok(res, { items: rows.map((v) => ({ id: id(v), fullName: v.fullName, ...safe.account(v.virtualAccount) })), total, page, limit });
+  } catch (_) { return fail(res, 503, "Virtual account records are temporarily unavailable."); }
+};
+
+exports.supportSummary = async (req, res) => {
+  try {
+    const start = new Date(); start.setUTCHours(0, 0, 0, 0);
+    // Derive timing from recorded events, never updatedAt (notes can change it).
+    const timing = [
+      { $match: { type: "COMPLAINT" } },
+      { $set: {
+        resolutionAt: { $min: { $map: {
+          input: { $filter: { input: { $ifNull: ["$statusEvents", []] }, as: "e", cond: { $in: ["$$e.status", ["RESOLVED", "CLOSED"]] } } },
+          as: "e", in: "$$e.createdAt",
+        } } },
+        firstResponseAt: { $min: { $map: {
+          input: { $filter: { input: { $ifNull: ["$publicReplies", []] }, as: "r", cond: { $ne: ["$$r.authorRole", "CUSTOMER"] } } },
+          as: "r", in: "$$r.createdAt",
+        } } },
+      } },
+      { $set: {
+        resolutionSeconds: { $cond: [{ $and: [{ $in: ["$status", ["RESOLVED", "CLOSED"]] }, { $gte: ["$resolutionAt", "$createdAt"] }] }, { $divide: [{ $subtract: ["$resolutionAt", "$createdAt"] }, 1000] }, null] },
+        responseSeconds: { $cond: [{ $gte: ["$firstResponseAt", "$createdAt"] }, { $divide: [{ $subtract: ["$firstResponseAt", "$createdAt"] }, 1000] }, null] },
+      } },
+      { $facet: {
+        totals: [{ $group: { _id: null,
+          open: { $sum: { $cond: [{ $in: ["$status", ["OPEN", "IN_PROGRESS", "IN_REVIEW", "WAITING_ON_CUSTOMER", "ESCALATED"]] }, 1, 0] } },
+          resolved: { $sum: { $cond: [{ $in: ["$status", ["RESOLVED", "CLOSED"]] }, 1, 0] } },
+          resolution: { $avg: "$resolutionSeconds" }, response: { $avg: "$responseSeconds" },
+        } }],
+        team: [
+          { $group: { _id: "$assignedTo", assigned: { $sum: 1 },
+            resolved: { $sum: { $cond: [{ $in: ["$status", ["RESOLVED", "CLOSED"]] }, 1, 0] } },
+            averageResolutionSeconds: { $avg: "$resolutionSeconds" },
+            averageFirstResponseSeconds: { $avg: "$responseSeconds" } } },
+          { $sort: { assigned: -1 } }, { $limit: 100 },
+          { $lookup: { from: User.collection.name, localField: "_id", foreignField: "_id", as: "agent" } },
+          { $project: { assigned: 1, resolved: 1, averageResolutionSeconds: 1, averageFirstResponseSeconds: 1,
+            name: { $ifNull: [{ $arrayElemAt: ["$agent.fullName", 0] }, "Unassigned"] } } },
+        ],
+        activity: [
+          { $project: { count: { $add: [
+            { $size: { $filter: { input: { $ifNull: ["$statusEvents", []] }, as: "e",
+              cond: { $and: [{ $gte: ["$$e.createdAt", start] }, { $ne: ["$$e.actorRole", "CUSTOMER"] }] } } } },
+            { $size: { $filter: { input: { $ifNull: ["$notes", []] }, as: "n", cond: { $gte: ["$$n.createdAt", start] } } } },
+            { $size: { $filter: { input: { $ifNull: ["$publicReplies", []] }, as: "r",
+              cond: { $and: [{ $gte: ["$$r.createdAt", start] }, { $ne: ["$$r.authorRole", "CUSTOMER"] }] } } } },
+          ] } } },
+          { $group: { _id: null, count: { $sum: "$count" } } },
+        ],
+      } },
+    ];
+    const [totalCustomers, tx, tickets, roles] = await Promise.all([
+      User.countDocuments({ role: "CUSTOMER" }).maxTimeMS(10000),
+      Transaction.aggregate([{ $match: { status: { $in: ["PENDING", "FAILED"] } } }, { $group: { _id: "$status", count: { $sum: 1 } } }]).option({ maxTimeMS: 10000 }),
+      FintechCase.aggregate(timing).option({ maxTimeMS: 10000 }),
+      Role.find({ status: "ACTIVE", scopeType: "GLOBAL", permissions: "support.workspace.view" }).select("_id").lean(),
+    ]);
+    const activeSupportAgents = await User.countDocuments({
+      status: "ACTIVE", isStaff: true, staffRoleId: { $in: roles.map((v) => v._id) },
+    }).maxTimeMS(10000);
+    const summary = tickets[0]?.totals[0] || {};
+    const manager = req.staffAccess.isHeadOffice || req.staffAccess.roleName === "SUPPORT_MANAGER" ||
+      req.staffAccess.permissions.includes("operations.workspace.view");
+    return ok(res, {
+      totalCustomers, pendingTransactions: tx.find((v) => v._id === "PENDING")?.count || 0,
+      failedTransactions: tx.find((v) => v._id === "FAILED")?.count || 0,
+      openComplaints: summary.open || 0, resolvedTickets: summary.resolved || 0,
+      averageResolutionSeconds: summary.resolution ?? null,
+      averageFirstResponseSeconds: summary.response ?? null,
+      activeSupportAgents, todaySupportActivity: tickets[0]?.activity[0]?.count || 0, dayTimezone: "UTC",
+      timingNotice: "Recorded ticket events only; unavailable timing is not zero. Team results reflect current assignment. Today's activity counts staff status events, notes and public replies in UTC.",
+      canManageTeam: manager,
+      team: manager ? (tickets[0]?.team || []).map((v) => ({ ...v, id: id(v) })) : [],
+    });
+  } catch (_) { return fail(res, 503, "Support metrics are temporarily unavailable."); }
 };

@@ -43,12 +43,12 @@ test.before(async () => {
 });
 test.after(async () => { await mongoose.disconnect(); if (mongo) await mongo.stop(); });
 
-test("Head Office provisions two individual-account roles idempotently without financial adjustment permissions", async () => {
+test("Head Office provisions support and manager roles idempotently without financial adjustment permissions", async () => {
   const first = await call(c.provisionRoles);
   assert.equal(first.status, 200);
   const again = await call(c.provisionRoles);
   assert.equal(again.status, 200);
-  assert.equal(await Role.countDocuments(), 2);
+  assert.equal(await Role.countDocuments(), 3);
   opsRole = await Role.findOne({ name: "OPERATIONS_MANAGER" });
   supportRole = await Role.findOne({ name: "CUSTOMER_SUPPORT" });
   for (const role of [opsRole, supportRole]) {
@@ -86,10 +86,10 @@ test("customer search uses allowlist projection and escapes regex input", async 
   assert.equal((await call(c.customers, { query: { q: ".*[" } })).status, 200);
   assert.equal((await call(c.customers, { query: { q: "a" } })).status, 400);
 });
-test("customer detail never exposes secrets, identity or wallet data", async () => {
+test("customer detail exposes authorized KYC state and balance without secrets or identity documents", async () => {
   const response = await call(c.customerDetail, { params: { id: String(customer._id) } });
   assert.equal(response.status, 200);
-  assert.deepEqual(Object.keys(response.body.data.customer).sort(), ["email", "fullName", "id", "phone", "status"]);
+  assert.deepEqual(Object.keys(response.body.data.customer).sort(), ["email", "fullName", "id", "kycStatus", "phone", "status", "walletBalance"]);
   assert.equal((await call(c.customerDetail, { params: { id: "$ne" } })).status, 404);
 });
 let ticket;
@@ -119,7 +119,7 @@ test("escalation records preserved complaint history and reason exactly once", a
   assert.equal(latest.status, "ESCALATED");
   assert.equal(latest.statusEvents.filter((v) => v.status === "ESCALATED").length, 1);
   assert.equal(latest.notes.length, 1);
-  assert.equal(await Audit.countDocuments({ "metadata.caseId": String(ticket._id), "metadata.escalatedTo": "HEAD_OFFICE" }), 1);
+  assert.equal(await Audit.countDocuments({ "metadata.caseId": String(ticket._id), "metadata.escalatedTo": "OPERATIONS_MANAGER" }), 1);
 });
 test("closed complaints cannot be escalated and unknown statuses/filters do not broaden searches", async () => {
   await Case.updateOne({ _id: ticket._id }, { $set: { status: "CLOSED" } });
@@ -149,7 +149,7 @@ test("route contract requires authenticated role and guards global scope and mut
   assert.match(source, /router\.use\(protect, loadStaffRole\)/);
   assert.match(source, /scope\?\.type !== "GLOBAL"/);
   assert.match(source, /requirePermission\("support\.resolve"\)/);
-  assert.match(source, /Operations permission required/);
+  assert.match(source, /router\.get\("\/transactions", c\.transactions\)/);
 });
 test("real stored transaction fields drive service filters, revenue and owned complaint context without mutation", async () => {
   const record = await Transaction.create({
@@ -199,13 +199,23 @@ test("HTTP login, cross-role restrictions, staff suspension and session revocati
   };
   try {
     assert.equal((await request("/workspace/overview")).status, 401);
-    for (const role of [supportRole, opsRole]) {
+    const managerRole = await Role.findOne({ name: "SUPPORT_MANAGER" });
+    for (const role of [supportRole, opsRole, managerRole]) {
       const staff = await makeUser("STAFF", { isStaff: true, staffRoleId: role._id });
       const login = await request("/login", null, { email: staff.email, password: "FixturePassword91!" });
       assert.equal(login.status, 200);
       const token = login.body.token || login.body.data?.token;
       assert.ok(token);
       assert.equal((await request("/workspace/overview", token)).status, 200);
+      const metrics = await request("/workspace/support-summary", token);
+      assert.equal(metrics.status, 200, JSON.stringify(metrics.body));
+      assert.equal(metrics.body.data.canManageTeam, role.name !== "CUSTOMER_SUPPORT");
+      assert.equal((await request("/workspace/virtual-accounts", token)).status, 200);
+      const profile = await request(`/workspace/customers/${customer._id}`, token);
+      assert.equal(profile.status, 200);
+      assert.match(profile.body.data.customer.phone, /••••/);
+      assert.equal(profile.body.data.customer.kycStatus, "NOT_VERIFIED");
+      assert.equal((await request("/support/staff", token)).status, role.name === "CUSTOMER_SUPPORT" ? 403 : 200);
       assert.equal((await request("/workspace/provision-roles", token, {})).status, 403);
       const aiResponse = await fetch(base + "/support/ai-settings", {
         method: "PUT", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
@@ -213,7 +223,7 @@ test("HTTP login, cross-role restrictions, staff suspension and session revocati
       });
       assert.equal(aiResponse.status, 403);
       const tx = await request("/workspace/transactions", token);
-      assert.equal(tx.status, role.name === "OPERATIONS_MANAGER" ? 200 : 403);
+      assert.equal(tx.status, 200);
       const history = await request(`/workspace/staff/${staff._id}/history`, token);
       assert.equal(history.status, 403);
       await User.updateOne({ _id: staff._id }, { $set: { status: "SUSPENDED" } });
@@ -238,4 +248,54 @@ test("HTTP login, cross-role restrictions, staff suspension and session revocati
     assert.equal((await request("/workspace/overview", scopedToken)).status, 403);
     assert.equal((await request("/support/tickets", scopedToken)).status, 403);
   } finally { server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)); }
+});
+
+test("support investigation uses sanitized evidence, masks accounts and preserves stored records", async () => {
+  const safe = require("../services/supportWorkspace.service");
+  const access = { isHeadOffice: false, roleName: "CUSTOMER_SUPPORT", permissions: ["support.workspace.view"] };
+  const record = await Transaction.create({
+    customerId: customer._id, reference: "SUPPORT-DIAGNOSTIC-001", serviceType: "DATA",
+    amount: 300, status: "FAILED", providerResponse: { code: "IP_NOT_WHITELISTED",
+      password: "fixture-secret-must-not-be-returned", message: "Private payload" },
+  });
+  await User.updateOne({ _id: customer._id }, { $set: {
+    "virtualAccount.status": "FAILED", "virtualAccount.accountNumber": "1234567890",
+    "virtualAccount.failureReason": "IP_NOT_WHITELISTED",
+  } });
+  const beforeUser = await User.findById(customer._id).lean();
+  const beforeTx = await Transaction.findById(record._id).lean();
+  const list = await call(c.transactions, { staffAccess: access, query: { q: "SUPPORT-DIAGNOSTIC" } });
+  assert.equal(list.body.data.total, 1);
+  assert.equal(list.body.data.items[0].errorCode, "IP_NOT_WHITELISTED");
+  assert.doesNotMatch(JSON.stringify(list.body), /fixture-secret|Private payload|providerResponse/);
+  assert.equal((await call(c.transactions, { query: { q: ".*[" } })).body.data.total, 0);
+  const accounts = await call(c.virtualAccounts, { staffAccess: access, query: { q: customer.phone } });
+  assert.equal(accounts.body.data.items[0].maskedAccountNumber, "••••••7890");
+  assert.doesNotMatch(JSON.stringify(accounts.body), /1234567890/);
+  assert.equal((await call(c.virtualAccounts, { query: { status: "$ne" } })).status, 400);
+  assert.deepEqual(await User.findById(customer._id).lean(), beforeUser);
+  assert.deepEqual(await Transaction.findById(record._id).lean(), beforeTx);
+  assert.equal(safe.safeCode("secret=private-token"), "");
+});
+
+test("resolution timings use status events and replies, not updatedAt; agents cannot assign", async () => {
+  const controller = require("../controllers/support.controller");
+  const now = Date.now();
+  const fixture = await Case.create({
+    caseReference: "SUPPORT-METRIC-001", idempotencyKey: "support-metric-fixture",
+    type: "COMPLAINT", customer: customer._id, createdBy: head._id,
+    subject: "Metric fixture", description: "No money movement", status: "RESOLVED",
+    createdAt: new Date(now - 600000),
+    publicReplies: [{ message: "Investigating", authorId: head._id, authorRole: "HEAD_OFFICE", createdAt: new Date(now - 540000) }],
+    statusEvents: [{ status: "RESOLVED", actorId: head._id, actorRole: "HEAD_OFFICE", createdAt: new Date(now - 300000) }],
+  });
+  const result = await call(c.supportSummary);
+  assert.equal(result.status, 200, JSON.stringify(result.body));
+  assert.equal(result.body.data.averageResolutionSeconds, 300);
+  assert.equal(result.body.data.averageFirstResponseSeconds, 60);
+  const assignment = await call(controller.updateTicket, {
+    staffAccess: { isHeadOffice: false, roleName: "CUSTOMER_SUPPORT", permissions: ["support.assign", "support.resolve"] },
+    body: { assignedTo: String(head._id) }, params: { id: String(fixture._id) },
+  });
+  assert.equal(assignment.status, 403);
 });
