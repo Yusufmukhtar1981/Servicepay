@@ -152,8 +152,12 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     final Finder search = find.byType(TextField);
     expect(search, findsOneWidget);
+    // Cable TV was intentionally hidden by the approved Customer cleanup.
+    // Preserve that policy rather than restoring it to satisfy an old fixture.
+    await tester.enterText(search, 'Cable TV');
+    await tester.pump();
+    expect(_serviceLabel('Cable TV'), findsNothing);
     for (final String service in <String>[
-      'Cable TV',
       'AI Support',
       'Flight Booking',
     ]) {

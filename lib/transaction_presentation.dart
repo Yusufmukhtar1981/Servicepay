@@ -85,6 +85,17 @@ class TransactionPresentation {
     final stage = raw['processingStatus']?.toString().toUpperCase();
     final service =
         _first(raw, const ['serviceType', 'type']).toString().toUpperCase();
+    final lifecycle = raw['lifecycleState']?.toString().toUpperCase();
+    if (const ['DATA', 'AIRTIME', 'ELECTRICITY'].contains(service)) {
+      if (lifecycle == 'REFUNDED') return 'REFUNDED';
+      if (lifecycle == 'MANUAL_REVIEW') return 'UNDER REVIEW';
+      if (status == 'PENDING') {
+        if (lifecycle == 'PENDING_VERIFICATION') return 'AWAITING CONFIRMATION';
+        if (const ['CREATED', 'PROCESSING'].contains(lifecycle)) {
+          return 'PROCESSING';
+        }
+      }
+    }
     if (const ['DATA', 'AIRTIME'].contains(service) &&
         status == 'PENDING' &&
         const ['INITIATED', 'PROCESSING', 'PENDING_VERIFICATION']
