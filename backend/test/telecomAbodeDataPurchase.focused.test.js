@@ -582,24 +582,24 @@ for (const [scenario, outcome, expectedStatus, expectedDispatchStatus, heldDebit
   });
 }
 
-test("different keys for the same unresolved purchase cannot debit or dispatch twice", async () => {
+test("independently authorized request keys reserve independent purchases without rewriting the first unresolved purchase", async () => {
   const user = await makeUser();
   await addCanonicalPrice();
   setOutcome("UNKNOWN");
   const first = await purchase(user, { key: "conflict-original-key" });
+  const before = JSON.stringify(await Transaction.collection.findOne({ reference: first.body.reference }));
   const second = await purchase(user, { key: "conflict-new-key" });
   assert.equal(first.status, 202);
-  assert.equal(second.status, 409);
-  assert.equal(second.body.code, "DATA_PURCHASE_CONFLICT");
-  assert.equal(second.body.reference, first.body.reference);
-  assert.equal(second.body.newRequestNotAdmitted, true);
-  assert.equal(await Transaction.countDocuments({ customerId: user._id }), 1);
-  assert.equal(await LedgerEntry.countDocuments({ user: user._id, direction: "DEBIT" }), 1);
-  assert.equal((await User.findById(user._id)).walletBalance, 1000 - SERVICEPAY_PRICE);
-  assert.equal(dispatchCalls, 1);
+  assert.equal(second.status, 202);
+  assert.notEqual(second.body.reference, first.body.reference);
+  assert.equal(await Transaction.countDocuments({ customerId: user._id }), 2);
+  assert.equal(await LedgerEntry.countDocuments({ user: user._id, direction: "DEBIT" }), 2);
+  assert.equal((await User.findById(user._id)).walletBalance, 1000 - 2 * SERVICEPAY_PRICE);
+  assert.equal(dispatchCalls, 2);
+  assert.equal(JSON.stringify(await Transaction.collection.findOne({ reference: first.body.reference })), before);
 });
 
-test("concurrent distinct keys for the same pending intent admit only one purchase", async () => {
+test("concurrent independently authorized request keys preserve separate wallet reservations", async () => {
   const user = await makeUser();
   await addCanonicalPrice();
   setOutcome("UNKNOWN");
@@ -607,9 +607,22 @@ test("concurrent distinct keys for the same pending intent admit only one purcha
     purchase(user, { key: "concurrent-conflict-one" }),
     purchase(user, { key: "concurrent-conflict-two" }),
   ]);
-  assert.deepEqual(results.map(r => r.status).sort(), [202, 409]);
-  assert.equal(await Transaction.countDocuments({ customerId: user._id }), 1);
+  assert.deepEqual(results.map(r => r.status).sort(), [202, 202]);
+  assert.equal(new Set(results.map(r => r.body.reference)).size, 2);
+  assert.equal(await Transaction.countDocuments({ customerId: user._id }), 2);
+  assert.equal(await LedgerEntry.countDocuments({ user: user._id, direction: "DEBIT" }), 2);
+  assert.equal((await User.findById(user._id)).walletBalance, 1000 - 2 * SERVICEPAY_PRICE);
+  assert.equal(dispatchCalls, 2);
+});
+test("independent concurrent keys cannot spend funds already reserved by another purchase", async () => {
+  const user = await makeUser();
+  await User.updateOne({ _id: user._id }, { $set: { walletBalance: SERVICEPAY_PRICE } });
+  await addCanonicalPrice(); setOutcome("UNKNOWN");
+  const results = await Promise.all([0, 1, 2].map(i => purchase(user, { key: `available-balance-only-${i}` })));
+  assert.equal(results.filter(r => r.status === 202).length, 1);
+  assert.equal((await User.findById(user._id)).walletBalance, 0);
   assert.equal(await LedgerEntry.countDocuments({ user: user._id, direction: "DEBIT" }), 1);
+  assert.equal(await Transaction.countDocuments({ customerId: user._id }), 1);
   assert.equal(dispatchCalls, 1);
 });
 

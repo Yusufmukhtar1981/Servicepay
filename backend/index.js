@@ -336,6 +336,7 @@ app.use(
 app.use("/api/support", supportRoutes.customer);
 app.use("/api/admin/support", supportRoutes.admin);
 app.use("/api/admin/staff-workspace", require("./routes/staffWorkspace.routes"));
+app.use("/api/admin/pending-resolution", require("./routes/pendingResolution.routes"));
 
 app.use(
   "/api/wallet",
@@ -513,6 +514,7 @@ async function startServer() {
   console.log(`ServicePay API listening on 0.0.0.0:${PORT}`);
   require("./services/revenueAccount.service").startWorker();
   require("./services/manualRefundEmail.service").startWorker();
+  require("./services/pendingResolutionMonitor.service").start();
   require("./services/telecomAbodeReconciliationWorker.service").startTelecomAbodeReconciliationWorker();
   logFirebaseConfigurationStatus();
 

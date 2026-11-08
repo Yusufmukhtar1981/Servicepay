@@ -213,6 +213,7 @@ transactionSchema.index({
   createdAt: -1,
 });
 
+transactionSchema.index({ status: 1, createdAt: 1 });
 // Global campaign reports constrain status/service/date before grouping by
 // customer; keep the date window before the grouping key in this index.
 transactionSchema.index({

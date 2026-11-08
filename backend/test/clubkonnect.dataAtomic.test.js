@@ -1037,7 +1037,7 @@ test("a new DATA key intentionally buys the same plan a second time", async () =
   assert.equal(dataRequestCount, 2);
 });
 
-test("acknowledged same-plan purchase gets a fresh reference and one debit while historical pending stays byte-identical", async () => {
+test("independent PIN-authorized same-plan purchase needs no legacy pending acknowledgement and preserves the historical request", async () => {
   const user = await makeUser();
   const timeout = new Error("socket timed out"); timeout.code = "ECONNABORTED";
   providerDataResponse = timeout;
@@ -1046,18 +1046,14 @@ test("acknowledged same-plan purchase gets a fresh reference and one debit while
   await Transaction.collection.updateOne({ reference: old.body.reference },
     { $set: { createdAt: new Date("2026-10-21T00:00:00Z") } });
   const snapshot = JSON.stringify(await Transaction.collection.findOne({ reference: old.body.reference }));
-  const blocked = await invoke(user, purchaseBody(user), { idempotencyKey: "new-unacknowledged-request" });
-  assert.equal(blocked.status, 409);
-  assert.equal(blocked.body.requiresPendingAcknowledgement, true);
-  assert.equal(await User.findById(user._id).then(r => r.walletBalance), 400);
   providerDataResponse = (url, config) => ({
     status: 200, data: { RequestID: config.params.RequestID, status: "SUCCESSFUL" },
   });
   const results = await Promise.all(Array.from({ length: 4 }, () => invoke(user,
-    { ...purchaseBody(user), acknowledgePendingPurchase: true },
-    { idempotencyKey: "new-acknowledged-request" })));
+    purchaseBody(user),
+    { idempotencyKey: "new-independent-request" })));
   assert.ok(results.some(r => r.status === 200));
-  const fresh = await Transaction.findOne({ idempotencyKey: "new-acknowledged-request" }).lean();
+  const fresh = await Transaction.findOne({ idempotencyKey: "new-independent-request" }).lean();
   assert.notEqual(fresh.reference, old.body.reference);
   assert.equal(fresh.status, "SUCCESSFUL");
   assert.equal(dataRequestCount, 2);

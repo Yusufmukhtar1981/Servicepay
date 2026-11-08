@@ -1234,25 +1234,10 @@ exports.buyData = async (req, res) => {
           return;
         }
 
-        // The customer write above serializes competing admissions. Abort the
-        // entire debit unless the customer explicitly acknowledged that this
-        // is a separately charged purchase. Same-key idempotency still applies.
-        const conflict = await Transaction.findOne({
-          customerId: customer._id, serviceType: "DATA",
-          $or: [
-            { status: "PENDING" },
-            { status: "FAILED", dispatchStatus: { $ne: "REFUNDED" },
-              debitLedgerEntryId: { $ne: null } },
-          ],
-          phone: mobileNumber,
-          "providerResponse.network": networkCode,
-          "providerResponse.planCode": selectedPlan,
-        }).session(session).lean();
-        if (conflict && req.body.acknowledgePendingPurchase !== true) {
-          throw Object.assign(new Error("DATA_PURCHASE_CONFLICT"), {
-            code: "DATA_PURCHASE_CONFLICT", conflict,
-          });
-        }
+        // A new PIN-authorized request key is an independent purchase. The
+        // atomic balance reservation and same-key fingerprint still protect
+        // against overdrafts/duplicate charges. Older unresolved requests keep
+        // their original debit and query-only identity; never resend them.
 
         const [created] = await Transaction.create(
           [{

@@ -46,6 +46,10 @@ const blockersFor = ({ transaction: t, debit, debitCount, priorCredit, priorRefu
       new Date(t.reconciliationLeaseUntil || 0).getTime() > Date.now()) {
     reasons.push("A provider dispatch or reconciliation operation is still in flight.");
   }
+  if (new Date(t.providerResponse?.adminRecheck?.leaseUntil || 0).getTime() > Date.now() ||
+      new Date(t.providerResponse?.statusReconciliation?.leaseUntil || 0).getTime() > Date.now()) {
+    reasons.push("An administrator status query is still in flight.");
+  }
   if (t.provider === "TELECOM_ABODE" &&
       ((!failedWithCanonicalEvidence && t.dispatchStatus !== "UNKNOWN") || !t.dispatchClaimedAt || !t.debitLedgerEntryId)) {
     reasons.push("The Telecom Abode purchase has not reached its canonical inactive uncertain-outcome state.");
