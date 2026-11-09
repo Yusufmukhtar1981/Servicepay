@@ -361,6 +361,7 @@ void main() {
     final card = find.text('EduPay');
     expect(card, findsOneWidget);
     await tester.ensureVisible(card);
+    await tester.pump();
     await tester.tap(card);
     await tester.pumpAndSettle();
     expect(find.byType(EduPayScreen), findsOneWidget);

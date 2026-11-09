@@ -15,7 +15,7 @@ import 'ai_support_screen.dart';
 import 'amana_screen.dart';
 import 'data_screen.dart';
 import 'electricity_screen.dart';
-import 'flight_booking_screen.dart';
+import 'widgets/flight_booking_unavailable_screen.dart';
 import 'id_verification_screen.dart';
 import 'logistics_screen.dart';
 import 'delivery_history_screen.dart';
@@ -1654,7 +1654,8 @@ class _DashboardScreenState extends State<DashboardScreen>
         keywords: 'flight booking airline travel',
         onTap: () {
           openScreen(
-            const FlightBookingScreen(),
+            const FlightBookingUnavailableScreen(),
+            routeName: '/flight-booking',
           );
         },
       ),
@@ -2723,9 +2724,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                 const SizedBox(height: 4),
                 Text(
                   service.title,
-                  maxLines: 2,
                   textAlign: TextAlign.center,
-                  overflow: TextOverflow.ellipsis,
+                  softWrap: true,
                   style: const TextStyle(
                     color: Color(0xFF294638),
                     fontSize: 12.5,
@@ -2772,6 +2772,9 @@ class _DashboardScreenState extends State<DashboardScreen>
         'edupay',
         'marketplace',
         'electricity',
+        'nin verification',
+        'keke napep',
+        'flight booking',
       ])
         if (byTitle[wanted] != null) byTitle[wanted]!,
     ];
@@ -2838,18 +2841,18 @@ class _DashboardScreenState extends State<DashboardScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Row(
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 12,
+            runSpacing: 8,
             children: <Widget>[
-              const Expanded(
-                child: Text(
-                  'Services',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Color(0xFF173629),
-                    fontSize: 17,
-                    fontWeight: FontWeight.w900,
-                  ),
+              const Text(
+                'Services',
+                style: TextStyle(
+                  color: Color(0xFF173629),
+                  fontSize: 17,
+                  fontWeight: FontWeight.w900,
                 ),
               ),
               if (allServicesGate.visible)
@@ -2858,38 +2861,61 @@ class _DashboardScreenState extends State<DashboardScreen>
                   onPressed: allServicesGate.isBlocked ? null : openAllServices,
                   style: TextButton.styleFrom(
                     padding: const EdgeInsets.symmetric(horizontal: 6),
-                    minimumSize: Size.zero,
+                    minimumSize: const Size(0, 44),
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
                   child: Text(
                     allServicesGate.isBlocked
                         ? 'Services unavailable'
                         : 'All Services',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                    softWrap: true,
                   ),
                 ),
             ],
           ),
           const SizedBox(height: 8),
-          GridView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemCount: quick.length,
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              mainAxisExtent: 84 +
-                  math.max(
-                        0,
-                        MediaQuery.textScalerOf(context).scale(13) - 13,
-                      ) *
-                      2,
-              crossAxisSpacing: 8,
-              mainAxisSpacing: 5,
-            ),
-            itemBuilder: (BuildContext context, int index) {
-              final _DashboardService service = quick[index];
-              return _customerQuickServiceItem(service, index: index);
+          LayoutBuilder(
+            builder: (BuildContext context, BoxConstraints constraints) {
+              final double gridSpacing = constraints.maxWidth < 340 ? 6 : 8;
+              final double labelWidth =
+                  (constraints.maxWidth - 2 * gridSpacing) / 3 - 10;
+              double labelHeight = 0;
+              for (final _DashboardService service in quick) {
+                final TextPainter painter = TextPainter(
+                  text: TextSpan(
+                    text: service.title,
+                    style: Theme.of(context).textTheme.bodyMedium!.merge(
+                          const TextStyle(
+                            fontSize: 12.5,
+                            height: 1.08,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                  ),
+                  textDirection: Directionality.of(context),
+                  textScaler: MediaQuery.textScalerOf(context),
+                  locale: Localizations.localeOf(context),
+                )..layout(maxWidth: math.max(1, labelWidth));
+                labelHeight = math.max(labelHeight, painter.height);
+                painter.dispose();
+              }
+              final double rowExtent = math.max(104, 56 + labelHeight.ceilToDouble());
+              return GridView.builder(
+                key: const Key('customer-services-grid'),
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: quick.length,
+                gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  mainAxisExtent: rowExtent,
+                  crossAxisSpacing: gridSpacing,
+                  mainAxisSpacing: gridSpacing,
+                ),
+                itemBuilder: (BuildContext context, int index) {
+                  final _DashboardService service = quick[index];
+                  return _customerQuickServiceItem(service, index: index);
+                },
+              );
             },
           ),
         ],
@@ -5562,6 +5588,12 @@ class _DashboardScreenState extends State<DashboardScreen>
                   if (fundingAccountNumber.isNotEmpty)
                     const SizedBox(height: 15),
                   buildCustomerQuickServices(),
+                  if (isLoadingServiceStatuses ||
+                      activeServiceStatuses.isNotEmpty) ...[
+                    const SizedBox(height: 16),
+                    buildActiveServiceStatuses(),
+                    const SizedBox(height: 15),
+                  ],
                   if (_announcementService != null &&
                       announcements.isNotEmpty) ...[
                     const SizedBox(height: 14),
@@ -5586,12 +5618,6 @@ class _DashboardScreenState extends State<DashboardScreen>
                   if (schoolPortalMemberships.isNotEmpty) ...[
                     const SizedBox(height: 14),
                     buildSchoolPortalCard(),
-                  ],
-                  const SizedBox(height: 16),
-                  if (isLoadingServiceStatuses ||
-                      activeServiceStatuses.isNotEmpty) ...[
-                    buildActiveServiceStatuses(),
-                    const SizedBox(height: 15),
                   ],
                   buildRecentActivity(),
                   if (isLoadingServiceStatuses ||
