@@ -5,7 +5,8 @@ import 'session_store.dart';
 
 class PinSessionInvalid implements Exception {}
 
-/// Only PIN management uses this retry helper. Financial purchases never do.
+/// Session rotation for PIN management and authenticated Keke requests.
+/// Financial bill purchases never use this replay helper.
 class PinSessionClient {
   static Future<bool>? _refreshing;
   static Future<void> revoke(http.Client client, Uri endpoint) async {
@@ -36,6 +37,13 @@ class PinSessionClient {
       headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $token'},
       body: jsonEncode(body),
     ).timeout(const Duration(seconds: 30));
+    return authenticatedRequest(client, endpoint, send);
+  }
+
+  /// Replay only an explicit authentication rejection, never a timeout,
+  /// network failure, forbidden response or ambiguous business response.
+  static Future<http.Response> authenticatedRequest(http.Client client,
+      Uri endpoint, Future<http.Response> Function(String token) send) async {
     final token = await SessionStore.readToken();
     if (token == null || token.isEmpty) throw PinSessionInvalid();
     final response = await send(token);

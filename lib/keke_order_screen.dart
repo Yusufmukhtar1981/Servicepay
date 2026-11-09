@@ -8,7 +8,9 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'services/session_store.dart';
+import 'services/pin_session_client.dart';
+import 'services/keke_session_api.dart';
 
 class KekeOrderScreen extends StatefulWidget {
   const KekeOrderScreen({
@@ -43,6 +45,8 @@ class _KekeOrderScreenState
   bool _isRequestingRide = false;
   bool _isLoadingOtp = false;
   bool _isEstimatingFare = false;
+  bool _isPreparingRide = false;
+  String? _fareError;
 
   String _statusMessage =
       'Getting your current location...';
@@ -82,46 +86,8 @@ class _KekeOrderScreenState
   }
 
   Future<String?> _getAuthToken() async {
-    final SharedPreferences prefs =
-        await SharedPreferences.getInstance();
-
-    const List<String> tokenKeys =
-        <String>[
-      'auth_token',
-      'token',
-      'access_token',
-      'accessToken',
-      'jwt_token',
-      'jwt',
-    ];
-
-    for (final String key in tokenKeys) {
-      final String? value =
-          prefs.getString(key);
-
-      if (value == null ||
-          value.trim().isEmpty) {
-        continue;
-      }
-
-      String token =
-          value.trim();
-
-      if (token
-          .toLowerCase()
-          .startsWith(
-            'bearer ',
-          )) {
-        token =
-            token.substring(7).trim();
-      }
-
-      if (token.isNotEmpty) {
-        return token;
-      }
-    }
-
-    return null;
+    final token = (await SessionStore.readToken())?.trim();
+    return token == null || token.isEmpty ? null : token;
   }
 
   String? _rideId(
@@ -256,6 +222,7 @@ class _KekeOrderScreenState
 
   Future<void> _loadActiveRide() async {
     try {
+      final guardKey = await KekeBookingGuard.currentKey();
       final String? token =
           await _getAuthToken();
 
@@ -264,7 +231,7 @@ class _KekeOrderScreenState
       }
 
       final http.Response response =
-          await http
+          await KekeSessionApi
               .get(
         Uri.parse(
           '$baseUrl/keke-rides/active',
@@ -307,6 +274,9 @@ class _KekeOrderScreenState
           Map<String, dynamic>.from(
         ride,
       );
+      // A verified existing ride resolves the lost-create-response fence.
+      // A missing active ride never proves an earlier request was not admitted.
+      await KekeBookingGuard.resolved(guardKey);
 
       if (mounted) {
         setState(() {
@@ -465,7 +435,7 @@ class _KekeOrderScreenState
       }
 
       final http.Response response =
-          await http
+          await KekeSessionApi
               .get(
         Uri.parse(
           '$baseUrl/keke-rides/$rideId',
@@ -552,7 +522,7 @@ class _KekeOrderScreenState
       }
 
       final http.Response response =
-          await http
+          await KekeSessionApi
               .get(
         Uri.parse(
           '$baseUrl/keke-rides/$rideId/otp',
@@ -617,7 +587,7 @@ class _KekeOrderScreenState
       }
 
       final http.Response response =
-          await http
+          await KekeSessionApi
               .get(
         Uri.parse(
           '$baseUrl/keke-rides/$rideId/driver-location',
@@ -756,15 +726,15 @@ class _KekeOrderScreenState
       setState(() {
         _isEstimatingFare = true;
         _fareEstimate = null;
+        _fareError = null;
       });
 
       final String? token = await _getAuthToken();
       if (token == null) {
-        _showMessage('Please login again.');
-        return false;
+        throw PinSessionInvalid();
       }
 
-      final http.Response response = await http
+      final http.Response response = await KekeSessionApi
           .post(
             Uri.parse('$baseUrl/keke-fare/estimate'),
             headers: <String, String>{
@@ -793,14 +763,16 @@ class _KekeOrderScreenState
         return true;
       }
 
-      _showMessage(
-        decoded is Map
+      final message = decoded is Map
             ? decoded['message']?.toString() ?? 'Unable to estimate fare.'
-            : 'Unable to estimate fare.',
-      );
+            : 'Unable to estimate fare.';
+      if (mounted) setState(() => _fareError = message);
+      _showMessage(message);
       return false;
-    } catch (_) {
-      _showMessage('Unable to estimate fare. Please try again.');
+    } catch (error) {
+      final message = KekeSessionApi.errorMessage(error);
+      if (mounted) setState(() => _fareError = message);
+      _showMessage(message);
       return false;
     } finally {
       if (mounted) {
@@ -885,10 +857,24 @@ class _KekeOrderScreenState
   }
 
   Future<void> _requestKeke() async {
-    if (_isRequestingRide) {
+    if (_isRequestingRide || _isPreparingRide) return;
+    setState(() => _isPreparingRide = true);
+    try {
+      await _prepareKeke();
+    } catch (error) {
+      _showMessage(KekeSessionApi.errorMessage(error));
+    } finally {
+      if (mounted) setState(() => _isPreparingRide = false);
+    }
+  }
+
+  Future<void> _prepareKeke() async {
+    if (await KekeBookingGuard.isUnresolved()) {
+      await _loadActiveRide();
+      _showMessage('Your previous Keke request is awaiting confirmation. '
+          'Check your ride status or contact support. Do not submit again.');
       return;
     }
-
     final LatLng? pickup =
         _pickupLocation;
 
@@ -948,6 +934,7 @@ class _KekeOrderScreenState
       return;
     }
 
+    String? bookingGuard;
     try {
       if (mounted) {
         setState(() {
@@ -973,12 +960,14 @@ class _KekeOrderScreenState
         return;
       }
 
+      bookingGuard = await KekeBookingGuard.reserve();
       final http.Response response =
-          await http
+          await KekeSessionApi
               .post(
         Uri.parse(
           '$baseUrl/keke-rides',
         ),
+        expectedCustomerKey: bookingGuard,
         headers:
             <String, String>{
           'Authorization':
@@ -1024,6 +1013,12 @@ class _KekeOrderScreenState
           jsonDecode(
         response.body,
       );
+      if ((response.statusCode >= 400 && response.statusCode < 500 &&
+              response.statusCode != 408 && response.statusCode != 429) ||
+          (response.statusCode >= 200 && response.statusCode < 300 &&
+              decoded is Map && decoded['ride'] is Map)) {
+        await KekeBookingGuard.resolved(bookingGuard);
+      }
 
       if (response.statusCode >= 200 &&
           response.statusCode < 300 &&
@@ -1063,7 +1058,11 @@ class _KekeOrderScreenState
         return;
       }
 
-      final String message =
+      final String message = response.statusCode >= 500 ||
+              response.statusCode == 408 || response.statusCode == 429
+          ? 'Your Keke request is awaiting confirmation. Check ride status '
+              'or contact support before requesting again.'
+          :
           decoded is Map
               ? decoded['message']
                       ?.toString() ??
@@ -1080,16 +1079,23 @@ class _KekeOrderScreenState
       _showMessage(
         message,
       );
-    } catch (_) {
+    } catch (error) {
+      if (error is PinSessionInvalid && bookingGuard != null) {
+        await KekeBookingGuard.resolved(bookingGuard);
+      }
+      final message = bookingGuard != null && error is! PinSessionInvalid
+          ? 'Your Keke request is awaiting confirmation. Check ride status '
+              'or contact support before requesting again.'
+          : KekeSessionApi.errorMessage(error);
       if (mounted) {
         setState(() {
           _statusMessage =
-              'Unable to request Keke.';
+              message;
         });
       }
 
       _showMessage(
-        'Unable to request Keke. Please try again.',
+        message,
       );
     } finally {
       if (mounted) {
@@ -1122,7 +1128,7 @@ class _KekeOrderScreenState
       }
 
       final http.Response response =
-          await http
+          await KekeSessionApi
               .post(
         Uri.parse(
           '$baseUrl/keke-rides/$rideId/cancel',
@@ -1576,12 +1582,12 @@ class _KekeOrderScreenState
                             ],
                           ),
                         ),
-                        Text(
+                        Flexible(child: Text(
                           _fareEstimate == null
-                              ? 'Fare unavailable'
+                              ? (_fareError ?? 'Select destination to estimate fare')
                               : '₦${(_toDouble(_fareEstimate!['totalFare']) ?? 0).toStringAsFixed(0)}',
                           style: const TextStyle(fontWeight: FontWeight.w900),
-                        ),
+                        )),
                       ],
                     ),
             ),
@@ -1596,7 +1602,7 @@ class _KekeOrderScreenState
             child:
                 ElevatedButton.icon(
               onPressed:
-                  _isRequestingRide
+                  _isRequestingRide || _isPreparingRide
                       ? null
                       : _requestKeke,
               style:
