@@ -279,8 +279,8 @@ class DataPurchaseIntent {
       }
       final history = await retained();
       if (!history.any((item) => item['key'] == key)) {
-        if (history.length >= 100)
-          throw StateError('Resolve an earlier request first.');
+        // A retained request is custody, not a customer-level purchase quota.
+        // Actual durable-write/read-back failures still stop submission.
         history.add(Map<String, dynamic>.from(active));
       }
       final encoded = jsonEncode(history);

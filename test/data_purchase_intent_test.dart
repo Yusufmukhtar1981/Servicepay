@@ -83,6 +83,26 @@ void main() {
     expect(await buy(tracker()), isNot(keys[0]));
   });
 
+  test('more than 100 unresolved requests cannot impose a purchase quota',
+      () async {
+    final intent = DataPurchaseIntent(
+        storage: _MemoryIntentStorage(),
+        accountId: () async => 'archive-limit-regression');
+    final keys = <String>{};
+    for (var i = 0; i < 102; i++) {
+      final key = await buy(intent);
+      expect(keys.add(key), isTrue);
+      await intent.retainForSeparatePurchase(key);
+    }
+    final retained = await intent.retained();
+    expect(retained.length, 102);
+    expect(retained.map((entry) => entry['key']).toSet(), keys);
+    final newKey = await buy(intent);
+    expect(keys.contains(newKey), isFalse);
+    expect((await intent.pending())?['key'], newKey);
+    expect((await intent.retained()).length, 102);
+  });
+
   test(
       'PIN preparation persists one key and cancellation never discards a submitted intent',
       () async {

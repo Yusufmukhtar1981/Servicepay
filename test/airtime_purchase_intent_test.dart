@@ -46,6 +46,33 @@ void main() {
         'httpStatus': httpStatus,
       };
 
+  test('more than 100 unresolved Airtime requests retain independent keys',
+      () async {
+    final storage = _MemoryIntentStorage();
+    final intent = createIntent(storage);
+    final keys = <String>{};
+    var purchases = 0;
+    for (var i = 0; i < 102; i++) {
+      await intent.submit(
+        newPurchase: true,
+        network: 'MTN',
+        phone: '08012345678',
+        amount: '100',
+        dispatch: (key) async {
+          expect(keys.add(key), isTrue);
+          purchases++;
+          return unresolvedResult();
+        },
+      );
+      await intent.retainForSeparatePurchase();
+    }
+    expect(purchases, 102);
+    expect((await intent.retainedKeys()).toSet(), keys);
+    expect(await intent.pendingKey(), isNull);
+    expect((await intent.retainedKeys()).toSet(), keys);
+    expect(purchases, 102);
+  });
+
   test(
     'a failed key write blocks dispatch and the retry persists before dispatch',
     () async {

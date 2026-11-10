@@ -829,10 +829,8 @@ class AirtimePurchaseIntent {
         }
         final retained = await _readRetained();
         if (!retained.any((entry) => entry['key'] == item['key'])) {
-          if (retained.length >= 100) {
-            throw StateError(
-                'Resolve an earlier request before retaining more.');
-          }
+          // Retain every original key; never impose a purchase quota from an
+          // archive count. Durable persistence checks below remain mandatory.
           retained.add(Map<String, dynamic>.from(item));
         }
         final encoded = jsonEncode(retained);
