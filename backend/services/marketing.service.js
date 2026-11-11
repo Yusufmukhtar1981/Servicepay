@@ -14,7 +14,7 @@ const STATUSES = {
   content: ["DRAFT", "SUBMITTED", "APPROVED", "REJECTED", "PUBLISHED"],
   social: ["REPORTED"], strategy: ["SUBMITTED", "APPROVED", "REJECTED"],
   proposal: ["SUBMITTED", "APPROVED", "REJECTED"], announcement: ["PUBLISHED"],
-  target: ["ACTIVE", "COMPLETED"], attendance: ["REPORTED"],
+  target: ["ACTIVE", "COMPLETED", "PAUSED", "INACTIVE"], attendance: ["REPORTED"],
   partnership: ["SUBMITTED", "APPROVED", "REJECTED", "COMPLETED"],
   contribution: ["SUBMITTED", "APPROVED", "REJECTED"],
 };
@@ -40,7 +40,7 @@ const FIELDS = {
   content: ["scheduledAt", "channel", "assetId", "publishedUrl", "publishedAt"],
   social: ["channel", "reach", "impressions", "engagements", "evidence", "reportedAt"],
   strategy: ["evidence"], proposal: ["evidence"],
-  announcement: [], target: ["metric", "value", "period", "startsAt", "endsAt", "objective", "customMetric"],
+  announcement: [], target: ["metric", "value", "period", "startsAt", "endsAt", "objective", "customMetric", "scope"],
   attendance: ["occurredAt", "evidence"],
   partnership: ["organization", "evidence", "startsAt", "endsAt"],
   contribution: ["transactionId", "evidence"],
@@ -154,7 +154,9 @@ async function validateLinks(record, session) {
   if (record.kind === "campaign" && (!d.channel || !d.startsAt || !d.endsAt || !d.objective)) throw fail("Campaign requires a channel, objective and date range.");
   if (record.kind === "social" && (!d.evidence || !d.reportedAt)) throw fail("Social statistics require a verified-report source and reporting date.");
   if (record.kind === "partnership" && (!d.organization || !d.evidence)) throw fail("Partnership requires organization and supporting evidence.");
-  if (record.kind === "target" && !["ACQUISITIONS", "FIRST_TRANSACTIONS", "TASKS", "REPORTS", "CONTENT", "ATTENDANCE", "CAMPAIGNS", "ENGAGEMENT", "PARTNERSHIPS", "CUSTOM"].includes(d.metric)) throw fail("Unsupported performance metric.");
+  if (record.kind === "target" && !require("./marketingPerformance.service").METRICS.includes(d.metric)) throw fail("Unsupported performance metric.");
+  if (record.kind === "target" && !["INDIVIDUAL", "DEPARTMENT"].includes(d.scope || "INDIVIDUAL")) throw fail("Choose INDIVIDUAL or DEPARTMENT target scope.");
+  if (record.kind === "target" && d.scope === "DEPARTMENT" && record.officerId) throw fail("Department targets cannot also be assigned to one staff member.");
   if (record.kind === "target" && d.metric === "CUSTOM" && !d.customMetric) throw fail("Describe the custom KPI; verified measurement will remain unavailable until a supported source exists.");
   if (["target", "report"].includes(record.kind) &&
       (!d.period || !d.startsAt || !d.endsAt || d.startsAt >= d.endsAt ||
@@ -224,7 +226,14 @@ async function create(req) {
     if (!access.leadership(req)) throw fail("Only authorized managers assign targets.", 403);
   } else requireGrant(req.staffAccess, PERMISSIONS[kind]);
   const payload = parse(kind, req.body);
-  if (kind === "target") await access.assignment(req, payload.officerId);
+  if (kind === "target") {
+    if (payload.data?.scope === "DEPARTMENT") {
+      if (!req.staffAccess.isHeadOffice) throw fail("Only authorized Admin assigns department targets.", 403);
+      if (payload.officerId) throw fail("Department targets cannot have an individual assignee.");
+    } else await access.assignment(req, payload.officerId);
+    payload.data = { ...payload.data, scope: payload.data?.scope || "INDIVIDUAL",
+      authority: req.staffAccess.isHeadOffice ? "ADMIN" : "MANAGER" };
+  }
   if (kind === "report") {
     if (payload.officerId && String(payload.officerId) !== String(req.user._id)) throw fail("Submit only your own report.", 403);
     payload.officerId = req.user._id;
@@ -254,6 +263,7 @@ async function create(req) {
   });
 }
 const TRANSITIONS = {
+  target: { ACTIVE: ["COMPLETED", "PAUSED", "INACTIVE"], PAUSED: ["ACTIVE", "INACTIVE"], INACTIVE: ["ACTIVE"] },
   report: { DRAFT: ["SUBMITTED"], SUBMITTED: ["APPROVED", "REJECTED", "CORRECTIONS_REQUESTED"],
     REJECTED: ["SUBMITTED"], CORRECTIONS_REQUESTED: ["SUBMITTED"] },
   campaign: { DRAFT: ["SUBMITTED", "ACTIVE"], SUBMITTED: ["APPROVED", "REJECTED"],
@@ -280,7 +290,10 @@ async function update(req, transition = false) {
     if (!record) throw fail("Marketing record not found.", 404);
     access.assertVisible(req, record);
     if (record.data?.archivedAt) throw fail("Restore this record before editing.", 409);
-    if (kind === "target") await access.assignment(req, record.officerId);
+    if (kind === "target") {
+      await access.targetEditable(req, record, session);
+      if (record.data?.scope !== "DEPARTMENT") await access.assignment(req, record.officerId);
+    }
     if (kind === "report" && !transition && !access.own(req, record)) throw fail("Only the report author may edit it.", 403);
     if (kind === "report" && !transition && !["DRAFT", "SUBMITTED", "REJECTED", "CORRECTIONS_REQUESTED"].includes(record.status)) throw fail("Reviewed reports are immutable.", 409);
     if (kind === "task" && !access.leadership(req) && !transition) throw fail("Only managers edit assignments.", 403);
@@ -353,12 +366,20 @@ async function update(req, transition = false) {
       }
       const patch = parse(kind, req.body, { patch: true });
       if (kind === "target" && patch.officerId) await access.assignment(req, patch.officerId);
+      if (kind === "target") {
+        const scope = patch.data?.scope || record.data?.scope || "INDIVIDUAL";
+        if (scope === "DEPARTMENT" && !req.staffAccess.isHeadOffice) throw fail("Only authorized Admin assigns department targets.", 403);
+        const owner = patch.officerId === undefined ? record.officerId : patch.officerId;
+        if (scope === "DEPARTMENT" && owner) throw fail("Remove the individual assignee for department targets.");
+        if (scope === "INDIVIDUAL") await access.assignment(req, owner);
+      }
       if (kind === "report" && patch.officerId && String(patch.officerId) !== String(req.user._id)) throw fail("Report ownership cannot change.", 403);
       if (patch.data) patch.data = { ...record.data, ...patch.data };
       Object.assign(record, patch);
       await validateLinks(record, session);
     }
     record.updatedBy = req.user._id;
+    if (kind === "target" && req.staffAccess.isHeadOffice) record.data = { ...record.data, authority: "ADMIN" };
     record.revision++;
     record.markModified("data");
     await record.save({ session });

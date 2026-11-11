@@ -23,7 +23,8 @@ function scope(req, kind) {
   if (req.staffAccess.isHeadOffice || !PRIVATE.has(kind)) return {};
   const owners = req.marketingOwners || [req.user._id];
   return { $or: [{ officerId: { $in: owners } },
-    { officerId: null, createdBy: { $in: owners } }] };
+    { officerId: null, createdBy: { $in: owners } },
+    ...(kind === "target" ? [{ "data.scope": "DEPARTMENT" }] : [])] };
 }
 function own(req, record) {
   const owner = String(record.officerId || record.createdBy);
@@ -31,8 +32,19 @@ function own(req, record) {
 }
 function assertVisible(req, record) {
   if (!PRIVATE.has(record.kind) || req.staffAccess.isHeadOffice) return;
+  if (record.kind === "target" && record.data?.scope === "DEPARTMENT") return;
   if (!(req.marketingOwners || [req.user._id]).some(o => String(o) === String(record.officerId || record.createdBy))) {
     throw fail("Marketing record not found.", 404);
+  }
+}
+async function targetEditable(req, record, session) {
+  if (req.staffAccess.isHeadOffice) return;
+  // Legacy Admin targets have no authority marker. Consult their immutable
+  // author rather than treating missing metadata as delegated authority.
+  const author = await User.findById(record.createdBy).select("role").session(session).lean();
+  if (record.data?.scope === "DEPARTMENT" || record.data?.authority === "ADMIN" ||
+      !author || ["HEAD_OFFICE", "SUPER_ADMIN"].includes(author.role)) {
+    throw fail("Only authorized Admin can modify Admin-assigned targets.", 403);
   }
 }
 async function assignment(req, officerId) {
@@ -48,4 +60,4 @@ async function assignment(req, officerId) {
   }
   return target;
 }
-module.exports = { PRIVATE, leadership, superAdmin, context, scope, own, assertVisible, assignment };
+module.exports = { PRIVATE, leadership, superAdmin, context, scope, own, assertVisible, assignment, targetEditable };

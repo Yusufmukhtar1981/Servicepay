@@ -7,7 +7,8 @@ const User = require("../models/user.model");
 const Transaction = require("../models/transaction.model");
 const PERIODS = ["DAILY", "WEEKLY", "MONTHLY", "YEARLY"];
 const METRICS = ["ACQUISITIONS", "FIRST_TRANSACTIONS", "TASKS", "REPORTS", "CONTENT",
-  "ATTENDANCE", "CAMPAIGNS", "ENGAGEMENT", "PARTNERSHIPS", "CUSTOM"];
+  "ATTENDANCE", "CAMPAIGNS", "ENGAGEMENT", "PARTNERSHIPS", "CUSTOM",
+  "NEW_REGISTRATIONS", "AGENT_ACQUISITIONS", "MERCHANT_ACQUISITIONS"];
 const WEIGHTS = { achievement: 40, acquisitions: 15, firstTransactions: 15, tasks: 10,
   reportCompliance: 10, campaigns: 10 };
 const POLICY_ID = new mongoose.Types.ObjectId("6d61726b6574696e67706f6c");
@@ -70,7 +71,7 @@ async function staff(req, requested) {
   if (!req.staffAccess.isHeadOffice && !(req.marketingOwners || [req.user._id])
     .some(v => String(v) === String(selected))) throw fail("Staff performance not found.", 404);
   const user = await User.findOne({ _id: selected, isStaff: true, department: "MARKETING" })
-    .select("_id fullName status createdAt staffRoleId").populate("staffRoleId", "name").lean();
+    .select("_id fullName email phone status createdAt staffRoleId").populate("staffRoleId", "name").lean();
   if (!user) {
     // A Head Office viewer has no personal marketing targets unless assigned a
     // real marketing staff identity. Do not fabricate one.
@@ -105,6 +106,7 @@ async function measure(officerId, from, to) {
   const reportingStart = Math.max(+from, +joinedDay);
   const elapsedDays = Math.max(0, Math.ceil((Math.min(+to, +currentDayEnd) - reportingStart) / 86400000));
   const verified = {
+    NEW_REGISTRATIONS: new Set(customers.filter(c => inRange(c.createdAt)).map(c => String(c._id))).size,
     ACQUISITIONS: new Set(attributions.filter(a => customerIds.has(String(a.customerId)) &&
       inRange(a.createdAt)).map(a => String(a.customerId))).size,
     FIRST_TRANSACTIONS: first.length,
@@ -128,16 +130,39 @@ async function measure(officerId, from, to) {
 async function targetResult(target, cache = new Map(), now = new Date()) {
   const from = new Date(target.data.startsAt), to = new Date(target.data.endsAt);
   const owner = target.officerId;
-  if (!owner || !Number.isFinite(+from) || !Number.isFinite(+to)) return {
+  const department = target.data.scope === "DEPARTMENT";
+  if ((!owner && !department) || !Number.isFinite(+from) || !Number.isFinite(+to)) return {
     ...target, actual: null, achievementPercent: null, remaining: null, outcome: "UNAVAILABLE" };
-  const key = `${owner}:${+from}:${+to}`;
-  if (!cache.has(key)) cache.set(key, await measure(owner, from, to));
+  const key = `${department ? "DEPARTMENT" : owner}:${+from}:${+to}`;
+  if (!cache.has(key)) cache.set(key, department ? await departmentMeasure(from, to) : await measure(owner, from, to));
   const actual = cache.get(key).verified[target.data.metric] ?? null;
   const percentage = actual == null ? null : actual / target.data.value * 100;
   return { ...target, actual, achievementPercent: percentage,
     remaining: actual == null ? null : Math.max(0, target.data.value - actual),
-    outcome: actual == null ? "UNAVAILABLE" : actual >= target.data.value ? "COMPLETED" :
+    outcome: ["PAUSED", "INACTIVE"].includes(target.status) ? target.status :
+      actual == null ? "UNAVAILABLE" : actual >= target.data.value ? "COMPLETED" :
       now >= to ? "MISSED" : now < from ? "PENDING" : "IN_PROGRESS" };
+}
+async function departmentMeasure(from, to) {
+  const members = await bounded(User.find({ isStaff: true, department: "MARKETING" }).select("_id"), 500);
+  const verified = Object.fromEntries(METRICS.map(k => [k, null]));
+  for (const member of members) {
+    const measured = await measure(member._id, from, to);
+    for (const [metric, value] of Object.entries(measured.verified)) {
+      if (value != null) verified[metric] = (verified[metric] ?? 0) + value;
+    }
+  }
+  for (const metric of ["NEW_REGISTRATIONS", "ACQUISITIONS", "FIRST_TRANSACTIONS", "TASKS", "REPORTS", "CONTENT", "CAMPAIGNS", "PARTNERSHIPS"]) {
+    if (!members.length) verified[metric] = 0;
+  }
+  return { verified };
+}
+async function departmentTargets(cache = new Map()) {
+  const targets = await bounded(Record.find({ kind: "target", "data.scope": "DEPARTMENT",
+    "data.archivedAt": { $exists: false } }).sort({ createdAt: -1 }), 1000);
+  const results = [];
+  for (const row of targets) results.push(await targetResult(row, cache));
+  return results;
 }
 async function dashboard(req, requested) {
   const user = await staff(req, requested), cache = new Map();
@@ -152,37 +177,43 @@ async function dashboard(req, requested) {
     Record.find({ kind: "notification", officerId: user._id }).sort({ createdAt: -1 }).limit(50).lean(),
     Record.find({ kind: "activity", createdBy: user._id }).sort({ createdAt: -1 }).limit(30).lean(),
   ]);
-  return { staff: { id: user._id, name: user.fullName, role: user.staffRoleId?.name },
+  return { staff: { id: user._id, name: user.fullName, email: user.email, phone: user.phone,
+      status: user.status, role: user.staffRoleId?.name },
     periods: PERIODS.map(period => ({ ...bounds(period), targets: results.filter(t =>
       t.data.period === period && !t.data.archivedAt && new Date(t.data.startsAt) < bounds(period).to &&
       new Date(t.data.endsAt) > bounds(period).from) })),
+    departmentTargets: await departmentTargets(cache),
     targets: results, tasks: tasks.map(t => ({ ...t,
       overdue: !["COMPLETED"].includes(t.status) && new Date(t.data.dueAt) < new Date() })),
     reports, history, notifications, recentActivities: activities,
     feedback: reports.flatMap(r => (r.data.reviews || []).map(v => ({ ...v, reportTitle: r.title }))),
     methodology: await policy() };
 }
-async function department(req, query) {
+async function department(req, query, cache = new Map()) {
   if (!access.leadership(req)) throw fail("Department performance is manager-only.", 403);
   const period = dates(query), config = await policy();
   const users = await bounded(User.find({ isStaff: true, department: "MARKETING",
     ...(!req.staffAccess.isHeadOffice ? { _id: { $in: req.marketingOwners } } : {}) })
-    .select("_id fullName status createdAt").sort({ fullName: 1 }), 500);
-  const rows = [], cache = new Map();
+    .select("_id fullName email phone status createdAt staffRoleId").populate("staffRoleId", "name").sort({ fullName: 1 }), 500);
+  const rows = [];
   for (const u of users) {
     const measured = await measure(u._id, period.from, period.to);
+    cache.set(`${u._id}:${+period.from}:${+period.to}`, measured);
     // Independent periods are never blended together in the score.
     const targets = await bounded(Record.find({ kind: "target", officerId: u._id,
       "data.period": period.period, "data.startsAt": { $gte: period.from.toISOString() },
       "data.endsAt": { $lte: period.to.toISOString() } }), 1000);
     const results = [];
     for (const t of targets) results.push(await targetResult(t, cache));
-    const supported = results.filter(t => t.achievementPercent != null);
+    const supported = results.filter(t => t.achievementPercent != null &&
+      ["ACTIVE", "COMPLETED"].includes(t.status) && !t.data.archivedAt);
     const achievement = supported.length ? supported.reduce((s, t) =>
       s + Math.min(100, t.achievementPercent), 0) / supported.length : null;
     const ownReports = await bounded(Record.find({ kind: "report", officerId: u._id,
       "data.startsAt": { $gte: period.from.toISOString(), $lt: period.to.toISOString() } }), 1000);
-    rows.push({ id: u._id, name: u.fullName, status: u.status, achievement,
+    rows.push({ id: u._id, name: u.fullName, email: req.staffAccess.isHeadOffice ? u.email : undefined,
+      phone: req.staffAccess.isHeadOffice ? u.phone : undefined, role: u.staffRoleId?.name,
+      status: u.status, achievement,
       acquisitions: measured.verified.ACQUISITIONS,
       firstTransactions: measured.verified.FIRST_TRANSACTIONS,
       tasks: measured.verified.TASKS, campaigns: measured.verified.CAMPAIGNS,
@@ -209,7 +240,7 @@ async function department(req, query) {
   let rank = 0, previous = null;
   rows.forEach((r, index) => { if (r.score == null) { r.rank = null; return; }
     if (r.score !== previous) rank = index + 1; previous = r.score; r.rank = rank; });
-  return { period, items: rows, methodology: config,
+  return { period, items: rows, methodology: config, departmentTargets: await departmentTargets(cache),
     comparisonNote: "Choose a different date range or period to compare historical performance. No cross-period customer totals are added." };
 }
 async function snapshot(req, body) {
@@ -277,4 +308,4 @@ function startNotifications() {
   timer.unref();
 }
 module.exports = { PERIODS, METRICS, WEIGHTS, POLICY_ID, bounds, dates, policy, notify,
-  staff, measure, targetResult, dashboard, department, snapshot, reminders, startNotifications, bounded };
+  staff, measure, targetResult, dashboard, department, departmentTargets, snapshot, reminders, startNotifications, bounded };

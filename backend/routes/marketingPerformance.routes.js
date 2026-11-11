@@ -93,6 +93,7 @@ router.post("/archive/:kind/:id", wrap(async (req, res) => {
     const row = await Record.findOne({ _id: id(req.params.id), kind }).session(session);
     if (!row) throw fail("Record not found.", 404);
     access.assertVisible(req, row);
+    if (kind === "target") await access.targetEditable(req, row, session);
     if (["target", "task", "campaign", "content", "performance"].includes(kind) && !access.leadership(req)) throw fail("Only managers archive assigned or verified records.", 403);
     if (kind === "report" && !access.leadership(req) && !access.own(req, row)) throw fail("Only your reports are accessible.", 403);
     if (row.revision !== req.body.revision) throw fail("Record changed; reload.", 409);
@@ -133,7 +134,7 @@ router.post("/notifications/:id/read", wrap(async (req, res) => {
 }));
 router.get("/export", wrap(async (req, res) => {
   const format = req.query.format;
-  if (!["pdf", "xlsx"].includes(format)) throw fail("Choose pdf or xlsx.");
+  if (!["pdf", "xlsx", "csv"].includes(format)) throw fail("Choose pdf, xlsx or csv.");
   let report;
   if (req.query.department === "true") report = await perf.department(req, req.query);
   else {
@@ -152,7 +153,11 @@ router.get("/export", wrap(async (req, res) => {
   await mutate(req, session => audit(req, session, "MARKETING_PERFORMANCE_EXPORTED",
     { kind: "performance", _id: null, revision: 0, status: "EXPORTED" }));
   res.set("Cache-Control", "private, no-store");
-  if (format === "xlsx") {
+  if (format === "csv") {
+    const cell = v => '"' + String(v ?? "").replace(/^[=+@\t\r-]/, "'$&").replace(/"/g, '""') + '"';
+    res.type("text/csv").attachment("servicepay-marketing-performance.csv");
+    res.send("\uFEFF" + [["Metric", "Verified value"], ...lines].map(r => r.map(cell).join(",")).join("\r\n"));
+  } else if (format === "xlsx") {
     const workbook = new (require("exceljs").Workbook)(), sheet = workbook.addWorksheet("Performance");
     sheet.addRow(["Metric", "Verified value"]); lines.forEach(row => sheet.addRow(row));
     sheet.columns.forEach(c => { c.width = 45; });

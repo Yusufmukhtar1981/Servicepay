@@ -24,6 +24,10 @@ router.use(wrap(async (req, res, next) => {
 }));
 const access = require("../services/marketingAccess.service");
 router.use(wrap(async (req, res, next) => { await access.context(req); next(); }));
+router.get("/management", wrap(async (req, res) => {
+  res.set("Cache-Control", "private, no-store");
+  ok(res, await require("../services/marketingManagement.service").management(req));
+}));
 router.use("/performance", require("./marketingPerformance.routes"));
 router.get("/schema", (req, res) => ok(res, {
   kinds: Object.keys(STATUSES), fields: FIELDS, statuses: STATUSES, channels: CHANNELS,

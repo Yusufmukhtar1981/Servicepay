@@ -274,6 +274,121 @@ for (const format of ["pdf", "xlsx"]) {
     assert.equal(deny.status, 404);
   });
 }
+test("central management is Admin-only, never a marketing leader or officer capability", async () => {
+  assert.equal((await api("/management", admin)).status, 200);
+  assert.equal((await api("/management", superAdmin)).status, 200);
+  assert.equal((await api("/management", head)).status, 403);
+  assert.equal((await api("/management", officer)).status, 403);
+});
+for (const period of perf.PERIODS) {
+  test(`${period} department target is shared without copying individual target records`, async () => {
+    const payload = target(period);
+    delete payload.officerId;
+    payload.title = period + " department shared target";
+    payload.data.scope = "DEPARTMENT";
+    const k = key();
+    const created = await api("/records/target", admin, "POST", payload, k);
+    assert.equal(created.status, 201, JSON.stringify(created));
+    const retried = await api("/records/target", admin, "POST", payload, k);
+    assert.equal(retried.data._id, created.data._id);
+    assert.equal(created.data.data.authority, "ADMIN");
+    assert.equal(await Record.countDocuments({ title: payload.title }), 1);
+    const dashboard = await api("/performance/me", officer);
+    const visible = dashboard.data.departmentTargets.find(t => t._id === created.data._id);
+    assert(visible); assert.equal(visible.officerId, null);
+    assert.equal((await api("/performance/me", head)).data.departmentTargets
+      .find(t => t._id === created.data._id).actual, visible.actual);
+    const central = await api("/management?period=" + period);
+    assert.equal(central.status, 200, JSON.stringify(central));
+    assert.equal(central.data.targets.find(t => t._id === created.data._id).actual, visible.actual);
+    const listing = await api("/records/target", other);
+    assert(listing.data.items.some(t => t._id === created.data._id));
+    assert.equal((await create("target", payload, head)).status, 403);
+    assert.equal((await api(`/records/target/${created.data._id}`, head, "PATCH",
+      { revision: 0, data: { value: 999 } })).status, 403);
+    const changed = await api(`/records/target/${created.data._id}`, admin, "PATCH",
+      { revision: 0, data: { value: 7 } });
+    assert.equal(changed.status, 200, JSON.stringify(changed));
+    const refreshed = await api("/performance/me", other);
+    assert.equal(refreshed.data.departmentTargets.find(t => t._id === created.data._id).data.value, 7);
+  });
+}
+test("Admin individual targets are immutable to leaders across edit, transition and archive", async () => {
+  let r = await create("target", target("DAILY"), admin);
+  assert.equal(r.status, 201);
+  for (const action of [
+    () => api(`/records/target/${r.data._id}`, head, "PATCH", { revision: 0, data: { value: 20 } }),
+    () => change(r.data, "PAUSED", head),
+    () => api(`/performance/archive/target/${r.data._id}`, head, "POST",
+      { revision: 0, archived: true, reason: "Attempted manager override" }),
+  ]) assert.equal((await action()).status, 403);
+  // Legacy rows predate the authority marker but their immutable author remains.
+  await Record.updateOne({ _id: r.data._id }, { $unset: { "data.authority": "" } });
+  assert.equal((await api(`/records/target/${r.data._id}`, head, "PATCH",
+    { revision: 0, title: "Unauthorized legacy override" })).status, 403);
+  assert.equal((await change(r.data, "PAUSED", admin)).status, 200);
+});
+test("pause/deactivate/resume preserve target history and optimistic concurrency", async () => {
+  let r = await create("target", target("MONTHLY"), admin);
+  const recordId = r.data._id;
+  r = await change(r.data, "PAUSED", admin); assert.equal(r.status, 200);
+  let current = await api("/management?period=MONTHLY");
+  assert.equal(current.data.targets.find(t => t._id === recordId).outcome, "PAUSED");
+  assert.equal((await api(`/records/target/${recordId}/transition`, admin, "POST",
+    { revision: 0, status: "ACTIVE", reason: "Stale request" })).status, 409);
+  r = await change(r.data, "INACTIVE", admin); assert.equal(r.status, 200);
+  r = await change(r.data, "ACTIVE", admin); assert.equal(r.status, 200);
+  const history = await api(`/performance/history/target/${recordId}`);
+  assert(history.data.items.length >= 4);
+  assert.equal(await Record.countDocuments({ _id: recordId }), 1);
+});
+test("Admin editing a leader-assigned target retains authorization ownership", async () => {
+  const r = await create("target", target("WEEKLY"), head);
+  const edited = await api(`/records/target/${r.data._id}`, admin, "PATCH",
+    { revision: 0, title: "Admin revised assignment" });
+  assert.equal(edited.status, 200);
+  assert.equal(edited.data.data.authority, "ADMIN");
+  assert.equal((await api(`/records/target/${r.data._id}`, head, "PATCH",
+    { revision: 1, data: { value: 9 } })).status, 403);
+});
+test("scope and authority cannot be forged or converted into invalid ownership", async () => {
+  const forged = target("DAILY"); forged.data.authority = "MANAGER";
+  assert.equal((await create("target", forged, admin)).status, 400);
+  const scoped = target("DAILY"); scoped.data.scope = "DEPARTMENT";
+  assert.equal((await create("target", scoped, admin)).status, 400);
+  const r = await create("target", target("DAILY"), head);
+  assert.equal((await api(`/records/target/${r.data._id}`, head, "PATCH",
+    { revision: 0, officerId: null })).status, 400);
+  assert.equal((await api(`/records/target/${r.data._id}`, head, "PATCH",
+    { revision: 0, officerId: null, data: { scope: "DEPARTMENT" } })).status, 403);
+});
+test("unmeasurable acquisition categories are unavailable, never false successes", async () => {
+  for (const metric of ["AGENT_ACQUISITIONS", "MERCHANT_ACQUISITIONS", "CUSTOM"]) {
+    const payload = target("DAILY", officer.id, metric);
+    if (metric === "CUSTOM") payload.data.customMetric = "Admin configured evidence KPI";
+    const r = await create("target", payload, admin);
+    assert.equal(r.status, 201, JSON.stringify(r));
+    const row = (await api("/management?period=DAILY")).data.targets.find(t => t._id === r.data._id);
+    assert.equal(row.actual, null); assert.equal(row.outcome, "UNAVAILABLE");
+    assert.equal((await change(r.data, "COMPLETED", admin)).status, 409);
+  }
+});
+test("central filters, independent periods and CSV/Excel reports use the same recorded data", async () => {
+  const result = await api("/management?period=YEARLY");
+  assert.equal(result.status, 200);
+  assert.equal(result.data.periods.length, 4);
+  assert(result.data.staff.some(s => s.role === "HEAD_OF_MARKETING" && s.email && s.phone));
+  const unavailable = await api("/management?period=YEARLY&performance=UNAVAILABLE");
+  assert(unavailable.data.staff.every(s => s.achievement == null));
+  const filtered = await api("/management?period=YEARLY&search=nonexistent-fixture");
+  assert.equal(filtered.data.staff.length, 0);
+  assert.equal((await api("/management?period=BAD")).status, 400);
+  assert.equal((await api("/management?performance=BAD")).status, 400);
+  const csv = await api("/performance/export?format=csv&period=YEARLY&department=true");
+  assert.equal(csv.status, 200); assert.match(csv.type, /text\/csv/);
+  assert.match(csv.bytes.toString(), /Metric.*Verified value/);
+  assert.equal((await api("/performance/export?format=csv&period=YEARLY&department=true", officer)).status, 403);
+});
 test("read-only measurements preserve all customer wallets and financial transaction records", async () => {
   const before = await Transaction.find({}).lean();
   const customers = await User.find({ role: "CUSTOMER" }).select("_id walletBalance").lean();
