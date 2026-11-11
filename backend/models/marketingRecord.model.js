@@ -5,7 +5,8 @@ const mongoose = require("mongoose");
 // moved here. No namespace/index creation is permitted implicitly on startup.
 const KINDS = Object.freeze(["campaign", "task", "report", "budget", "expense",
   "attribution", "content", "social", "strategy", "proposal", "announcement",
-  "target", "attendance", "asset", "activity", "partnership", "contribution"]);
+  "target", "attendance", "asset", "activity", "partnership", "contribution",
+  "performance", "archive", "notification", "rankingPolicy"]);
 const schema = new mongoose.Schema({
   kind: { type: String, enum: KINDS, required: true, immutable: true },
   title: { type: String, required: true, maxlength: 180 },

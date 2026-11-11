@@ -132,7 +132,7 @@ test("create campaign and same-key retries return the same record, not duplicate
 });
 test("officer cannot create campaigns or set performance targets", async () => {
   assert.equal((await record("campaign", { title: "No" }, officer)).status, 403);
-  assert.equal((await record("target", { title: "No" }, head)).status, 403);
+  assert.equal((await record("target", { title: "No" }, officer)).status, 403);
 });
 test("campaign lifecycle handles activation, pause, resume and completion with optimistic revision checks", async () => {
   let r = await transition("campaign", campaign, "SUBMITTED", head); assert.equal(r.status, 200);
@@ -238,8 +238,9 @@ test("content approval requires reviewer and publishing requires real URL/time e
 });
 test("reports, strategy, proposals, announcements, attendance, tasks and targets persist through real APIs", async () => {
   for (const kind of ["report", "strategy", "proposal", "announcement", "attendance", "task"]) {
-    const r = await record(kind, { title: "Fixture " + kind, officerId: officer.id,
-      data: kind === "report" ? { period: "DAILY", evidence: "Verified report fixture" } : {} });
+    const r = await record(kind, { title: "Fixture " + kind, officerId: kind === "report" ? head.id : officer.id,
+      data: kind === "report" ? { period: "DAILY", evidence: "Verified report fixture",
+        startsAt: new Date().toISOString(), endsAt: new Date(Date.now() + 86400000).toISOString() } : {} });
     assert.equal(r.status, 201, kind + " " + JSON.stringify(r));
   }
   const r = await record("target", { title: "Acquisition target", officerId: officer.id,

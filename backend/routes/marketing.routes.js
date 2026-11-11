@@ -22,20 +22,29 @@ router.use(wrap(async (req, res, next) => {
   if (!await service.ready()) throw fail("Marketing storage is not provisioned. No data was changed.", 503);
   next();
 }));
+const access = require("../services/marketingAccess.service");
+router.use(wrap(async (req, res, next) => { await access.context(req); next(); }));
+router.use("/performance", require("./marketingPerformance.routes"));
 router.get("/schema", (req, res) => ok(res, {
   kinds: Object.keys(STATUSES), fields: FIELDS, statuses: STATUSES, channels: CHANNELS,
   headOffice: req.staffAccess.isHeadOffice === true,
+  role: req.staffAccess.roleName, actorId: req.user._id,
+  manager: !!access.leadership(req),
   permissions: req.staffAccess.isHeadOffice
     ? ["marketing.view", ...new Set([...Object.values(service.PERMISSIONS),
       "marketing.budgets.approve", "marketing.content.approve", "marketing.export", "marketing.audit"])]
-    : req.staffAccess.permissions.filter(p => p.startsWith("marketing.")),
+    : [...new Set([...req.staffAccess.permissions.filter(p => p.startsWith("marketing.")),
+      ...(access.leadership(req) ? ["marketing.targets.manage"] : [])])],
 }));
-router.get("/overview", wrap(async (req, res) => ok(res, await overview(req.query))));
+router.get("/overview", wrap(async (req, res) => {
+  if (!access.leadership(req)) return ok(res, { personal: await require("../services/marketingPerformance.service").dashboard(req) });
+  ok(res, await overview(req.query));
+}));
 
 function filter(req, kind) {
   if (!STATUSES[kind] && !["activity", "asset"].includes(kind)) throw fail("Unknown marketing module.", 404);
   if (kind === "activity") requireGrant(req.staffAccess, "marketing.audit");
-  const result = { kind };
+  const result = { kind, ...access.scope(req, kind) };
   for (const key of ["campaignId", "officerId"]) if (req.query[key]) result[key] = id(req.query[key]);
   if (req.query.status) {
     if (!STATUSES[kind]?.includes(req.query.status)) throw fail("Invalid status filter.");
@@ -67,7 +76,8 @@ router.post("/records/:kind/:id/transition", wrap(async (req, res) => ok(res, aw
 // revocation, hierarchy and audit. This adapter only narrows their target set.
 router.get("/team", wrap(async (req, res) => {
   const [items, roles] = await Promise.all([
-    User.find({ role: "STAFF", isStaff: true, department: "MARKETING" })
+    User.find({ role: "STAFF", isStaff: true, department: "MARKETING",
+      ...(!req.staffAccess.isHeadOffice ? { _id: { $in: req.marketingOwners } } : {}) })
       .select("_id fullName email phone status staffId department mustChangePassword lastStaffLoginAt staffRoleId")
       .populate("staffRoleId", "name displayName permissions status hierarchyLevel")
       .limit(500).lean(),
@@ -166,6 +176,7 @@ router.get("/export/:kind", wrap(async (req, res) => {
   requireGrant(req.staffAccess, "marketing.export");
   const kind = req.params.kind, format = req.query.format;
   if (kind === "overview") {
+    if (!access.leadership(req)) throw fail("Department reports are manager-only. Use your personal performance export.", 403);
     if (!["pdf", "xlsx"].includes(format)) throw fail("Choose PDF or Excel.");
     const report = await overview(req.query);
     const rows = [["Period", report.period.from.toISOString(), report.period.to.toISOString()],

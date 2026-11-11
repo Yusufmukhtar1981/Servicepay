@@ -7,7 +7,7 @@ const CHANNELS = ["FACEBOOK", "INSTAGRAM", "TIKTOK", "WHATSAPP", "X", "GOOGLE", 
 const STATUSES = {
   campaign: ["DRAFT", "SUBMITTED", "APPROVED", "REJECTED", "ACTIVE", "PAUSED", "COMPLETED"],
   task: ["TODO", "IN_PROGRESS", "SUBMITTED", "COMPLETED"],
-  report: ["SUBMITTED", "APPROVED", "REJECTED"],
+  report: ["DRAFT", "SUBMITTED", "APPROVED", "REJECTED", "CORRECTIONS_REQUESTED"],
   budget: ["SUBMITTED", "APPROVED", "REJECTED"],
   expense: ["SUBMITTED", "APPROVED", "REJECTED", "PAID"],
   attribution: ["CONFIRMED"],
@@ -31,14 +31,16 @@ const PERMISSIONS = {
 const FIELDS = {
   campaign: ["objective", "channel", "audience", "startsAt", "endsAt", "budgetNaira"],
   task: ["dueAt", "responsibility"],
-  report: ["period", "startsAt", "endsAt", "acquired", "completedTasks", "evidence"],
+  report: ["period", "startsAt", "endsAt", "acquired", "completedTasks", "evidence",
+    "activities", "activated", "firstTransactions", "campaigns", "socialActivities",
+    "meetings", "challenges", "nextSteps"],
   budget: ["amountNaira", "category", "evidence"],
   expense: ["amountNaira", "category", "budgetId", "assetId", "incurredAt"],
   attribution: ["source", "referralCode", "utmSource", "utmMedium", "utmCampaign", "evidence"],
   content: ["scheduledAt", "channel", "assetId", "publishedUrl", "publishedAt"],
   social: ["channel", "reach", "impressions", "engagements", "evidence", "reportedAt"],
   strategy: ["evidence"], proposal: ["evidence"],
-  announcement: [], target: ["metric", "value", "period", "startsAt", "endsAt"],
+  announcement: [], target: ["metric", "value", "period", "startsAt", "endsAt", "objective", "customMetric"],
   attendance: ["occurredAt", "evidence"],
   partnership: ["organization", "evidence", "startsAt", "endsAt"],
   contribution: ["transactionId", "evidence"],
@@ -111,7 +113,7 @@ function parse(kind, body, { patch = false } = {}) {
       Object.keys(body.data).some(k => !FIELDS[kind].includes(k))) throw fail("Unsupported module field.");
     result.data = {};
     for (const [key, value] of Object.entries(body.data)) {
-      if (["amountNaira", "budgetNaira", "value", "reach", "impressions", "engagements", "acquired", "completedTasks"].includes(key)) {
+      if (["amountNaira", "budgetNaira", "value", "reach", "impressions", "engagements", "acquired", "completedTasks", "activated", "firstTransactions", "campaigns"].includes(key)) {
         if (typeof value !== "number" || !Number.isFinite(value) || value < 0 ||
           value > 1e12 || Math.abs(Math.round(value * 100) - value * 100) > 0.00001) throw fail("Invalid non-negative amount or count.");
         if (!["amountNaira", "budgetNaira"].includes(key) && !Number.isSafeInteger(value)) throw fail("Counts must be whole numbers.");
@@ -129,7 +131,7 @@ function parse(kind, body, { patch = false } = {}) {
   }
   const d = result.data || {};
   if (d.channel && !CHANNELS.includes(d.channel)) throw fail("Unsupported marketing channel.");
-  if (d.period && !["DAILY", "WEEKLY", "MONTHLY"].includes(d.period)) throw fail("Invalid reporting period.");
+  if (d.period && !["DAILY", "WEEKLY", "MONTHLY", "YEARLY"].includes(d.period)) throw fail("Invalid reporting period.");
   if (d.startsAt && d.endsAt && d.startsAt >= d.endsAt) throw fail("End date must follow start date.");
   if (d.publishedUrl && !/^https:\/\/[^\s]+$/.test(d.publishedUrl)) throw fail("A secure publication URL is required.");
   return result;
@@ -152,7 +154,11 @@ async function validateLinks(record, session) {
   if (record.kind === "campaign" && (!d.channel || !d.startsAt || !d.endsAt || !d.objective)) throw fail("Campaign requires a channel, objective and date range.");
   if (record.kind === "social" && (!d.evidence || !d.reportedAt)) throw fail("Social statistics require a verified-report source and reporting date.");
   if (record.kind === "partnership" && (!d.organization || !d.evidence)) throw fail("Partnership requires organization and supporting evidence.");
-  if (record.kind === "target" && !["ACQUISITIONS", "FIRST_TRANSACTIONS", "TASKS", "REPORTS", "CONTENT", "ATTENDANCE"].includes(d.metric)) throw fail("Unsupported performance metric.");
+  if (record.kind === "target" && !["ACQUISITIONS", "FIRST_TRANSACTIONS", "TASKS", "REPORTS", "CONTENT", "ATTENDANCE", "CAMPAIGNS", "ENGAGEMENT", "PARTNERSHIPS", "CUSTOM"].includes(d.metric)) throw fail("Unsupported performance metric.");
+  if (record.kind === "target" && d.metric === "CUSTOM" && !d.customMetric) throw fail("Describe the custom KPI; verified measurement will remain unavailable until a supported source exists.");
+  if (["target", "report"].includes(record.kind) &&
+      (!d.period || !d.startsAt || !d.endsAt || d.startsAt >= d.endsAt ||
+      new Date(d.endsAt) - new Date(d.startsAt) > 366 * 86400000)) throw fail("Choose ordered period dates of at most 366 days.");
   if (record.kind === "contribution") {
     if (!record.campaignId || !d.transactionId || !d.evidence) throw fail("Contribution requires campaign, transaction and financial evidence.");
     const Transaction = require("../models/transaction.model");
@@ -196,6 +202,7 @@ async function audit(req, session, action, record, before) {
     createdBy: req.user._id, updatedBy: req.user._id,
     requestKey: "audit:" + new mongoose.Types.ObjectId(),
     campaignId: record.campaignId,
+    officerId: record.officerId || record.createdBy || req.user._id,
     data: { recordId: String(record._id), recordKind: record.kind,
       revision: record.revision, previousStatus: before?.status || null,
       status: record.status, before: snapshot(before), after: snapshot(record),
@@ -212,9 +219,20 @@ async function mutate(req, operation) {
 }
 async function create(req) {
   const kind = req.params.kind;
-  requireGrant(req.staffAccess, PERMISSIONS[kind]);
-  if (kind === "target" && !req.staffAccess.isHeadOffice) throw fail("Only Head Office can configure targets.", 403);
+  const access = require("./marketingAccess.service");
+  if (kind === "target") {
+    if (!access.leadership(req)) throw fail("Only authorized managers assign targets.", 403);
+  } else requireGrant(req.staffAccess, PERMISSIONS[kind]);
   const payload = parse(kind, req.body);
+  if (kind === "target") await access.assignment(req, payload.officerId);
+  if (kind === "report") {
+    if (payload.officerId && String(payload.officerId) !== String(req.user._id)) throw fail("Submit only your own report.", 403);
+    payload.officerId = req.user._id;
+  }
+  if (!access.leadership(req) && ["attendance"].includes(kind)) {
+    if (payload.officerId && String(payload.officerId) !== String(req.user._id)) throw fail("Submit only your own activity.", 403);
+    payload.officerId = req.user._id;
+  }
   const key = text(req.headers["idempotency-key"] || "", 100);
   if (!/^[A-Za-z0-9_-]{16,100}$/.test(key)) throw fail("A unique Idempotency-Key of 16–100 characters is required.");
   const recordData = { ...payload, kind, status: STATUSES[kind][0], createdBy: req.user._id,
@@ -230,10 +248,14 @@ async function create(req) {
     recordData.data = { ...recordData.data, submissionDigest: digest };
     const [record] = await Record.create([recordData], { session });
     await audit(req, session, "MARKETING_CREATED", record);
+    if (kind === "target") await require("./marketingPerformance.service").notify(req, session, record.officerId,
+      "TARGET_ASSIGNED", record, "New target assigned: " + record.title);
     return record;
   });
 }
 const TRANSITIONS = {
+  report: { DRAFT: ["SUBMITTED"], SUBMITTED: ["APPROVED", "REJECTED", "CORRECTIONS_REQUESTED"],
+    REJECTED: ["SUBMITTED"], CORRECTIONS_REQUESTED: ["SUBMITTED"] },
   campaign: { DRAFT: ["SUBMITTED", "ACTIVE"], SUBMITTED: ["APPROVED", "REJECTED"],
     REJECTED: ["SUBMITTED"], APPROVED: ["ACTIVE"], ACTIVE: ["PAUSED", "COMPLETED"], PAUSED: ["ACTIVE", "COMPLETED"] },
   expense: { SUBMITTED: ["APPROVED", "REJECTED"], APPROVED: ["PAID"] },
@@ -244,14 +266,24 @@ const TRANSITIONS = {
 };
 async function update(req, transition = false) {
   const kind = req.params.kind;
-  requireGrant(req.staffAccess, PERMISSIONS[kind]);
-  if (kind === "target" && !req.staffAccess.isHeadOffice) throw fail("Only Head Office can configure targets.", 403);
+  const access = require("./marketingAccess.service");
+  if (kind === "target") {
+    if (!access.leadership(req)) throw fail("Only authorized managers manage targets.", 403);
+  } else if (kind === "task" && transition && !access.leadership(req)) {
+    requireGrant(req.staffAccess, "marketing.reports.manage");
+  } else requireGrant(req.staffAccess, PERMISSIONS[kind]);
   if (kind === "attribution") throw fail("Confirmed attribution is immutable.", 409);
   const revision = req.body?.revision;
   if (!Number.isSafeInteger(revision) || revision < 0) throw fail("Current revision required.");
   return mutate(req, async session => {
     const record = await Record.findOne({ _id: id(req.params.id), kind }).session(session);
     if (!record) throw fail("Marketing record not found.", 404);
+    access.assertVisible(req, record);
+    if (record.data?.archivedAt) throw fail("Restore this record before editing.", 409);
+    if (kind === "target") await access.assignment(req, record.officerId);
+    if (kind === "report" && !transition && !access.own(req, record)) throw fail("Only the report author may edit it.", 403);
+    if (kind === "report" && !transition && !["DRAFT", "SUBMITTED", "REJECTED", "CORRECTIONS_REQUESTED"].includes(record.status)) throw fail("Reviewed reports are immutable.", 409);
+    if (kind === "task" && !access.leadership(req) && !transition) throw fail("Only managers edit assignments.", 403);
     if (record.revision !== revision) throw fail("Record changed; reload before saving.", 409);
     const before = record.toObject();
     if (transition) {
@@ -262,7 +294,19 @@ async function update(req, transition = false) {
       const managementDecision = ["budget", "expense", "proposal", "strategy", "partnership", "contribution"].includes(kind) &&
         ["APPROVED", "REJECTED", "PAID"].includes(next) ||
         kind === "campaign" && (["APPROVED", "REJECTED"].includes(next) || record.status === "DRAFT" && next === "ACTIVE");
-      const needsApproval = managementDecision || kind === "report" ||
+      const reportReview = kind === "report" && ["APPROVED", "REJECTED", "CORRECTIONS_REQUESTED"].includes(next);
+      if (kind === "report") {
+        if (reportReview) {
+          if (!access.leadership(req) || access.own(req, record) ||
+            String(record.createdBy) === String(req.user._id)) throw fail("An independent authorized manager must review reports.", 403);
+          if (!req.staffAccess.isHeadOffice) {
+            const owner = await User.findById(record.officerId || record.createdBy).populate("staffRoleId").session(session);
+            if (owner?.staffRoleId?.name !== "MARKETING_OFFICER") throw fail("Only Head Office reviews leaders.", 403);
+          }
+        } else if (!access.own(req, record)) throw fail("Only the author may submit reports.", 403);
+      }
+      if (kind === "task" && next === "COMPLETED" && !access.leadership(req)) throw fail("A manager must verify completed tasks.", 403);
+      const needsApproval = managementDecision ||
         kind === "content" && ["APPROVED", "REJECTED"].includes(next);
       if (needsApproval) {
         const permission = managementDecision ? "marketing.budgets.approve" : "marketing.content.approve";
@@ -274,6 +318,10 @@ async function update(req, transition = false) {
         (record.status === "SUBMITTED" && needsApproval ? ["APPROVED", "REJECTED"] :
           record.status === "ACTIVE" && kind === "target" ? ["COMPLETED"] : []);
       if (!valid.includes(next)) throw fail("Invalid status transition.", 409);
+      if (kind === "target" && next === "COMPLETED") {
+        const result = await require("./marketingPerformance.service").targetResult(record.toObject());
+        if (result.actual == null || result.actual < record.data.value) throw fail("Verified achievement must meet this target before completion.", 409);
+      }
       if (kind === "contribution" && next === "APPROVED") await validateLinks(record, session);
       if (kind === "expense" && next === "PAID") {
         const evidence = text(req.body.paymentEvidence || "", 2000);
@@ -291,7 +339,12 @@ async function update(req, transition = false) {
       }
       if (kind === "content" && next === "PUBLISHED" && (!record.data.publishedUrl || !record.data.publishedAt)) throw fail("Record the actual publication URL and time first.");
       record.status = next;
-      record.data = { ...record.data, lastDecisionBy: String(req.user._id), lastDecisionAt: new Date().toISOString() };
+      const now = new Date().toISOString();
+      record.data = { ...record.data, lastDecisionBy: String(req.user._id), lastDecisionAt: now,
+        ...(next === "COMPLETED" ? { completedAt: now } : {}),
+        ...(kind === "report" && next === "SUBMITTED" ? { submittedAt: now } : {}),
+        ...(reportReview ? { reviews: [...(record.data.reviews || []), { status: next,
+          reviewerId: String(req.user._id), feedback: req.body.reason, at: now }] } : {}) };
     } else {
       if (["APPROVED", "COMPLETED", "PUBLISHED", "CONFIRMED", "PAID"].includes(record.status)) {
         if (kind !== "content" || record.status !== "APPROVED" ||
@@ -299,6 +352,8 @@ async function update(req, transition = false) {
             Object.keys(req.body.data || {}).some(k => !["publishedUrl", "publishedAt"].includes(k))) throw fail("Final records cannot be edited.", 409);
       }
       const patch = parse(kind, req.body, { patch: true });
+      if (kind === "target" && patch.officerId) await access.assignment(req, patch.officerId);
+      if (kind === "report" && patch.officerId && String(patch.officerId) !== String(req.user._id)) throw fail("Report ownership cannot change.", 403);
       if (patch.data) patch.data = { ...record.data, ...patch.data };
       Object.assign(record, patch);
       await validateLinks(record, session);
@@ -308,6 +363,9 @@ async function update(req, transition = false) {
     record.markModified("data");
     await record.save({ session });
     await audit(req, session, transition ? "MARKETING_STATUS_CHANGED" : "MARKETING_UPDATED", record, before);
+    if (["report", "target"].includes(kind)) await require("./marketingPerformance.service").notify(req, session,
+      record.officerId || record.createdBy, kind.toUpperCase() + "_" + record.status, record,
+      `${record.title}: ${record.status}${transition ? " — " + req.body.reason : ""}`);
     return record;
   });
 }

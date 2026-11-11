@@ -516,6 +516,7 @@ async function startServer() {
   require("./services/revenueAccount.service").startWorker();
   require("./services/manualRefundEmail.service").startWorker();
   require("./services/pendingResolutionMonitor.service").start();
+  require("./services/marketingPerformance.service").startNotifications();
   require("./services/telecomAbodeReconciliationWorker.service").startTelecomAbodeReconciliationWorker();
   logFirebaseConfigurationStatus();
 
