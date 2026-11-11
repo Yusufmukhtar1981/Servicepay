@@ -34,6 +34,7 @@ const roleSchema = new mongoose.Schema(
         "AUDIT",
         "COMPLIANCE",
         "CUSTOMER_SUPPORT",
+        "MARKETING",
       ],
     },
 

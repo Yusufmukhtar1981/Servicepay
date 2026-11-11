@@ -207,6 +207,7 @@ const userSchema = new mongoose.Schema(
         "AUDIT",
         "COMPLIANCE",
         "CUSTOMER_SUPPORT",
+        "MARKETING",
         null,
       ],
       default: null,

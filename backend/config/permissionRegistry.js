@@ -2,6 +2,18 @@ const permission = (key, value, module, label, description, risk = "STANDARD") =
   Object.freeze({ key, value, module, label, description, risk });
 
 const STAFF_PERMISSION_CATALOG = Object.freeze([
+  permission("MARKETING_VIEW", "marketing.view", "MARKETING", "View Marketing department", "Read evidence-based acquisition and campaign reports; no customer wallet access."),
+  permission("MARKETING_CAMPAIGNS_MANAGE", "marketing.campaigns.manage", "MARKETING", "Manage marketing campaigns", "Create, edit, pause and complete campaigns."),
+  permission("MARKETING_TEAM_MANAGE", "marketing.team.manage", "MARKETING", "Manage marketing team", "Manage lower-level marketing officers and tasks only.", "PRIVILEGED"),
+  permission("MARKETING_REPORTS_MANAGE", "marketing.reports.manage", "MARKETING", "Submit marketing reports", "Submit evidenced reports, proposals and attendance."),
+  permission("MARKETING_BUDGETS_SUBMIT", "marketing.budgets.submit", "MARKETING", "Submit marketing budgets and expenses", "Does not authorize payment or approval."),
+  permission("MARKETING_BUDGETS_APPROVE", "marketing.budgets.approve", "MARKETING", "Approve marketing allocations", "Head Office only; never approve own requests or modify wallets.", "PRIVILEGED"),
+  permission("MARKETING_CONTENT_MANAGE", "marketing.content.manage", "MARKETING", "Manage marketing materials", "Private uploads, calendar and actual publication records."),
+  permission("MARKETING_CONTENT_APPROVE", "marketing.content.approve", "MARKETING", "Review marketing content and reports", "Approve another submitter's content and reports.", "PRIVILEGED"),
+  permission("MARKETING_ATTRIBUTION_MANAGE", "marketing.attribution.manage", "MARKETING", "Confirm evidenced acquisition", "Create immutable evidenced attribution; not all registrations.", "PRIVILEGED"),
+  permission("MARKETING_TARGETS_MANAGE", "marketing.targets.manage", "MARKETING", "Set marketing performance targets", "Head Office-only performance target configuration."),
+  permission("MARKETING_EXPORT", "marketing.export", "MARKETING", "Export marketing reports", "Bounded PDF/Excel exports without customer contact data."),
+  permission("MARKETING_AUDIT", "marketing.audit", "MARKETING", "View marketing activity history", "Read department audit history."),
   permission("OPERATIONS_REFUND", "operations.refund", "OPERATIONS", "Execute eligible Operations refunds", "Explicit GLOBAL Operations Manager grant only; atomic custody and duplicate protection remain mandatory.", "CRITICAL"),
   permission("OPERATIONS_CUSTOMERS_MANAGE", "operations.customers.manage", "OPERATIONS", "Suspend and restore operational customer holds", "Requires reason; restore only holds imposed through this workflow.", "HIGH"),
   permission("OPERATIONS_SERVICES_CONTROL", "operations.services.control", "OPERATIONS", "Pause ordinary service admissions", "Existing non-protected feature controls only; no provider settings or prices.", "HIGH"),
@@ -298,6 +310,8 @@ const FULL_ACCESS_ROLE_NAMES = Object.freeze([
   "HEAD_OFFICE_ADMIN",
 ]);
 const ROLE_HIERARCHY = Object.freeze({
+  HEAD_OF_MARKETING: 60,
+  MARKETING_OFFICER: 20,
   HEAD_OFFICE: 100,
   SVP: 90,
   SUB_ADMIN: 80,

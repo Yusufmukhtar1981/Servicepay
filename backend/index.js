@@ -430,6 +430,7 @@ app.use("/api/airtime-to-cash", airtimeToCashRoutes);
 app.use("/api/admin/kyc", adminKycRoutes);
 app.use("/api/kyc", kycRoutes);
 app.use("/api/staff-management", staffManagementRoutes);
+app.use("/api/admin/marketing", require("./routes/marketing.routes"));
 app.use("/api/admin/role-users", adminRoleUsersRoutes);
 app.use("/api/svp", svpRoutes);
 

@@ -155,9 +155,9 @@ const loadStaffRole = async (req, res, next) => {
       roleName: staffRole.name,
       displayName: staffRole.displayName,
       department: staffRole.department,
-      permissions: normalizePermissionList(
-        staffRole.permissions
-      ),
+      permissions: normalizePermissionList(staffRole.permissions)
+        .filter(permission => staffRole.department !== "MARKETING" ||
+          permission.startsWith("marketing.")),
       scope: configuredRoleScope(staffRole, req.user),
       hierarchyLevel: Number(staffRole.hierarchyLevel || 20),
     };

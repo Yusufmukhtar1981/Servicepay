@@ -1266,6 +1266,26 @@ exports.seedDefaultRoles = async (req, res) => {
 
     const defaultRoles = [
       {
+        name: "HEAD_OF_MARKETING",
+        displayName: "Head of Marketing",
+        department: "MARKETING",
+        description: "Marketing department management without customer financial authority.",
+        permissions: [
+          P.MARKETING_VIEW, P.MARKETING_CAMPAIGNS_MANAGE, P.MARKETING_TEAM_MANAGE,
+          P.MARKETING_REPORTS_MANAGE, P.MARKETING_BUDGETS_SUBMIT,
+          P.MARKETING_CONTENT_MANAGE, P.MARKETING_CONTENT_APPROVE,
+          P.MARKETING_ATTRIBUTION_MANAGE, P.MARKETING_EXPORT, P.MARKETING_AUDIT,
+        ],
+      },
+      {
+        name: "MARKETING_OFFICER",
+        displayName: "Marketing Officer",
+        department: "MARKETING",
+        description: "Marketing activity and content submission; no approvals or financial authority.",
+        permissions: [P.MARKETING_VIEW, P.MARKETING_REPORTS_MANAGE,
+          P.MARKETING_CONTENT_MANAGE, P.MARKETING_BUDGETS_SUBMIT],
+      },
+      {
         name: "SUB_ADMIN",
         displayName: "Sub Admin",
         department: "ADMINISTRATION",
