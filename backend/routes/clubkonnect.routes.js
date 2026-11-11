@@ -97,6 +97,10 @@ router.post(
 
 router.get("/airtime/networks", protect,
   require("../controllers/clubkonnectAirtime.controller").getAirtimeNetworks);
+router.get("/airtime/:reference/details", protect,
+  require("../controllers/airtimeReceipt.controller").details);
+router.get("/airtime/:reference/receipt", protect,
+  require("../controllers/airtimeReceipt.controller").download);
 router.post("/airtime/quote", protect,
   require("../controllers/clubkonnectAirtime.controller").quoteAirtime);
 

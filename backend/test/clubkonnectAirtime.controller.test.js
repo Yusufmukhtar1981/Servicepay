@@ -13,10 +13,13 @@ const Transaction = require("../models/transaction.model");
 const Ledger = require("../models/ledgerEntry.model");
 const Commission = require("../models/commission.model");
 const ProductCommission = require("../models/productCommission.model");
+const receiptService = require("../services/airtimeReceipt.service");
+const receiptController = require("../controllers/airtimeReceipt.controller");
 const ProviderConfig = require("../models/providerManagementConfig.model");
 const models = [User, Transaction, Ledger, Commission, ProductCommission, ProviderConfig];
 let replica, oldGet, purchases, queries, sequence = 0;
 let purchaseResult, queryResult;
+let receiptServer, receiptBase;
 const key = "airtime-controller-stable-request";
 const invoke = async (handler, user, { body = {}, params = {} } = {}) => {
   const result = {};
@@ -42,6 +45,13 @@ test.before(async () => {
   });
   await mongoose.connect(replica.getUri(), { dbName: "airtime-controller-isolated" });
   await Promise.all(models.map(model => model.init()));
+  const express = require("express"), app = express();
+  const { protect } = require("../middleware/auth.middleware");
+  app.get("/:reference/details", protect, receiptController.details);
+  app.get("/:reference/receipt", protect, receiptController.download);
+  receiptServer = app.listen(0, "127.0.0.1");
+  await new Promise(resolve => receiptServer.once("listening", resolve));
+  receiptBase = "http://127.0.0.1:" + receiptServer.address().port;
   oldGet = axios.get;
   axios.get = async url => {
     if (url.includes("APIAirtimeV1.asp")) { purchases++; return purchaseResult; }
@@ -50,9 +60,99 @@ test.before(async () => {
   };
 });
 test.after(async () => {
+  if (receiptServer) await new Promise(resolve => receiptServer.close(resolve));
   axios.get = oldGet;
   await mongoose.disconnect();
   await replica?.stop();
+});
+
+async function receiptRequest(reference, user, kind = "details") {
+  const token = user ? require("jsonwebtoken").sign({ id: String(user._id),
+    authTokenVersion: user.authTokenVersion || 0 }, process.env.JWT_SECRET, { expiresIn: "10m" }) : null;
+  return fetch(receiptBase + "/" + encodeURIComponent(reference) + "/" + kind,
+    { headers: token ? { Authorization: "Bearer " + token } : {} });
+}
+test("Airtime details are owner-bound, reject anonymous access and support the original durable request key", async () => {
+  const user = await makeUser(), other = await makeUser();
+  const result = await purchase(user);
+  assert.equal((await receiptRequest(result.body.reference)).status, 401);
+  assert.equal((await receiptRequest(result.body.reference, other)).status, 404);
+  const response = await receiptRequest(key, user);
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("cache-control"), /no-store/);
+  const data = (await response.json()).data.transaction;
+  assert.equal(data.status, "PENDING"); assert.equal(data.charged, true);
+  assert.equal(data.network, "MTN"); assert.equal(data.refundRecorded, false);
+  assert.equal(data.customerName, user.fullName);
+  assert.equal(data.customerId, String(user._id));
+  assert.equal(data.reference, result.body.reference);
+  for (const secret of ["mock-key", "mock-user", "providerResponse", "requestFingerprint"]) {
+    assert(!JSON.stringify(data).includes(secret));
+  }
+  assert.equal(queries, 0); assert.equal(purchases, 1);
+});
+test("pending, failed and refunded Airtime purchases cannot produce successful receipts", async () => {
+  const user = await makeUser(), result = await purchase(user);
+  for (const status of ["PENDING", "FAILED", "REFUNDED"]) {
+    await Transaction.updateOne({ reference: result.body.reference }, { $set: { status } });
+    const r = await receiptRequest(result.body.reference, user, "receipt");
+    assert.equal(r.status, 409, status);
+    assert.match(r.headers.get("content-type"), /json/);
+  }
+  assert.equal((await User.findById(user._id)).walletBalance, 400);
+  assert.equal(await Ledger.countDocuments({ direction: "CREDIT" }), 0);
+});
+test("verified successful Airtime purchase produces an original branded PDF without provider calls or new debits", async () => {
+  const user = await makeUser(), result = await purchase(user);
+  const final = await invoke(controller.requeryAirtime, user, { body: { idempotencyKey: key } });
+  assert.equal(final.body.status, "SUCCESSFUL");
+  const before = { purchases, queries, wallet: (await User.findById(user._id)).walletBalance,
+    transactions: await Transaction.countDocuments({}), ledger: await Ledger.countDocuments({}) };
+  const r = await receiptRequest(result.body.reference, user, "receipt");
+  assert.equal(r.status, 200);
+  assert.match(r.headers.get("content-type"), /application\/pdf/);
+  assert.match(r.headers.get("content-disposition"), /attachment;.*\.pdf/);
+  assert.match(r.headers.get("cache-control"), /no-store/);
+  const bytes = Buffer.from(await r.arrayBuffer());
+  assert.equal(bytes.subarray(0, 5).toString(), "%PDF-");
+  assert(bytes.length > 1000);
+  assert.deepEqual({ purchases, queries, wallet: (await User.findById(user._id)).walletBalance,
+    transactions: await Transaction.countDocuments({}), ledger: await Ledger.countDocuments({}) }, before);
+});
+test("receipt generation validates reversals again and never fabricates missing refund evidence", async () => {
+  const user = await makeUser(), result = await purchase(user);
+  await Transaction.updateOne({ reference: result.body.reference }, { $set: {
+    status: "SUCCESSFUL", reversalReference: "existing-recorded-reversal",
+  } });
+  assert.equal((await receiptRequest(result.body.reference, user, "receipt")).status, 409);
+  await Transaction.updateOne({ reference: result.body.reference }, { $set: {
+    status: "FAILED", reversalLedgerEntryId: new mongoose.Types.ObjectId(),
+  } });
+  const detail = await receiptService.load(user._id, result.body.reference);
+  assert.equal(detail.view.refundRecorded, false);
+  assert.match(detail.view.message, /not yet confirmed/);
+  assert.equal((await User.findById(user._id)).walletBalance, 400);
+});
+test("missing Airtime identity and cross-service references do not infer failure or dispatch", async () => {
+  const user = await makeUser();
+  assert.equal((await receiptRequest("not-a-recorded-request", user)).status, 404);
+  await Transaction.create({ reference: "DATA-NOT-AIRTIME-RECEIPT", customerId: user._id,
+    serviceType: "DATA", amount: 100, status: "SUCCESSFUL" });
+  assert.equal((await receiptRequest("DATA-NOT-AIRTIME-RECEIPT", user, "receipt")).status, 404);
+  assert.equal(purchases, 0); assert.equal(queries, 0);
+  assert.equal((await User.findById(user._id)).walletBalance, 500);
+});
+test("literal Airtime reference cannot be shadowed by another request key", async () => {
+  const user = await makeUser(), identity = "AIRTIME-REFERENCE-PRIORITY";
+  await Transaction.create({ reference: "DIFFERENT-AIRTIME-REFERENCE", customerId: user._id,
+    serviceType: "AIRTIME", amount: 50, status: "PENDING",
+    idempotencyKey: crypto.createHash("sha256").update(identity).digest("hex") });
+  await Transaction.create({ reference: identity, customerId: user._id,
+    serviceType: "AIRTIME", amount: 100, status: "SUCCESSFUL" });
+  const detail = await receiptService.load(user._id, identity);
+  assert.equal(detail.view.reference, identity);
+  assert.equal(detail.view.amount, 100);
+  assert.equal(purchases, 0); assert.equal(queries, 0);
 });
 test.beforeEach(async () => {
   await Promise.all(models.map(model => model.collection.deleteMany({})));
@@ -150,6 +250,9 @@ test("bound terminal failure returns processed HTTP 200 with FAILED and one refu
   assert.equal(result.http, 200);
   assert.equal(result.body.success, false);
   assert.equal(result.body.status, "FAILED");
+  const details = await receiptService.load(user._id, result.body.reference);
+  assert.equal(details.view.refundRecorded, true);
+  assert.equal(details.view.refundStatus, "REFUNDED");
   assert.equal(result.body.dispatchStatus, "REFUNDED");
   assert.equal((await User.findById(user._id)).walletBalance, 500);
   assert.equal(await Ledger.countDocuments({ direction: "CREDIT" }), 1);
