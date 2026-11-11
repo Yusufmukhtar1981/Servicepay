@@ -11,6 +11,7 @@ import 'services/api_service.dart';
 import 'services/data_phone.dart';
 import 'services/purchase_session_recovery.dart';
 import 'widgets/saved_beneficiaries.dart';
+import 'airtime_result_screen.dart';
 
 class AirtimeScreen extends StatefulWidget {
   const AirtimeScreen({
@@ -167,6 +168,8 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
         AirtimePurchaseIntent.formatAmountCents(amountCents);
 
     final String network = selectedNetwork;
+    bool requestWasDispatched = false;
+    String dispatchedRequestKey = '';
     setState(() {
       isLoading = true;
       _purchasePending = false;
@@ -316,21 +319,27 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
       if (previousActiveKey != null) {
         await _purchaseIntent.retainForSeparatePurchase();
       }
+      String requestKey = '';
       final Map<String, dynamic> result = await _purchaseIntent.submit(
         newPurchase: true,
         network: network,
         phone: phone,
         amount: purchaseAmount,
-        dispatch: (String idempotencyKey) => ApiService.buyAirtime(
-          transactionPin: transactionPin,
-          network: network,
-          acknowledgePendingPurchase: true,
-          providerNetworkId: providerId,
-          customerSellingPrice: sellingPrice,
-          phone: phone,
-          amount: purchaseAmount,
-          idempotencyKey: idempotencyKey,
-        ).timeout(const Duration(seconds: 25)),
+        dispatch: (String idempotencyKey) {
+          requestKey = idempotencyKey;
+          dispatchedRequestKey = idempotencyKey;
+          requestWasDispatched = true;
+          return ApiService.buyAirtime(
+            transactionPin: transactionPin,
+            network: network,
+            acknowledgePendingPurchase: true,
+            providerNetworkId: providerId,
+            customerSellingPrice: sellingPrice,
+            phone: phone,
+            amount: purchaseAmount,
+            idempotencyKey: idempotencyKey,
+          ).timeout(const Duration(seconds: 25));
+        },
       );
       if (mounted) {
         setState(() {
@@ -340,60 +349,30 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
 
       if (!mounted) return;
 
-      final String responseStatus =
-          result['status']?.toString().toUpperCase() ?? '';
-      final bool purchaseTerminal = _purchaseIntent.isTerminalResult(result);
-      final bool terminalRefund = responseStatus == 'REFUNDED' ||
-          responseStatus == 'REVERSED' ||
-          (responseStatus == 'FAILED' &&
-              result['dispatchStatus'] == 'REFUNDED');
-      final bool unresolved = !purchaseTerminal;
-      _purchasePending = unresolved;
-      const successfulStatuses = <String>{
-        'SUCCESS',
-        'SUCCESSFUL',
-        'COMPLETED',
-      };
-      final bool purchaseSucceeded =
-          purchaseTerminal && successfulStatuses.contains(responseStatus);
-
-      final String message = result['message']?.toString() ??
-          result['response_description']?.toString() ??
-          result['description']?.toString() ??
-          result['error']?.toString() ??
-          (purchaseSucceeded
-              ? 'Airtime purchase was successful.'
-              : 'Airtime purchase failed.');
-
-      if (unresolved) {
-        showMessage(
-            'We’re verifying this purchase. You can check its status in History.');
-      } else if (purchaseSucceeded) {
-        showMessage(message);
-        await SavedBeneficiaries.offerSave(
-          context: context,
-          phone: phone,
-          network: network,
-          serviceType: 'AIRTIME',
-        );
-        if (!mounted) return;
-
+      final status = result['status']?.toString().toUpperCase() ?? '';
+      _purchasePending = !_purchaseIntent.isTerminalResult(result);
+      final reference = result['reference']?.toString() ?? '';
+      final identity = reference.isNotEmpty ? reference : requestKey;
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => AirtimeResultScreen(
+            identity: identity,
+            idempotencyKey: requestKey,
+            initialResult: result,
+            phone: phone,
+            network: network,
+            amount: purchaseAmount,
+            requery: (key) => ApiService.requeryAirtime(idempotencyKey: key),
+            onTerminal: requestKey.isEmpty
+                ? null
+                : () => _purchaseIntent.finish(requestKey),
+          ),
+        ),
+      );
+      if (mounted &&
+          const {'SUCCESS', 'SUCCESSFUL', 'COMPLETED'}.contains(status)) {
         phoneController.clear();
         amountController.clear();
-      } else {
-        final String? reference = result['reference']?.toString();
-
-        String finalMessage = message;
-
-        if (terminalRefund) {
-          finalMessage = '$message Your wallet has been refunded.';
-        }
-
-        if (reference != null && reference.isNotEmpty) {
-          finalMessage = '$finalMessage Reference: $reference';
-        }
-
-        showMessage(finalMessage);
       }
     } catch (error) {
       if (mounted) {
@@ -402,10 +381,37 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
           if (error is TimeoutException) _purchasePending = true;
         });
       }
-      final String message = error is TimeoutException
-          ? 'PROCESSING: The airtime result is not confirmed. Its request key is saved; check History. Do not submit again.'
-          : error.toString().replaceFirst('Exception: ', '');
-      showMessage(message);
+      if (error is TimeoutException && mounted && requestWasDispatched) {
+        final key = dispatchedRequestKey;
+        if (key.isNotEmpty) {
+          _purchasePending = true;
+          await Navigator.of(context).push<void>(
+            MaterialPageRoute<void>(
+              builder: (_) => AirtimeResultScreen(
+                identity: key,
+                idempotencyKey: key,
+                initialResult: const {
+                  'status': 'TIMEOUT',
+                  'pending': true,
+                  'success': false,
+                },
+                phone: phoneController.text.trim(),
+                network: selectedNetwork,
+                amount: amountController.text.trim(),
+                requery: (requestKey) =>
+                    ApiService.requeryAirtime(idempotencyKey: requestKey),
+                onTerminal: () => _purchaseIntent.finish(key),
+              ),
+            ),
+          );
+        } else {
+          showMessage(
+              'The result is not confirmed. Do not submit again; check your transaction history.');
+        }
+      } else {
+        final message = error.toString().replaceFirst('Exception: ', '');
+        showMessage(message);
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -829,8 +835,8 @@ class AirtimePurchaseIntent {
         }
         final retained = await _readRetained();
         if (!retained.any((entry) => entry['key'] == item['key'])) {
-          // Retain every original key; never impose a purchase quota from an
-          // archive count. Durable persistence checks below remain mandatory.
+          // An arbitrary archive count must not lock independent purchases.
+          // Keep the durable write/read-back guard before freeing this key.
           retained.add(Map<String, dynamic>.from(item));
         }
         final encoded = jsonEncode(retained);

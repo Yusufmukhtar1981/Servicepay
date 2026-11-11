@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'session_store.dart';
@@ -256,6 +257,79 @@ class ApiService {
         .timeout(requestTimeout);
 
     return _handleResponse(response);
+  }
+
+  /// Explicit user-initiated status check for an existing transaction reference.
+  /// This route never dispatches a new Airtime purchase.
+  static Future<Map<String, dynamic>> requeryAirtimeReference(
+      String reference) async {
+    if (reference.trim().isEmpty) {
+      throw ArgumentError.value(reference, 'reference');
+    }
+    final token = await _getAuthToken();
+    final response = await http.post(
+      Uri.parse(
+        '$baseUrl/clubkonnect/airtime/'
+        '${Uri.encodeComponent(reference)}/requery',
+      ),
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    ).timeout(requestTimeout);
+    return _handleResponse(response);
+  }
+
+  /// Read-only owner-scoped Airtime status details. Identity is the original
+  /// ServicePay reference or the original request idempotency key.
+  static Future<Map<String, dynamic>> airtimeDetails(String identity) async {
+    if (identity.trim().isEmpty) {
+      throw ArgumentError.value(identity, 'identity');
+    }
+    final token = await _getAuthToken();
+    final response = await http.get(
+      Uri.parse(
+        '$baseUrl/clubkonnect/airtime/${Uri.encodeComponent(identity)}'
+        '/details',
+      ),
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    ).timeout(requestTimeout);
+    return _handleResponse(response);
+  }
+
+  /// Fetches the actual authenticated PDF only when the backend confirms a
+  /// current, successful, unreversed Airtime transaction.
+  static Future<Uint8List> airtimeReceiptPdf(String identity) async {
+    if (identity.trim().isEmpty) {
+      throw ArgumentError.value(identity, 'identity');
+    }
+    final token = await _getAuthToken();
+    final response = await http.get(
+      Uri.parse(
+        '$baseUrl/clubkonnect/airtime/${Uri.encodeComponent(identity)}'
+        '/receipt',
+      ),
+      headers: {
+        'Accept': 'application/pdf',
+        'Authorization': 'Bearer $token',
+      },
+    ).timeout(requestTimeout);
+    if (response.statusCode < 200 ||
+        response.statusCode >= 300 ||
+        response.bodyBytes.isEmpty ||
+        !(response.headers['content-type'] ?? '')
+            .toLowerCase()
+            .contains('application/pdf')) {
+      throw Exception(
+        response.statusCode == 409
+            ? 'This Airtime transaction is no longer eligible for a receipt.'
+            : 'Unable to retrieve the verified Airtime receipt.',
+      );
+    }
+    return response.bodyBytes;
   }
 
   static Future<Map<String, dynamic>> buyData({

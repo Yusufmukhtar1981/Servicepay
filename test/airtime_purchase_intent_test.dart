@@ -69,6 +69,7 @@ void main() {
     expect(purchases, 102);
     expect((await intent.retainedKeys()).toSet(), keys);
     expect(await intent.pendingKey(), isNull);
+    // Repeated status access is query-only and retains every original key.
     expect((await intent.retainedKeys()).toSet(), keys);
     expect(purchases, 102);
   });
@@ -389,6 +390,94 @@ void main() {
     expect(submittedKeys, hasLength(7));
     expect(submittedKeys.toSet(), hasLength(1));
   });
+
+  testWidgets(
+    'successful AIRTIME does not prompt to save but standalone saving remains available',
+    (tester) async {
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'auth_token': 'test-session-token',
+      });
+      final intent = createIntent(_MemoryIntentStorage());
+      var purchases = 0;
+      var saves = 0;
+      await http.runWithClient(() async {
+        await tester.pumpWidget(MaterialApp(
+            home: AirtimeScreen(
+          purchaseIntent: intent,
+          loadBeneficiaries: () async => [],
+          loadNetworks: () async => {
+            'success': true,
+            'data': [
+              {'displayName': 'MTN', 'networkId': 1}
+            ],
+          },
+        )));
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byType(TextField).first, '08012345678');
+        await tester.enterText(find.byType(TextField).last, '50');
+        await tester.tap(find.widgetWithText(ElevatedButton, 'Buy Airtime'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Confirm').last);
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byType(TextField).last, '0000');
+        await tester.tap(find.text('Confirm').last);
+        await tester.pumpAndSettle();
+        expect(purchases, 1);
+        expect(saves, 0);
+        expect(await intent.pendingKey(), isNull);
+        expect(find.text('Airtime Purchase Successful'), findsOneWidget);
+        expect(find.text('View receipt'), findsOneWidget);
+        await tester.ensureVisible(find.text('Done'));
+        await tester.tap(find.text('Done'));
+        await tester.pumpAndSettle();
+        expect(find.text('Save this number'), findsNothing);
+        expect(find.byType(AlertDialog), findsNothing);
+        expect(
+            tester
+                .widget<TextField>(find.byType(TextField).first)
+                .controller!
+                .text,
+            isEmpty);
+        expect(find.text('Saved Numbers'), findsOneWidget);
+        // Manual saving remains an explicit customer action, not a result prompt.
+        await tester.tap(find.text('Save Number'));
+        await tester.pumpAndSettle();
+        expect(find.text('Save number'), findsOneWidget);
+        await tester.tap(find.text('Cancel'));
+        await tester.pumpAndSettle();
+        expect(saves, 0);
+        expect(tester.takeException(), isNull);
+      },
+          () => http_testing.MockClient((request) async {
+                if (request.url.path.endsWith('/clubkonnect/airtime/quote')) {
+                  return http.Response(
+                      jsonEncode({
+                        'success': true,
+                        'data': {
+                          'customerSellingPrice': '50',
+                          'normalizedPhone': '08012345678'
+                        },
+                      }),
+                      200);
+                }
+                if (request.url.path.endsWith('/clubkonnect/airtime')) {
+                  purchases++;
+                  return http.Response(
+                      jsonEncode({
+                        'success': true,
+                        'status': 'SUCCESSFUL',
+                        'reference': 'AIRTIME-mocked-success',
+                        'amount': 50,
+                        'accountingStatus': 'COMPLETE',
+                        'message': 'Airtime purchase was successful.',
+                      }),
+                      200);
+                }
+                if (request.url.path.contains('/beneficiaries')) saves++;
+                return http.Response('{}', 500);
+              }));
+    },
+  );
 
   testWidgets(
     'normal AIRTIME confirmation authorizes a separate charge and uses a fresh key',

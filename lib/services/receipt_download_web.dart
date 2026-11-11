@@ -1,15 +1,14 @@
 // ignore_for_file: avoid_web_libraries_in_flutter
 
+// ignore: deprecated_member_use
 import 'dart:html' as html;
 import 'dart:typed_data';
 
-Future<String> downloadReceiptBytes(
-  Uint8List bytes,
-  String fileName,
-) {
+Future<String> downloadReceiptBytes(Uint8List bytes, String fileName,
+    {String mimeType = 'image/png'}) {
   final blob = html.Blob(
     <dynamic>[bytes],
-    'image/png',
+    mimeType,
   );
 
   final url = html.Url.createObjectUrlFromBlob(blob);

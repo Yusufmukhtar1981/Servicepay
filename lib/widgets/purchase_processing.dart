@@ -78,7 +78,9 @@ class PurchaseProcessing extends StatelessWidget {
                           child: Semantics(
                             liveRegion: true,
                             label: [
-                              'Processing your transaction',
+                              service.toLowerCase() == 'airtime'
+                                  ? 'ServicePay is processing your transaction. Please wait...'
+                                  : 'Processing your transaction',
                               if (requestId?.isNotEmpty == true)
                                 'Request ID: $requestId',
                             ].join('. '),
@@ -131,7 +133,9 @@ class PurchaseProcessing extends StatelessWidget {
                                     ),
                                     const SizedBox(height: 20),
                                     Text(
-                                      'Processing your transaction',
+                                      service.toLowerCase() == 'airtime'
+                                          ? 'ServicePay is processing your transaction. Please wait...'
+                                          : 'Processing your transaction',
                                       textAlign: TextAlign.center,
                                       style: Theme.of(context)
                                           .textTheme
@@ -143,8 +147,10 @@ class PurchaseProcessing extends StatelessWidget {
                                           ),
                                     ),
                                     const SizedBox(height: 10),
-                                    const Text(
-                                      'Please wait while we process your transaction...',
+                                    Text(
+                                      service.toLowerCase() == 'airtime'
+                                          ? 'Your airtime request is being verified. Do not submit another purchase.'
+                                          : 'Please wait while we process your transaction...',
                                       textAlign: TextAlign.center,
                                       style: TextStyle(
                                         color: Color(0xFF52685D),
@@ -215,7 +221,8 @@ class PurchaseProcessing extends StatelessWidget {
                 bottom: false,
                 child: Semantics(
                   liveRegion: true,
-                  label: 'Purchase status processing. Check History for updates.',
+                  label:
+                      'Purchase status processing. Check History for updates.',
                   child: Material(
                     elevation: 4,
                     color: Theme.of(context).colorScheme.surface,

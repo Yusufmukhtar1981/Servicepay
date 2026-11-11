@@ -9,12 +9,49 @@ import 'account_statement_screen.dart';
 import 'help_support_screen.dart';
 import 'receipt_screen.dart';
 import 'services/support_api_service.dart';
+import 'services/api_service.dart';
 import 'transaction_presentation.dart';
 import 'servicepay_theme.dart';
 import 'servicepay_ui.dart';
 import 'services/data_purchase_intent.dart';
 import 'airtime_screen.dart' show AirtimePurchaseIntent;
 import 'widgets/bill_purchase_recovery.dart';
+import 'airtime_result_screen.dart';
+import 'airtime_receipt_screen.dart';
+
+bool isAirtimeHistoryRecord(
+  Map<String, dynamic> transaction, {
+  String title = '',
+}) {
+  final service = (transaction['serviceType'] ??
+          transaction['service'] ??
+          transaction['type'] ??
+          title)
+      .toString()
+      .toUpperCase();
+  return service.contains('AIRTIME');
+}
+
+String airtimeHistoryIdentity(Map<String, dynamic> transaction) {
+  for (final key in const [
+    'reference',
+    'transactionReference',
+    'idempotencyKey',
+    'requestKey',
+  ]) {
+    final value = transaction[key]?.toString().trim() ?? '';
+    if (value.isNotEmpty) return value;
+  }
+  return '';
+}
+
+String? airtimeHistoryIdempotencyKey(Map<String, dynamic> transaction) {
+  for (final key in const ['idempotencyKey', 'requestKey']) {
+    final value = transaction[key]?.toString().trim() ?? '';
+    if (value.isNotEmpty) return value;
+  }
+  return null;
+}
 
 class TransactionsScreen extends StatefulWidget {
   const TransactionsScreen({
@@ -122,7 +159,9 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         isLoading ||
         isRefreshing ||
         isLoadingMore ||
-        (scrollController.hasClients && scrollController.offset > 100)) return;
+        (scrollController.hasClients && scrollController.offset > 100)) {
+      return;
+    }
     unawaited(loadTransactions(showRefreshLoader: true));
   }
 
@@ -538,6 +577,25 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 
   void _openReceipt(Map<String, dynamic> transaction) {
     final presentation = TransactionPresentation(transaction);
+    if (_isAirtime(transaction)) {
+      final identity = airtimeHistoryIdentity(transaction);
+      if (identity.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Airtime reference is not available yet.')),
+        );
+        return;
+      }
+      Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => AirtimeReceiptScreen(
+            identity: identity,
+            transaction: transaction,
+          ),
+        ),
+      );
+      return;
+    }
     final Map<String, String> details = <String, String>{
       for (final MapEntry<String, String> detail in presentation.details)
         detail.key: detail.value,
@@ -816,6 +874,36 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
     final DateTime? date = _transactionDate(transaction);
     final String direction = _transactionDirection(transaction);
     final presentation = TransactionPresentation(transaction);
+    if (_isAirtime(transaction)) {
+      final identity = airtimeHistoryIdentity(transaction);
+      if (identity.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Airtime reference is not available yet.')),
+        );
+        return;
+      }
+      Navigator.of(context).push<void>(
+        MaterialPageRoute<void>(
+          builder: (_) => AirtimeResultScreen(
+            identity: identity,
+            initialResult: transaction,
+            phone: (transaction['phone'] ?? transaction['recipient'] ?? '')
+                .toString(),
+            network: (transaction['network'] ?? '').toString(),
+            amount: _transactionAmount(transaction).toStringAsFixed(2),
+            idempotencyKey: airtimeHistoryIdempotencyKey(transaction),
+            requery: (identity) {
+              final key = airtimeHistoryIdempotencyKey(transaction);
+              return key != null
+                  ? ApiService.requeryAirtime(idempotencyKey: key)
+                  : ApiService.requeryAirtimeReference(identity);
+            },
+          ),
+        ),
+      );
+      return;
+    }
 
     showModalBottomSheet(
       context: context,
@@ -955,6 +1043,13 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           ),
         );
       },
+    );
+  }
+
+  bool _isAirtime(Map<String, dynamic> transaction) {
+    return isAirtimeHistoryRecord(
+      transaction,
+      title: _transactionTitle(transaction),
     );
   }
 
