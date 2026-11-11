@@ -5,7 +5,7 @@ const Case = require("../models/fintechCase.model");
 const Audit = require("../models/adminAuditLog.model");
 const safe = require("./supportWorkspace.service");
 
-const DAYS = { day: 1, week: 7, month: 30 };
+const DAYS = { day: 1, week: 7, month: 30, year: 365 };
 const SERVICES = ["DATA", "AIRTIME", "ELECTRICITY", "VIRTUAL_ACCOUNT", "WALLET_FUNDING",
   "TRANSFER", "MARKETPLACE", "DELIVERY", "ID_VERIFICATION"];
 const SUCCESS = ["SUCCESS", "SUCCESSFUL", "COMPLETED"];
@@ -57,7 +57,7 @@ const permissions = req => ({
   staffManage: req.staffAccess?.isHeadOffice === true,
 });
 const windowFor = (period = "day", now = new Date()) => {
-  if (!Object.hasOwn(DAYS, period)) throw fail(400, "Period must be day, week or month.");
+  if (!Object.hasOwn(DAYS, period)) throw fail(400, "Period must be day, week, month or year.");
   return { period, from: new Date(now.getTime() - DAYS[period] * 86400000), to: now };
 };
 const normalizeService = service => ({ BANK_TRANSFER: "TRANSFER", INTERSTATE_LOGISTICS: "DELIVERY",
@@ -83,7 +83,7 @@ const summary = async (req, query = {}, now = new Date()) => {
   const day = new Date(now.getTime() - 86400000), week = new Date(now.getTime() - 7 * 86400000);
   const month = new Date(now.getTime() - 30 * 86400000);
   const [txRows, customerRows, complaintRows, complaintCounts, staffRows, roles, vaRows, activity] = await Promise.all([
-    Transaction.aggregate([{ $match: { createdAt: { $gte: month, $lte: now } } }, { $facet: {
+    Transaction.aggregate([{ $match: { createdAt: { $gte: window.from < month ? window.from : month, $lte: now } } }, { $facet: {
       period: [{ $match: { createdAt: date } }, group(null)],
       services: [{ $match: { createdAt: date } }, group({ $ifNull: ["$serviceType", "$type"] })],
       trends: [{ $match: { createdAt: date } },
@@ -91,7 +91,7 @@ const summary = async (req, query = {}, now = new Date()) => {
         { $sort: { _id: 1 } }],
       daily: [{ $match: { createdAt: { $gte: day } } }, group(null)],
       weekly: [{ $match: { createdAt: { $gte: week } } }, group(null)],
-      monthly: [group(null)],
+      monthly: [{ $match: { createdAt: { $gte: month } } }, group(null)],
       recent: [{ $match: { createdAt: date } }, { $sort: { createdAt: -1, _id: -1 } }, { $limit: 12 },
         { $project: { reference: 1, serviceType: 1, status: 1, amount: 1, createdAt: 1 } }],
     } }]).option({ maxTimeMS: 15000 }),
@@ -205,7 +205,7 @@ const summary = async (req, query = {}, now = new Date()) => {
     support, alerts, serviceControls, recentTransactions: (tx.recent || []).map(v => ({
       id: String(v._id), reference: v.reference, service: v.serviceType, status: v.status, amount: v.amount, createdAt: v.createdAt,
     })), activity: activity.map(v => ({ action: v.action, actorName: v.actorName, createdAt: v.createdAt })),
-    coverage: { transactions: "Complete bounded period aggregate (maximum 30 days)", complaintSample: complaints.length,
+    coverage: { transactions: "Complete bounded period aggregate (maximum 365 days)", complaintSample: complaints.length,
       complaintTruncated: complaintRows.length > 5000, staffAttribution: "Current assignment; timing evidence is period sampled",
       financialStatusBuckets: "Mutually exclusive; other includes unrecognized legacy states",
       refundVolume: "REFUNDED original transactions only, not separately counted refund-credit transactions",

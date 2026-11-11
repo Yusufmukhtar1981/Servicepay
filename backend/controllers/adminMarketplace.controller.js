@@ -20,7 +20,11 @@ const allowedFundsStatuses = new Set([
 ]);
 // Legacy null branch records intentionally remain Head Office-only.
 const branchFilter = (req) =>
-  req.staffAccess?.isHeadOffice ? {} : { branchId: req.user.branchId };
+  req.staffAccess?.isHeadOffice ||
+  (req.staffAccess?.roleName === "OPERATIONS_MANAGER" &&
+    req.staffAccess?.scope?.type === "GLOBAL" &&
+    req.staffAccess?.permissions?.includes("operations.workspace.view"))
+    ? {} : { branchId: req.user.branchId };
 
 exports.listMarketplaceProducts = async (req, res) => {
   try {
@@ -197,6 +201,7 @@ exports.listMarketplaceOrders = async (req, res) => {
 
 exports.updateMarketplaceProductStatus =
   async (req, res) => {
+    let session;
     try {
       const productId = String(
         req.params.id || ''
@@ -223,9 +228,23 @@ exports.updateMarketplaceProductStatus =
         });
       }
 
-      const product =
+      const isOperations = req.staffAccess?.roleName === "OPERATIONS_MANAGER";
+      const reason = typeof req.body.reason === "string" ? req.body.reason.trim() : "";
+      if ((isOperations && reason.length < 10) || reason.length > 500) {
+        return res.status(400).json({ success: false, message: "A moderation reason of 10–500 characters is required." });
+      }
+      const mongoose = require("mongoose");
+      if (!mongoose.isValidObjectId(productId)) return res.status(400).json({ success: false, message: "Invalid product ID." });
+      session = await mongoose.startSession();
+      let product;
+      await session.withTransaction(async () => {
+      const previous = await MarketplaceProduct.findOne({ _id: productId, ...branchFilter(req) }).session(session);
+      if (!previous) throw Object.assign(new Error("Marketplace product not found."), { statusCode: 404 });
+      if (req.body.expectedStatus && req.body.expectedStatus !== previous.status)
+        throw Object.assign(new Error("Product status changed. Refresh before retrying."), { statusCode: 409 });
+      product =
         await MarketplaceProduct.findOneAndUpdate(
-          { _id: productId, ...branchFilter(req) },
+          { _id: productId, status: previous.status, ...branchFilter(req) },
           {
             $set: {
               status,
@@ -234,16 +253,18 @@ exports.updateMarketplaceProductStatus =
           {
             new: true,
             runValidators: true,
+            session,
           }
         );
 
-      if (!product) {
-        return res.status(404).json({
-          success: false,
-          message:
-            'Marketplace product not found.',
-        });
-      }
+      if (!product) throw Object.assign(new Error("Product status changed. Refresh before retrying."), { statusCode: 409 });
+      await require("../models/adminAuditLog.model").create([{
+        actorId: req.user._id, actorRole: req.user.role, actorName: req.user.fullName,
+        action: "FINTECH_OPERATION", reason: reason || "Marketplace moderation",
+        metadata: { module: "OPERATIONS_MARKETPLACE", productId: String(product._id),
+          previousStatus: previous.status, status },
+      }], { session });
+      });
 
       return res.json({
         success: true,
@@ -258,6 +279,7 @@ exports.updateMarketplaceProductStatus =
         product,
       });
     } catch (error) {
+      if (error.statusCode) return res.status(error.statusCode).json({ success: false, message: error.message });
       console.error(
         'ADMIN_MARKETPLACE_STATUS_ERROR',
         error
@@ -268,6 +290,8 @@ exports.updateMarketplaceProductStatus =
         message:
           'Unable to update Marketplace product status.',
       });
+    } finally {
+      if (session) await session.endSession();
     }
   };
 

@@ -27,6 +27,13 @@ function authorize(req, admin, write = true) {
     return id(req);
   }
   const p = req.staffAccess?.permissions || [];
+  if (admin === "operations") {
+    const enterprise = require("../services/operationsEnterprise.service");
+    if (!enterprise.operational(req) || !enterprise.permitted(req, "users.update"))
+      throw contacts.fail(403, "Authorized Operations profile permission is required.");
+    if (!mongoose.isValidObjectId(req.params.id)) throw contacts.fail(400, "Invalid customer ID.");
+    return req.params.id;
+  }
   if (req.user.role !== "HEAD_OFFICE" || (!req.staffAccess?.isHeadOffice && !p.includes("*") && !p.includes(write ? "users.update" : "users.view"))) {
     throw contacts.fail(403, "Authorized Head Office access is required.");
   }
@@ -60,6 +67,10 @@ const update = admin => async (req, res) => {
   try {
     const targetId = authorize(req, admin);
     const reason = reasonFor(req, admin);
+    if (admin === "operations" && (!req.body ||
+        Object.keys(req.body).some(k => !["fullName", "address", "reason"].includes(k)))) {
+      throw contacts.fail(403, "Operations may edit only name and residential address. Contact corrections require Head Office verification.");
+    }
     if (!req.body || Object.keys(req.body).some(k => !(admin ? adminAllowed : allowed).has(k))) throw contacts.fail(400, "This request contains fields that cannot be edited.");
     const changes = {};
     for (const field of ["fullName", "address", "state", "lga", "zone"]) {
@@ -148,7 +159,7 @@ const update = admin => async (req, res) => {
       await Audit.create([{ actorId: actor._id, actorRole: actor.role, actorName: actor.fullName,
         targetUserId: user._id, targetUserName: updated.fullName, action: "USER_PROFILE_UPDATED",
         reason, previousData, newData: visible(updated),
-        metadata: { source: admin ? "HEAD_OFFICE_PROFILE" : "CUSTOMER_PROFILE",
+        metadata: { source: admin === "operations" ? "OPERATIONS_PROFILE" : admin ? "HEAD_OFFICE_PROFILE" : "CUSTOMER_PROFILE",
           verifiedContactFields: admin ? [] : contactChanges,
           unverifiedContactFields: admin ? contactChanges : [],
           verificationMethod: admin && contactChanged ? "ADMIN_DIRECT_UNVERIFIED" : "EXISTING_PROFILE_SECURITY",
@@ -164,6 +175,7 @@ const update = admin => async (req, res) => {
 };
 exports.updateSelf = update(false);
 exports.updateAdmin = update(true);
+exports.updateOperations = update("operations");
 exports.requestSelfContact = requestContact(false);
 exports.requestAdminContact = requestContact(true);
 exports.contactCorrectionAccess = async (req, res) => {

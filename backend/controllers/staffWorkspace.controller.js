@@ -204,14 +204,16 @@ exports.customerDetail = async (req, res) => {
   try {
     if (!validId(req.params.id)) return fail(res, 404, "Customer not found.");
     const user = await User.findOne({ _id: req.params.id, role: "CUSTOMER" })
-      .select(`${customerFields} kycVerified walletBalance virtualAccount.status virtualAccount.bankName virtualAccount.accountNumber virtualAccount.failureReason virtualAccount.updatedAt virtualAccount.createdAt`).lean();
+      .select(`${customerFields} address kycVerified walletBalance virtualAccount.status virtualAccount.bankName virtualAccount.accountNumber virtualAccount.failureReason virtualAccount.updatedAt virtualAccount.createdAt`).lean();
     if (!user) return fail(res, 404, "Customer not found.");
     const [rows, tickets] = await Promise.all([
       Transaction.find({ customerId: user._id }).select(txFields).sort({ createdAt: -1 }).limit(50).lean(),
       FintechCase.find({ customer: user._id, type: "COMPLAINT" })
         .select("_id caseReference subject status priority").sort({ createdAt: -1 }).limit(50).lean(),
     ]);
-    return ok(res, { customer: { ...customerFor(req, user), kycStatus: user.kycVerified ? "VERIFIED" : "NOT_VERIFIED", walletBalance: user.walletBalance },
+    return ok(res, { customer: { ...customerFor(req, user),
+      ...(require("../services/operationsEnterprise.service").operational(req) ? { address: user.address || "" } : {}),
+      kycStatus: user.kycVerified ? "VERIFIED" : "NOT_VERIFIED", walletBalance: user.walletBalance },
       virtualAccount: safe.account(user.virtualAccount), transactions: rows.map(v => ({ ...transaction(v), customerName: user.fullName })),
       tickets: tickets.map((v) => ({ id: id(v), caseReference: v.caseReference, subject: v.subject, status: v.status, priority: v.priority })) });
   } catch (_) { return fail(res, 503, "Customer details are temporarily unavailable."); }

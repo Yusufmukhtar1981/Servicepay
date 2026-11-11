@@ -110,6 +110,28 @@ test.after(async () => {
   await mongo.stop();
 });
 
+test("GLOBAL Operations can assign legacy deliveries without acquiring branch or financial administration", async () => {
+  const role = await Role.create({ name: "OPERATIONS_MANAGER", displayName: "Operations Manager",
+    department: "OPERATIONS", status: "ACTIVE", scopeType: "GLOBAL",
+    permissions: ["operations.workspace.view", "delivery.view", "delivery.assign", "delivery.update"] });
+  const manager = await createUser("STAFF", { isStaff: true, staffRoleId: role._id });
+  const customer = await createUser("CUSTOMER");
+  const delivery = await createDelivery(customer);
+  const rider = await createUser("DELIVERY_RIDER", {
+    riderId: "OPS-LEGACY-RIDER", riderVerificationStatus: "VERIFIED", availabilityStatus: "ONLINE",
+  });
+  assert.equal((await api({ actor: manager, path: "/api/admin/deliveries" })).status, 200);
+  assert.equal((await api({ actor: manager, path: `/api/admin/deliveries/${delivery._id}/available-riders` })).status, 200);
+  assert.equal((await api({ actor: manager, method: "PATCH",
+    path: `/api/admin/deliveries/${delivery._id}/assign-rider`, body: { riderId: String(rider._id) } })).status, 200);
+  const saved = await Delivery.findById(delivery._id).lean();
+  assert.equal(String(saved.assignedRiderId), String(rider._id));
+  assert.equal(saved.assignmentHistory.length, 1);
+  // Price controls still require the original branch/Head Office guard.
+  assert.equal((await api({ actor: manager, method: "PATCH",
+    path: `/api/admin/deliveries/${delivery._id}/price`, body: { price: 0 } })).status, 403);
+});
+
 test.beforeEach(async () => {
   sequence = 0;
   await Promise.all(models.map((model) => model.collection.deleteMany({})));

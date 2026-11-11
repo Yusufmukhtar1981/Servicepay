@@ -3,6 +3,7 @@ const { protect } = require("../middleware/auth.middleware");
 const { loadStaffRole, requirePermission } = require("../middleware/staffPermission.middleware");
 const c = require("../controllers/staffWorkspace.controller");
 const enterprise = require("../controllers/operationsEnterprise.controller");
+const management = require("../controllers/operationsManagement.controller");
 const router = express.Router();
 router.use(protect, loadStaffRole);
 router.use(require("../middleware/adminAccessLog.middleware"));
@@ -18,6 +19,14 @@ router.use((req, res, next) => {
   next();
 });
 router.get("/overview", c.overview);
+router.get("/operational-hub", management.hub);
+router.get("/operational-report", management.report);
+router.get("/directory", management.directory);
+router.get("/activity", management.activity);
+router.get("/marketplace-operations", management.marketplace);
+router.post("/marketplace-sellers/:id/status", management.sellerStatus);
+router.patch("/customers/:id/profile", requirePermission("users.update"),
+  require("../controllers/customerProfile.controller").updateOperations);
 router.get("/enterprise", enterprise.summary);
 router.get("/enterprise/export", enterprise.exportReport);
 router.get("/transactions/:id/detail", enterprise.detail);

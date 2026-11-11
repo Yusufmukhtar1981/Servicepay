@@ -116,6 +116,9 @@ const canonicalDeliveryStatus = (value = "") => {
 };
 
 const headOfficeAssignment = (req) => req.staffAccess?.isHeadOffice ||
+  (req.staffAccess?.roleName === "OPERATIONS_MANAGER" &&
+    req.staffAccess?.scope?.type === "GLOBAL" &&
+    req.staffAccess?.permissions?.includes("operations.workspace.view")) ||
   ["HEAD_OFFICE", "HEAD_OFFICE_ADMIN", "ADMIN", "SUPER_ADMIN", "SERVICEPAY_SUPER_ADMIN"].includes(req.user?.role);
 const deliveryBranchFilter = (req) => {
   if (

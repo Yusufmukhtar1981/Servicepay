@@ -65,6 +65,16 @@ const {
 } = require("../controllers/adminWalletAdjustment.controller");
 
 const router = express.Router();
+// Existing branch constraints remain unchanged for every other staff role.
+// Only the established GLOBAL Operations workspace can cross branch boundaries,
+// and each route still enforces its delivery/marketplace permission afterward.
+const globalOperations = req => req.staffAccess?.roleName === "OPERATIONS_MANAGER" &&
+  req.staffAccess?.scope?.type === "GLOBAL" &&
+  req.staffAccess?.permissions?.includes("operations.workspace.view");
+const operationalBranchScope = (req, res, next) => globalOperations(req)
+  ? next() : enforceActiveBranchScope(req, res, next);
+const marketplaceModule = (req, res, next) => globalOperations(req)
+  ? next() : requireAssignedBranchModule("MARKETPLACE")(req, res, next);
 router.use("/manual-refunds", require("./manualRefund.routes"));
 const customerProfile = require("../controllers/customerProfile.controller");
 const contactProposal = require("../controllers/customerContactProposal.controller");
@@ -268,7 +278,7 @@ router.get(
   "/deliveries",
   protect,
   loadStaffRole,
-  enforceActiveBranchScope,
+  operationalBranchScope,
   requirePermission(P.DELIVERY_VIEW),
   getAdminDeliveries
 );
@@ -277,7 +287,7 @@ router.get(
   "/deliveries/:id/available-riders",
   protect,
   loadStaffRole,
-  enforceActiveBranchScope,
+  operationalBranchScope,
   requirePermission(P.DELIVERY_ASSIGN),
   getAvailableRiders
 );
@@ -286,7 +296,7 @@ router.patch(
   "/deliveries/:id/assign-rider",
   protect,
   loadStaffRole,
-  enforceActiveBranchScope,
+  operationalBranchScope,
   requirePermission(P.DELIVERY_ASSIGN),
   assignRiderToDelivery
 );
@@ -295,7 +305,7 @@ router.patch(
   "/deliveries/:id/reassign-rider",
   protect,
   loadStaffRole,
-  enforceActiveBranchScope,
+  operationalBranchScope,
   requirePermission(P.DELIVERY_ASSIGN),
   reassignRiderToDelivery
 );
@@ -304,7 +314,7 @@ router.patch(
   "/deliveries/:id/unassign-rider",
   protect,
   loadStaffRole,
-  enforceActiveBranchScope,
+  operationalBranchScope,
   requirePermission(P.DELIVERY_ASSIGN),
   unassignRiderFromDelivery
 );
@@ -313,7 +323,7 @@ router.patch(
   "/deliveries/:id/status",
   protect,
   loadStaffRole,
-  enforceActiveBranchScope,
+  operationalBranchScope,
   requirePermission(P.DELIVERY_UPDATE),
   updateDeliveryStatus
 );
@@ -330,15 +340,15 @@ router.patch(
 const marketplaceView = [
   protect,
   loadStaffRole,
-  enforceActiveBranchScope,
-  requireAssignedBranchModule("MARKETPLACE"),
+  operationalBranchScope,
+  marketplaceModule,
   requirePermission(P.MARKETPLACE_VIEW),
 ];
 const marketplaceModerate = [
   protect,
   loadStaffRole,
-  enforceActiveBranchScope,
-  requireAssignedBranchModule("MARKETPLACE"),
+  operationalBranchScope,
+  marketplaceModule,
   requirePermission(P.MARKETPLACE_MODERATE),
 ];
 

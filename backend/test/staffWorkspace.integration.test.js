@@ -206,7 +206,7 @@ test("customer search uses allowlist projection and escapes regex input", async 
 test("customer detail exposes authorized KYC state and balance without secrets or identity documents", async () => {
   const response = await call(c.customerDetail, { params: { id: String(customer._id) } });
   assert.equal(response.status, 200);
-  assert.deepEqual(Object.keys(response.body.data.customer).sort(), ["createdAt", "email", "fullName", "id", "kycStatus", "phone", "status", "walletBalance"]);
+  assert.deepEqual(Object.keys(response.body.data.customer).sort(), ["address", "createdAt", "email", "fullName", "id", "kycStatus", "phone", "status", "walletBalance"]);
   assert.equal((await call(c.customerDetail, { params: { id: "$ne" } })).status, 404);
 });
 let ticket;
