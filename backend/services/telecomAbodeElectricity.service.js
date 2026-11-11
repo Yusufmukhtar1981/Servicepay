@@ -183,9 +183,9 @@ function createTelecomAbodeElectricity({ bills = createTelecomAbodeBillsProvider
             throw fail("IDEMPOTENCY_CONFLICT", "Request details changed.", 409);
           tx = duplicate; return;
         }
-        if (await Transaction.exists({ customerId, serviceType: "ELECTRICITY", provider: "TELECOM_ABODE",
-          status: "PENDING", idempotencyKey: { $ne: requestKey } }).session(session))
-          throw fail("ELECTRICITY_PENDING_RECOVERY", "An Electricity purchase is unresolved. Check its status; do not submit another request.", 409);
+        // A new confirmed request has independent custody. Same-key retries
+        // returned above; older unknown purchases remain query-only and retain
+        // their debits. The transactional wallet write prevents overspending.
         const config = await readConfig("ELECTRICITY", session);
         if ((config.electricityMarkupBps || 0) !== pricing.markupBps)
           throw fail("ELECTRICITY_PRICE_CHANGED", "Electricity pricing changed before debit.", 409);

@@ -1,3 +1,5 @@
+const startupReadiness = require("./services/startupReadiness.service");
+startupReadiness.configure();
 const marketplaceRoutes = require('./routes/marketplace.routes');
 const adminCardRoutes = require('./routes/adminCard.routes');
 const express = require("express");
@@ -172,7 +174,6 @@ const adminAssignmentsRoutes = require("./routes/adminAssignments.routes");
 const branchRoutes = require("./routes/branch.routes");
 const organizationsRoutes = require("./routes/organizations.routes");
 const adminOrganizationsRoutes = require("./routes/adminOrganizations.routes");
-const organizationTreasuryMigration = require("./services/organizationTreasuryMigration.service");
 const organizationTreasuryWebhookRoutes = require("./routes/organizationTreasuryWebhook.routes");
 const interstateLogisticsRoutes = require("./routes/interstateLogistics.routes");
 const adminInterstateLogisticsRoutes = require("./routes/adminInterstateLogistics.routes");
@@ -490,8 +491,6 @@ console.log(`Starting ServicePay HTTP server on port ${PORT}`);
 async function startServer() {
   // Do not bind until required startup data safety work is complete.
   await connectDB();
-  await require("./services/interstateShipmentIndexMigration.service").migrate();
-  await require("./services/interstateTracking.service").migrateTracking();
   require("./services/interstateTracking.service").startWorker();
   reconcileEduPaySchoolAssets({ limit: 50 }).catch(() => {});
   const edupayAssetReconcileTimer = setInterval(() => reconcileEduPaySchoolAssets({ limit: 50 }).catch(() => {}), 60 * 60 * 1000);
@@ -507,7 +506,6 @@ async function startServer() {
     60 * 1000,
   );
   organizationDocumentCleanupTimer.unref?.();
-  await organizationTreasuryMigration.backfill();
   await new Promise((resolve, reject) => {
     server.once("error", reject);
     server.listen(PORT, "0.0.0.0", resolve);

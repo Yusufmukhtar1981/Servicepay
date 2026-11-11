@@ -132,13 +132,34 @@ test("Admin markup changes the canonical debit, not provider face value or inven
   assert.equal((await User.findById(f.user._id)).walletBalance, 3975);
   assert.equal(f.calls.find(c => c.url.endsWith("/bill")).data.amount, 1000);
 });
-test("clearing client storage cannot debit an unresolved Electricity request under a fresh key", async () => {
+test("an independently confirmed Electricity request is not blocked by an earlier pending purchase", async () => {
   const f = await fixture("timeout"), input = await confirmed(f);
-  await f.service.purchase(f.user._id, input);
-  await assert.rejects(f.service.purchase(f.user._id, { ...input, idempotencyKey: input.idempotencyKey + "-fresh" }),
-    { code: "ELECTRICITY_PENDING_RECOVERY" });
-  assert.equal((await User.findById(f.user._id)).walletBalance, 4000);
+  const first = await f.service.purchase(f.user._id, input);
+  const before = JSON.stringify(await Tx.findById(first.data.transactionId).lean());
+  const independent = { ...input, idempotencyKey: input.idempotencyKey + "-fresh" };
+  f.setMode("combined");
+  const second = await f.service.purchase(f.user._id, independent);
+  await f.service.purchase(f.user._id, independent);
+  assert.notEqual(second.data.transactionId, first.data.transactionId);
+  assert.equal(second.data.status, "SUCCESSFUL");
+  assert.equal((await User.findById(f.user._id)).walletBalance, 3000);
+  assert.equal(f.calls.filter(c => c.url.endsWith("/bill")).length, 2);
+  assert.equal(await Ledger.countDocuments({ user: f.user._id, direction: "DEBIT" }), 2);
+  assert.equal(await Ledger.countDocuments({ user: f.user._id, direction: "CREDIT" }), 0);
+  assert.equal(JSON.stringify(await Tx.findById(first.data.transactionId).lean()), before);
+});
+test("independent concurrent Electricity purchases cannot overspend the wallet", async () => {
+  const f = await fixture("timeout"), input = await confirmed(f);
+  await User.updateOne({ _id: f.user._id }, { $set: { walletBalance: 1500 } });
+  const results = await Promise.allSettled([
+    f.service.purchase(f.user._id, input),
+    f.service.purchase(f.user._id, { ...input, idempotencyKey: input.idempotencyKey + "-other" }),
+  ]);
+  assert.equal(results.filter(r => r.status === "fulfilled").length, 1);
+  assert.equal(results.find(r => r.status === "rejected").reason.code, "INSUFFICIENT_BALANCE");
+  assert.equal((await User.findById(f.user._id)).walletBalance, 500);
   assert.equal(f.calls.filter(c => c.url.endsWith("/bill")).length, 1);
+  assert.equal(await Ledger.countDocuments({ user: f.user._id, direction: "DEBIT" }), 1);
 });
 test("timeout then provider success recovers combined token exactly once across concurrent queries", async () => {
   const f = await fixture("timeout"), input = await confirmed(f);
