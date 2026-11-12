@@ -9,8 +9,10 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'services/api_service.dart';
 import 'services/data_phone.dart';
+import 'services/phone_network_suggestion.dart';
 import 'services/purchase_session_recovery.dart';
 import 'widgets/saved_beneficiaries.dart';
+import 'widgets/beneficiary_phone_entry.dart';
 import 'airtime_result_screen.dart';
 
 class AirtimeScreen extends StatefulWidget {
@@ -20,12 +22,14 @@ class AirtimeScreen extends StatefulWidget {
     this.loadNetworks,
     this.loadBeneficiaries,
     this.pendingContext,
+    this.contactPicker,
   });
 
   final AirtimePurchaseIntent? purchaseIntent;
   final Future<Map<String, dynamic>> Function()? loadNetworks;
   final BeneficiaryLoader? loadBeneficiaries;
   final PendingPurchaseContextLoader? pendingContext;
+  final ContactPhonePicker? contactPicker;
 
   @override
   State<AirtimeScreen> createState() => _AirtimeScreenState();
@@ -48,11 +52,21 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
   bool _processingPurchase = false;
   bool _purchasePending = false;
   late final AirtimePurchaseIntent _purchaseIntent;
+  late final PhoneNetworkSuggestionController _networkSuggestions;
+  late final ContactPhonePicker _contactPicker;
 
   @override
   void initState() {
     super.initState();
     _purchaseIntent = widget.purchaseIntent ?? AirtimePurchaseIntent();
+    _contactPicker = widget.contactPicker ?? ContactPhonePicker();
+    _networkSuggestions = PhoneNetworkSuggestionController(
+      phoneController: phoneController,
+      onSuggestion: (network) async {
+        if (!mounted || !networks.contains(network)) return;
+        setState(() => selectedNetwork = network);
+      },
+    );
     _loadNetworks();
   }
 
@@ -119,6 +133,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
 
   @override
   void dispose() {
+    _networkSuggestions.dispose();
     phoneController.dispose();
     amountController.dispose();
     super.dispose();
@@ -484,6 +499,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                         : (String? value) {
                             if (value == null) return;
 
+                            _networkSuggestions.markManualSelection();
                             setState(() {
                               selectedNetwork = value;
                             });
@@ -510,11 +526,13 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                     ),
                   ),
                   const SizedBox(height: 10),
-                  TextField(
-                    controller: phoneController,
+                  BeneficiaryPhoneEntry(
+                    phoneController: phoneController,
+                    suggestions: _networkSuggestions,
+                    selectedNetwork: selectedNetwork,
+                    picker: _contactPicker,
                     enabled: !isLoading,
-                    keyboardType: TextInputType.phone,
-                    maxLength: 24,
+                    onMessage: showMessage,
                     decoration: InputDecoration(
                       hintText: '08012345678 or +2348012345678',
                       counterText: '',

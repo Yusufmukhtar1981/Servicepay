@@ -6,9 +6,11 @@ import 'widgets/pending_purchase_warning.dart';
 import 'services/api_service.dart';
 import 'services/data_purchase_intent.dart';
 import 'services/data_phone.dart';
+import 'services/phone_network_suggestion.dart';
 import 'receipt_screen.dart';
 import 'widgets/saved_beneficiaries.dart';
 import 'widgets/purchase_processing.dart';
+import 'widgets/beneficiary_phone_entry.dart';
 
 class DataScreen extends StatefulWidget {
   const DataScreen(
@@ -18,7 +20,8 @@ class DataScreen extends StatefulWidget {
       this.purchase,
       this.pendingContext,
       this.loadBeneficiaries,
-      this.saveBeneficiary});
+      this.saveBeneficiary,
+      this.contactPicker});
   final BeneficiaryLoader? loadBeneficiaries;
   final BeneficiarySaver? saveBeneficiary;
   final DataPurchaseIntent? purchaseIntent;
@@ -26,6 +29,7 @@ class DataScreen extends StatefulWidget {
   final Future<Map<String, dynamic>> Function(Map<String, dynamic> input)?
       purchase;
   final PendingPurchaseContextLoader? pendingContext;
+  final ContactPhonePicker? contactPicker;
 
   @override
   State<DataScreen> createState() => _DataScreenState();
@@ -55,6 +59,8 @@ class _DataScreenState extends State<DataScreen> {
   int _catalogGeneration = 0;
   bool isBuyingData = false;
   late final DataPurchaseIntent _purchaseIntent;
+  late final PhoneNetworkSuggestionController _networkSuggestions;
+  late final ContactPhonePicker _contactPicker;
   PurchasePhase _phase = PurchasePhase.idle;
   String? _pendingKey;
 
@@ -64,11 +70,25 @@ class _DataScreenState extends State<DataScreen> {
   void initState() {
     super.initState();
     _purchaseIntent = widget.purchaseIntent ?? DataPurchaseIntent();
+    _contactPicker = widget.contactPicker ?? ContactPhonePicker();
+    _networkSuggestions = PhoneNetworkSuggestionController(
+      phoneController: phoneController,
+      onSuggestion: (network) async {
+        if (!mounted ||
+            !networks.contains(network) ||
+            network == selectedNetwork) {
+          return;
+        }
+        setState(() => selectedNetwork = network);
+        await loadDataPlans();
+      },
+    );
     loadDataPlans();
   }
 
   @override
   void dispose() {
+    _networkSuggestions.dispose();
     phoneController.dispose();
     _phoneFocus.dispose();
     super.dispose();
@@ -805,6 +825,7 @@ class _DataScreenState extends State<DataScreen> {
             onSelected: isBuyingData
                 ? null
                 : (_) async {
+                    _networkSuggestions.markManualSelection();
                     if (selected) return;
 
                     setState(() {
@@ -1019,13 +1040,16 @@ class _DataScreenState extends State<DataScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
-                        TextField(
-                          controller: phoneController,
+                        BeneficiaryPhoneEntry(
+                          phoneController: phoneController,
                           focusNode: _phoneFocus,
-                          onTap: () => _phoneFocus.requestFocus(),
+                          suggestions: _networkSuggestions,
+                          selectedNetwork: selectedNetwork,
+                          picker: _contactPicker,
                           enabled: true,
-                          maxLength: 24,
-                          keyboardType: TextInputType.phone,
+                          onFieldTap: _phoneFocus.requestFocus,
+                          onMessage: (message) =>
+                              showMessage(message, isError: true),
                           decoration: InputDecoration(
                             labelText: 'Beneficiary Phone Number',
                             hintText: '08012345678',
