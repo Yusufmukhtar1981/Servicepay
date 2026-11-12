@@ -3,6 +3,8 @@ const permission = (key, value, module, label, description, risk = "STANDARD") =
 
 const STAFF_PERMISSION_CATALOG = Object.freeze([
   permission("MARKETING_VIEW", "marketing.view", "MARKETING", "View Marketing department", "Read evidence-based acquisition and campaign reports; no customer wallet access."),
+  permission("MARKETING_CUSTOMER_INTELLIGENCE_VIEW", "marketing.customer_intelligence.view", "MARKETING", "View customer intelligence", "Read scoped customer segments and safe transaction activity; no wallet or payment authority.", "PRIVILEGED"),
+  permission("MARKETING_CUSTOMER_INTELLIGENCE_EXPORT", "marketing.customer_intelligence.export", "MARKETING", "Export segmented customer contacts", "Export scoped customer names, phone numbers and emails only; does not grant message dispatch or imply consent.", "PRIVILEGED"),
   permission("MARKETING_CAMPAIGNS_MANAGE", "marketing.campaigns.manage", "MARKETING", "Manage marketing campaigns", "Create, edit, pause and complete campaigns."),
   permission("MARKETING_TEAM_MANAGE", "marketing.team.manage", "MARKETING", "Manage marketing team", "Manage lower-level marketing officers and tasks only.", "PRIVILEGED"),
   permission("MARKETING_REPORTS_MANAGE", "marketing.reports.manage", "MARKETING", "Submit marketing reports", "Submit evidenced reports, proposals and attendance."),

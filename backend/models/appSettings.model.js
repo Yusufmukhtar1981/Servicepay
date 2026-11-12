@@ -721,6 +721,8 @@ const appSettingsSchema =
       // Atlas has no capacity for a new provider-management collection.
       billProviderManagement: { type: mongoose.Schema.Types.Mixed, default: undefined },
       customerLeaderboard: { type: mongoose.Schema.Types.Mixed, default: undefined },
+      // Optional reporting thresholds. No startup write/backfill is required.
+      customerIntelligence: { type: mongoose.Schema.Types.Mixed, default: undefined },
       dataProviderManagement: {
         type: mongoose.Schema.Types.Mixed,
         default: undefined,

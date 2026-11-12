@@ -65,6 +65,7 @@ const {
 } = require("../controllers/adminWalletAdjustment.controller");
 
 const router = express.Router();
+router.use("/customer-intelligence", require("./customerIntelligence.routes"));
 // Existing branch constraints remain unchanged for every other staff role.
 // Only the established GLOBAL Operations workspace can cross branch boundaries,
 // and each route still enforces its delivery/marketplace permission afterward.
