@@ -33,6 +33,7 @@ const sendEmail = async ({
   html,
   text,
   idempotencyKey,
+  sensitive = false,
 }) => {
   try {
     if (!to) {
@@ -48,9 +49,9 @@ const sendEmail = async ({
     const resend = getResend();
 
     if (!resend) {
-      console.log(
-        `[EMAIL] Skipped for ${to}: RESEND_API_KEY is not configured`
-      );
+      console.log(sensitive
+        ? JSON.stringify({ event: "email.delivery.failed", provider: "RESEND", category: "RESEND_NOT_CONFIGURED" })
+        : `[EMAIL] Skipped for ${to}: RESEND_API_KEY is not configured`);
 
       return {
         success: false,
@@ -95,36 +96,47 @@ const sendEmail = async ({
       );
 
     if (error) {
-      console.error(
-        '[EMAIL] Resend send failed:',
-        error
-      );
+      const category = ({
+        validation_error: "PROVIDER_VALIDATION_FAILED", missing_required_field: "PROVIDER_VALIDATION_FAILED",
+        invalid_api_key: "AUTHENTICATION_FAILED", restricted_api_key: "AUTHORIZATION_FAILED",
+        rate_limit_exceeded: "RATE_LIMITED", daily_quota_exceeded: "QUOTA_EXCEEDED",
+        monthly_quota_exceeded: "QUOTA_EXCEEDED",
+      })[error.name] || "PROVIDER_REJECTED";
+      if (sensitive) console.error(JSON.stringify({
+        event: "email.delivery.failed", provider: "RESEND", category,
+      }));
+      else console.error('[EMAIL] Resend send failed:', error);
 
       return {
         success: false,
-        error:
+        reason: category,
+        error: sensitive ? category :
           error.message ||
           JSON.stringify(error),
       };
     }
 
-    console.log(
-      `[EMAIL] Sent successfully to ${to}: ${data?.id || 'NO_ID'}`
-    );
+    if (sensitive && !data?.id) return { success: false, reason: "PROVIDER_ACK_MISSING" };
+    if (sensitive) console.log(JSON.stringify({
+      event: "password_reset.email.accepted", provider: "RESEND",
+      messageId: /^[a-f0-9-]{36}$/i.test(data.id) ? data.id : "REDACTED",
+    }));
+    else console.log(`[EMAIL] Sent successfully to ${to}: ${data?.id || 'NO_ID'}`);
 
     return {
       success: true,
       messageId: data?.id || null,
     };
   } catch (error) {
-    console.error(
-      '[EMAIL] Send failed:',
-      error.message
-    );
+    if (sensitive) console.error(JSON.stringify({
+      event: "email.delivery.failed", provider: "RESEND", category: "TRANSPORT_FAILED",
+    }));
+    else console.error('[EMAIL] Send failed:', error.message);
 
     return {
       success: false,
-      error: error.message,
+      reason: "TRANSPORT_FAILED",
+      error: sensitive ? "TRANSPORT_FAILED" : error.message,
     };
   }
 };

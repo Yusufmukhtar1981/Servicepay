@@ -25,6 +25,7 @@ const {
 const {
   referralValidationRateLimit,
 } = require("../middleware/referralValidationRateLimit.middleware");
+const { passwordRecoveryRateLimit } = require("../middleware/passwordRecoveryRateLimit.middleware");
 
 const router = express.Router();
 const customerProfile = require("../controllers/customerProfile.controller");
@@ -80,6 +81,7 @@ router.get(
 
 router.post(
   "/forgot-password",
+  passwordRecoveryRateLimit,
   forgotPassword
 );
 

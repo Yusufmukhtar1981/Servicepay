@@ -1810,25 +1810,37 @@ exports.changePassword = async (
  */
 exports.forgotPassword = async (req, res) => {
   const genericMessage =
-    "If an account exists with this email, a password reset link has been sent.";
+    "If an eligible account matches, a password reset email has been requested. Check your inbox and spam folder. If it does not arrive, try again later or contact ServicePay Support.";
 
   try {
     const email = String(req.body?.email || "")
       .trim()
       .toLowerCase();
 
-    if (!email) {
+    if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return res.status(200).json({
         success: true,
         message: genericMessage,
       });
     }
 
+    // Configuration errors are global responses, never evidence of an account.
+    if (!emailService.emailEnabled()) {
+      return res.status(503).json({ success: false,
+        message: "Email recovery is temporarily unavailable. Please try again later." });
+    }
+    const frontend = new URL(process.env.FRONTEND_URL || "https://servicepay.ng");
+    if (frontend.protocol !== "https:" || frontend.username || frontend.password) {
+      console.error(JSON.stringify({ event: "password_reset.email.failed", category: "RESET_URL_CONFIGURATION" }));
+      return res.status(503).json({ success: false,
+        message: "Email recovery is temporarily unavailable. Please try again later." });
+    }
+
     const user = await User.findOne({
       email,
     }).select(
       "+passwordResetToken +passwordResetExpires +profileRecoveryBlocked"
-    );
+    ).lean();
 
     if (!user || user.profileRecoveryBlocked?.email === true) {
       return res.status(200).json({
@@ -1849,6 +1861,12 @@ exports.forgotPassword = async (req, res) => {
       return res.status(200).json({ success: true, message: genericMessage });
     }
 
+    // Infer issuance from the existing 15-minute expiry, avoiding a migration.
+    // Persisted cooldown and compare-and-set also protect multiple API instances.
+    if (Number(user.passwordResetExpires) > Date.now() + 14 * 60 * 1000) {
+      return res.status(200).json({ success: true, message: genericMessage });
+    }
+
     const resetToken = crypto
       .randomBytes(32)
       .toString("hex");
@@ -1858,21 +1876,21 @@ exports.forgotPassword = async (req, res) => {
       .update(resetToken)
       .digest("hex");
 
-    user.passwordResetToken = hashedToken;
-    user.passwordResetExpires =
-      Date.now() + 15 * 60 * 1000;
-
-    await user.save({
-      validateBeforeSave: false,
-    });
-
-    const frontendUrl = String(
-      process.env.FRONTEND_URL ||
-        "https://servicepay.ng"
-    ).replace(/\/+$/, "");
+    const claimed = await User.findOneAndUpdate({
+      _id: user._id, email,
+      "profileRecoveryBlocked.email": { $ne: true },
+      passwordResetToken: user.passwordResetToken ?? null,
+      passwordResetExpires: user.passwordResetExpires ?? null,
+    }, {
+      $set: { passwordResetToken: hashedToken,
+        passwordResetExpires: new Date(Date.now() + 15 * 60 * 1000) },
+    }, { returnDocument: "after", timestamps: false }).select("_id");
+    if (!claimed) {
+      return res.status(200).json({ success: true, message: genericMessage });
+    }
 
     const resetUrl =
-      `${frontendUrl}/?reset-password=true&token=${resetToken}`;
+      `${frontend.origin}${frontend.pathname.replace(/\/+$/, "")}/?reset-password=true&token=${resetToken}`;
 
     const firstName =
       String(user.fullName || "Customer")
@@ -1881,6 +1899,8 @@ exports.forgotPassword = async (req, res) => {
 
     const subject =
       "Reset your ServicePay password";
+    const safeFirstName = firstName.replace(/[&<>"']/g, char =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
 
     const text = [
       `Hello ${firstName},`,
@@ -1912,7 +1932,7 @@ exports.forgotPassword = async (req, res) => {
                   </tr>
                   <tr>
                     <td style="padding:28px;">
-                      <p style="font-size:17px;margin-top:0;">Hello ${firstName},</p>
+                      <p style="font-size:17px;margin-top:0;">Hello ${safeFirstName},</p>
 
                       <p style="line-height:1.6;">
                         We received a request to reset your ServicePay password.
@@ -1959,24 +1979,26 @@ exports.forgotPassword = async (req, res) => {
     `;
 
     try {
-      await emailService.sendEmail({
+      const delivery = await emailService.sendEmail({
         to: user.email,
         subject,
         text,
         html,
+        sensitive: true,
       });
+      if (delivery?.success !== true || !delivery.messageId) {
+        throw new Error("EMAIL_NOT_ACCEPTED");
+      }
     } catch (emailError) {
-      user.passwordResetToken = undefined;
-      user.passwordResetExpires = undefined;
-
-      await user.save({
-        validateBeforeSave: false,
-      });
-
-      console.error(
-        "Forgot password email error:",
-        emailError
-      );
+      // Never erase a newer request or materialize unrelated legacy defaults.
+      await User.updateOne({
+        _id: user._id, passwordResetToken: hashedToken,
+      }, {
+        $unset: { passwordResetToken: 1, passwordResetExpires: 1 },
+      }, { timestamps: false });
+      console.error(JSON.stringify({
+        event: "password_reset.email.failed", category: "EMAIL_NOT_ACCEPTED",
+      }));
 
       return res.status(200).json({
         success: true,
@@ -1989,10 +2011,9 @@ exports.forgotPassword = async (req, res) => {
       message: genericMessage,
     });
   } catch (error) {
-    console.error(
-      "Forgot password error:",
-      error
-    );
+    console.error(JSON.stringify({
+      event: "password_reset.request.failed", category: "REQUEST_FAILED",
+    }));
 
     return res.status(200).json({
       success: true,
