@@ -282,12 +282,21 @@ const serializeConfig = (config) => {
 };
 
 const readProviderManagementMatrix = async () => {
-  const configs = await Promise.all([
-    getServiceConfig("AIRTIME"),
-    getServiceConfig("DATA"),
-    getServiceConfig("ELECTRICITY"),
-    getServiceConfig("CABLE"),
+  const services = ["AIRTIME", "DATA", "ELECTRICITY", "CABLE"];
+  // One fresh snapshot per request. Do not cache routing/enablement or change
+  // the session-bound reads used to authorize actual financial operations.
+  const [settings, legacy] = await Promise.all([
+    AppSettings.findOne({ key: "GLOBAL_SETTINGS" })
+      .select("billProviderManagement dataProviderManagement"),
+    ProviderManagementConfig.find({ service: { $in: services } }),
   ]);
+  const configs = services.map(service => {
+    const embedded = service === "DATA" ? settings?.dataProviderManagement
+      : ["AIRTIME", "ELECTRICITY"].includes(service)
+        ? settings?.billProviderManagement?.[service] : null;
+    return embedded ? { service, ...embedded }
+      : legacy.find(row => row.service === service) || defaultServiceConfig(service);
+  });
   return configs.map(serializeConfig);
 };
 
