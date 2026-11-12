@@ -32,6 +32,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
 
   bool isLoading = false;
   bool emailSent = false;
+  int resendCooldownSeconds = 0;
+  Timer? _resendCooldownTimer;
   bool isPhoneLoading = false;
   bool? smsAvailable;
   String phoneAction = 'PASSWORD_RESET';
@@ -63,6 +65,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     emailController.dispose();
     phoneController.dispose();
     _pendingExpiryTimer?.cancel();
+    _resendCooldownTimer?.cancel();
     if (_ownsClient) _client.close();
     super.dispose();
   }
@@ -237,9 +240,16 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   }
 
   Future<void> sendResetLink() async {
-    final bool valid = formKey.currentState?.validate() ?? false;
+    if (isLoading || resendCooldownSeconds > 0) {
+      return;
+    }
 
-    if (!valid || isLoading) {
+    final FormState? form = formKey.currentState;
+    final bool valid = form != null
+        ? form.validate()
+        : validateEmail(emailController.text) == null;
+
+    if (!valid) {
       return;
     }
 
@@ -254,7 +264,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         '$baseUrl/auth/forgot-password',
       );
 
-      final http.Response response = await http
+      final http.Response response = await _client
           .post(
             endpoint,
             headers: const {
@@ -297,11 +307,10 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       setState(() {
         emailSent = true;
       });
+      _startResendCooldown();
 
       showMessage(
-        serverMessage.isNotEmpty
-            ? serverMessage
-            : 'Password reset instructions have been sent.',
+        'If the details match an eligible account, recovery instructions may be sent to its registered email.',
         isError: false,
       );
     } on TimeoutException {
@@ -330,6 +339,23 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         });
       }
     }
+  }
+
+  void _startResendCooldown() {
+    _resendCooldownTimer?.cancel();
+    setState(() => resendCooldownSeconds = 60);
+    _resendCooldownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      if (resendCooldownSeconds <= 1) {
+        timer.cancel();
+        setState(() => resendCooldownSeconds = 0);
+      } else {
+        setState(() => resendCooldownSeconds -= 1);
+      }
+    });
   }
 
   Widget buildServicePayLogo() {
@@ -522,7 +548,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             height: 9,
           ),
           Text(
-            'Enter the email address registered with your ServicePay account. We will send you a secure password reset link.',
+            'Enter the email address registered with your ServicePay account to request a secure password reset link.',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: Colors.grey.shade600,
@@ -841,7 +867,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           height: 20,
         ),
         const Text(
-          'Check your email',
+          'Request submitted',
           textAlign: TextAlign.center,
           style: TextStyle(
             color: Color(
@@ -855,7 +881,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           height: 12,
         ),
         Text(
-          'If a ServicePay account exists for $email, a password reset link has been sent.',
+          'If a ServicePay account exists for $email, recovery instructions may be sent to its registered email. Check your inbox, including Spam and Promotions. If you do not receive an email, request another link after 60 seconds or contact ServicePay Support.',
+          key: const Key('forgot-password-success-message'),
           textAlign: TextAlign.center,
           style: TextStyle(
             color: Colors.grey.shade700,
@@ -897,7 +924,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               ),
               Expanded(
                 child: Text(
-                  'The password reset link expires after 20 minutes. Also check your Spam or Promotions folder.',
+                  'The password reset link expires after 15 minutes. Also check your Spam or Promotions folder.',
+                  key: Key('forgot-password-expiry-message'),
                   style: TextStyle(
                     color: Color(
                       0xFF7C2D12,
@@ -943,16 +971,17 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           height: 12,
         ),
         TextButton(
-          onPressed: isLoading
+          key: const Key('forgot-password-resend'),
+          onPressed: isLoading || resendCooldownSeconds > 0
               ? null
-              : () {
-                  setState(() {
-                    emailSent = false;
-                  });
-                },
-          child: const Text(
-            'Send another link',
-            style: TextStyle(
+              : sendResetLink,
+          child: Text(
+            isLoading
+                ? 'Sending...'
+                : resendCooldownSeconds > 0
+                    ? 'Request another link in ${resendCooldownSeconds}s'
+                    : 'Send another link',
+            style: const TextStyle(
               color: primaryColor,
               fontWeight: FontWeight.w700,
             ),
