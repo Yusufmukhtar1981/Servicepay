@@ -51,6 +51,9 @@ const adminAuditLogSchema =
         required: true,
         index: true,
         enum: [
+          "EXECUTIVE_REPORT_VIEWED",
+          "EXECUTIVE_FINANCIAL_REPORT_VIEWED",
+          "EXECUTIVE_REPORT_EXPORTED",
           "FINANCIAL_REPORT_VIEWED",
           "FINANCIAL_REPORT_EXPORTED",
           "FINANCIAL_EXPENSE_RECORDED",

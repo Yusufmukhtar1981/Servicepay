@@ -2,6 +2,8 @@ const permission = (key, value, module, label, description, risk = "STANDARD") =
   Object.freeze({ key, value, module, label, description, risk });
 
 const STAFF_PERMISSION_CATALOG = Object.freeze([
+  permission("EXECUTIVE_CONTROL_CENTER_VIEW", "executive.control_center.view", "ADMINISTRATION", "View Executive Control Center", "Explicit global staff grant with existing customer and transaction read permissions; no payment authority.", "HIGH"),
+  permission("EXECUTIVE_CONTROL_CENTER_EXPORT", "executive.control_center.export", "ADMINISTRATION", "Export executive reports", "Read-only aggregate reports; financial exports additionally require existing Head Office finance access.", "HIGH"),
   permission("MARKETING_VIEW", "marketing.view", "MARKETING", "View Marketing department", "Read evidence-based acquisition and campaign reports; no customer wallet access."),
   permission("MARKETING_CUSTOMER_INTELLIGENCE_VIEW", "marketing.customer_intelligence.view", "MARKETING", "View customer intelligence", "Read scoped customer segments and safe transaction activity; no wallet or payment authority.", "PRIVILEGED"),
   permission("MARKETING_CUSTOMER_INTELLIGENCE_EXPORT", "marketing.customer_intelligence.export", "MARKETING", "Export segmented customer contacts", "Export scoped customer names, phone numbers and emails only; does not grant message dispatch or imply consent.", "PRIVILEGED"),
