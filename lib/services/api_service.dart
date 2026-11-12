@@ -13,6 +13,48 @@ class ApiService {
   static const Duration billPaymentTimeout = Duration(seconds: 25);
   static const Duration secondaryReadTimeout = Duration(seconds: 4);
 
+  /// Shares only concurrent, read-only catalog GETs within the same session.
+  /// Entries are removed as soon as the request settles; this is not a cache.
+  static final Map<String, Future<Map<String, dynamic>>> _inFlightCatalogReads =
+      {};
+
+  static Future<Map<String, dynamic>> _catalogRead({
+    required String token,
+    required Uri uri,
+  }) async {
+    final key = jsonEncode([token, uri.toString()]);
+    var pending = _inFlightCatalogReads[key];
+    if (pending == null) {
+      late final Future<Map<String, dynamic>> request;
+      request = Future<Map<String, dynamic>>.microtask(() async {
+        try {
+          final response = await http.get(uri, headers: {
+            'Accept': 'application/json',
+            'Authorization': 'Bearer $token',
+          }).timeout(requestTimeout);
+          return _handleResponse(response);
+        } finally {
+          if (identical(_inFlightCatalogReads[key], request)) {
+            _inFlightCatalogReads.remove(key);
+          }
+        }
+      });
+      _inFlightCatalogReads[key] = request;
+      pending = request;
+    }
+    return _copyJsonValue(await pending) as Map<String, dynamic>;
+  }
+
+  static dynamic _copyJsonValue(dynamic value) {
+    if (value is Map) {
+      return value.map<String, dynamic>(
+        (key, nested) => MapEntry(key.toString(), _copyJsonValue(nested)),
+      );
+    }
+    if (value is List) return value.map(_copyJsonValue).toList();
+    return value;
+  }
+
   static Future<List<Map<String, dynamic>>> cachedBeneficiaries() async {
     final token = await _getAuthToken();
     final owner = SavedNumbersCache.ownerForToken(token);
@@ -146,15 +188,7 @@ class ApiService {
       '${Uri.encodeComponent(selectedNetwork)}',
     );
 
-    final http.Response response = await http.get(
-      uri,
-      headers: {
-        'Accept': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
-    ).timeout(requestTimeout);
-
-    return _handleResponse(response);
+    return _catalogRead(token: token, uri: uri);
   }
 
   static Future<Map<String, dynamic>> buyAirtime({
@@ -206,12 +240,10 @@ class ApiService {
 
   static Future<Map<String, dynamic>> getAirtimeNetworks() async {
     final token = await _getAuthToken();
-    final response = await http
-        .get(Uri.parse('$baseUrl/clubkonnect/airtime/networks'), headers: {
-      'Authorization': 'Bearer $token',
-      'Accept': 'application/json'
-    }).timeout(requestTimeout);
-    return _handleResponse(response);
+    return _catalogRead(
+      token: token,
+      uri: Uri.parse('$baseUrl/clubkonnect/airtime/networks'),
+    );
   }
 
   static Future<Map<String, dynamic>> quoteAirtime({

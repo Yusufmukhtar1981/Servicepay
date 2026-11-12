@@ -54,7 +54,12 @@ void main() {
       );
       await tester.pump();
 
-      expect(find.text('Processing your transaction'), findsOneWidget);
+      expect(
+        find.text(
+          'ServicePay is processing your transaction. Please wait...',
+        ),
+        findsOneWidget,
+      );
       expect(
         find.text('Please wait while we process your transaction...'),
         findsOneWidget,
@@ -76,25 +81,27 @@ void main() {
         home: const Scaffold(body: Text('Previous route')),
       ),
     );
-    navigatorKey.currentState!.push<void>(
-      MaterialPageRoute<void>(
-        builder: (_) => Scaffold(
-          body: PurchaseProcessing(
-            processing: true,
-            nonBlocking: true,
-            service: 'data',
-            child: Center(
-              child: ElevatedButton(
-                onPressed: () => taps++,
-                child: const Text('Underlying action'),
-              ),
+    final route = MaterialPageRoute<void>(
+      builder: (_) => Scaffold(
+        body: PurchaseProcessing(
+          processing: true,
+          nonBlocking: true,
+          service: 'data',
+          child: Center(
+            child: ElevatedButton(
+              onPressed: () => taps++,
+              child: const Text('Underlying action'),
             ),
           ),
         ),
       ),
     );
+    navigatorKey.currentState!.push<void>(route);
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 300));
+    // SDKs use different Android transition durations. Complete the route
+    // animation, not the intentionally continuous processing spinner.
+    await tester.pump(route.transitionDuration);
+    await tester.pump();
 
     await tester.tap(
       find.text('Underlying action'),
@@ -105,7 +112,11 @@ void main() {
 
     await navigatorKey.currentState!.maybePop();
     await tester.pump(const Duration(milliseconds: 100));
-    expect(find.text('Processing your transaction'), findsOneWidget);
+    expect(route.isCurrent, isTrue);
+    expect(
+      find.text('ServicePay is processing your transaction. Please wait...'),
+      findsOneWidget,
+    );
     expect(find.text('Previous route'), findsNothing);
   });
 
@@ -122,12 +133,16 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('PROCESSING — check History for updates.'), findsOneWidget);
+    expect(
+        find.text('PROCESSING — check History for updates.'), findsOneWidget);
     expect(
       find.text('Your request key is saved. Do not submit again.'),
       findsOneWidget,
     );
-    expect(find.text('Processing your transaction'), findsNothing);
+    expect(
+      find.text('ServicePay is processing your transaction. Please wait...'),
+      findsNothing,
+    );
     await tester.tap(find.text('Underlying action'));
     await tester.pump();
     expect(taps, 1);
@@ -159,11 +174,17 @@ void main() {
       ),
     );
     await tester.pump();
-    expect(find.text('Processing your transaction'), findsOneWidget);
+    expect(
+      find.text('ServicePay is processing your transaction. Please wait...'),
+      findsOneWidget,
+    );
 
     await tester.tap(find.text('Complete'));
     await tester.pumpAndSettle();
-    expect(find.text('Processing your transaction'), findsNothing);
+    expect(
+      find.text('ServicePay is processing your transaction. Please wait...'),
+      findsNothing,
+    );
     expect(find.text('Purchase screen'), findsOneWidget);
   });
 }

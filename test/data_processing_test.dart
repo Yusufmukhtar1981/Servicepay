@@ -96,15 +96,17 @@ void main() {
               .nonBlocking,
           isTrue);
       await tester.pump(const Duration(milliseconds: 200));
-      final bounds = tester
-           .getRect(find.text('Processing your transaction'));
+      final bounds = tester.getRect(find
+          .text('ServicePay is processing your transaction. Please wait...'));
       expect(bounds.top, greaterThanOrEqualTo(0));
       expect(bounds.bottom, lessThan(800));
       expect(bounds.left, greaterThanOrEqualTo(0));
       expect(bounds.right, lessThanOrEqualTo(width));
       expect(submits, 1);
       await tester.pump(const Duration(seconds: 2));
-      expect(find.text('Processing your transaction'),
+      expect(
+          find.text(
+              'ServicePay is processing your transaction. Please wait...'),
           findsOneWidget);
       expect(submits, 1);
       result.complete({
@@ -116,7 +118,9 @@ void main() {
       await tester.pump();
       await tester.pumpAndSettle();
       expect(
-          find.text('Processing your transaction'), findsNothing);
+          find.text(
+              'ServicePay is processing your transaction. Please wait...'),
+          findsNothing);
       expect(find.text('Data Purchase Successful'), findsOneWidget);
       expect(submits, 1);
       expect(tester.takeException(), isNull);
@@ -175,10 +179,12 @@ void main() {
       expect(submits, 1);
       expect(storage.entries.values.single, contains(submittedKey!));
       expect(storage.entries.values.single, contains('"submitted":true'));
-      expect(find.text('Processing your transaction'),
+      expect(
+          find.text(
+              'ServicePay is processing your transaction. Please wait...'),
           findsOneWidget);
-      final progressBounds = tester
-          .getRect(find.text('Processing your transaction'));
+      final progressBounds = tester.getRect(find
+          .text('ServicePay is processing your transaction. Please wait...'));
       expect(progressBounds.top, greaterThanOrEqualTo(0));
       expect(progressBounds.bottom, lessThanOrEqualTo(1200));
       expect(find.text('Data Purchase Successful'), findsNothing);
@@ -201,7 +207,9 @@ void main() {
       });
       await tester.pumpAndSettle();
       expect(
-          find.text('Processing your transaction'), findsNothing);
+          find.text(
+              'ServicePay is processing your transaction. Please wait...'),
+          findsNothing);
       expect(submits, 1);
       expect(find.text('Data Purchase Successful'),
           finalStatus == 'SUCCESSFUL' ? findsOneWidget : findsNothing);

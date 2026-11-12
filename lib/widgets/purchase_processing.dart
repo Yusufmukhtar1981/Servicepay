@@ -78,9 +78,7 @@ class PurchaseProcessing extends StatelessWidget {
                           child: Semantics(
                             liveRegion: true,
                             label: [
-                              service.toLowerCase() == 'airtime'
-                                  ? 'ServicePay is processing your transaction. Please wait...'
-                                  : 'Processing your transaction',
+                              'ServicePay is processing your transaction. Please wait...',
                               if (requestId?.isNotEmpty == true)
                                 'Request ID: $requestId',
                             ].join('. '),
@@ -133,9 +131,7 @@ class PurchaseProcessing extends StatelessWidget {
                                     ),
                                     const SizedBox(height: 20),
                                     Text(
-                                      service.toLowerCase() == 'airtime'
-                                          ? 'ServicePay is processing your transaction. Please wait...'
-                                          : 'Processing your transaction',
+                                      'ServicePay is processing your transaction. Please wait...',
                                       textAlign: TextAlign.center,
                                       style: Theme.of(context)
                                           .textTheme
