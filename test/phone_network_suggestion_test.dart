@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,15 +10,33 @@ import 'package:servicepay_app/services/phone_network_suggestion.dart';
 import 'package:servicepay_app/widgets/beneficiary_phone_entry.dart';
 
 class _Picker extends ContactPhonePicker {
-  _Picker(this.result, {this.failure, bool supported = true})
-      : super(supported: supported);
+  _Picker(
+    this.result, {
+    this.failure,
+    this.phoneNumbers,
+    this.pendingResult,
+    bool supported = true,
+  }) : super(supported: supported);
 
   final String? result;
   final ContactPickerFailure? failure;
+  final List<String>? phoneNumbers;
+  final Completer<String?>? pendingResult;
+  int calls = 0;
 
   @override
-  Future<String?> pickPhoneNumber() async {
+  Future<String?> pickPhoneNumber({
+    Future<String?> Function(List<String> phoneNumbers)? chooseNumber,
+  }) async {
+    calls++;
     if (failure != null) throw ContactPickerException(failure!);
+    if (pendingResult != null) return pendingResult!.future;
+    final candidates = phoneNumbers;
+    if (candidates != null) {
+      final chooser = chooseNumber;
+      if (chooser == null) return null;
+      return chooser(candidates);
+    }
     return result;
   }
 }
@@ -49,6 +69,18 @@ void main() {
           isNull);
       expect(PhoneNetworkSuggestionController.suggestNetwork('2348021234567'),
           'Airtel');
+      expect(PhoneNetworkSuggestionController.suggestNetwork('07051234567'),
+          'Glo');
+      expect(PhoneNetworkSuggestionController.suggestNetwork('07071234567'),
+          'MTN');
+      expect(PhoneNetworkSuggestionController.suggestNetwork('07081234567'),
+          'Airtel');
+      expect(PhoneNetworkSuggestionController.suggestNetwork('09041234567'),
+          'Airtel');
+      expect(PhoneNetworkSuggestionController.suggestNetwork('09111234567'),
+          'Airtel');
+      expect(PhoneNetworkSuggestionController.suggestNetwork('08011234567'),
+          isNull);
     });
 
     test('debounces, cancels stale work and reapplies for a new number',
@@ -317,7 +349,14 @@ void main() {
         ),
       ),
     ));
-    expect(find.text('Select Contact'), findsNothing);
+    expect(find.text('Select Contact'), findsOneWidget);
+    expect(
+      tester
+          .widget<OutlinedButton>(
+              find.byKey(const Key('beneficiary-select-contact')))
+          .onPressed,
+      isNull,
+    );
     expect(find.textContaining('Enter the number manually'), findsOneWidget);
     await tester.enterText(find.byType(TextField), '08031234567');
     await tester.pump();
@@ -325,6 +364,10 @@ void main() {
     expect(find.text('Checking number prefix…'), findsOneWidget);
     await tester.pump(const Duration(milliseconds: 301));
     expect(find.textContaining('Prefix-based suggestion: MTN'), findsOneWidget);
+    await tester.enterText(find.byType(TextField), '08011234567');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 301));
+    expect(find.textContaining('0801 is not a prefix'), findsOneWidget);
   });
 
   testWidgets('tapping the selected Data network cancels pending suggestion',
@@ -354,6 +397,118 @@ void main() {
     expect(find.text('Network selected manually: MTN.'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('contact selection asks user to choose among multiple numbers',
+      (tester) async {
+    final phone = TextEditingController();
+    final suggestions = PhoneNetworkSuggestionController(
+      phoneController: phone,
+      onSuggestion: (_) async {},
+    );
+    addTearDown(() {
+      phone.dispose();
+      suggestions.dispose();
+    });
+    final picker = _Picker(
+      null,
+      phoneNumbers: ['08031234567', '08131234567'],
+    );
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: BeneficiaryPhoneEntry(
+          phoneController: phone,
+          suggestions: suggestions,
+          selectedNetwork: 'MTN',
+          decoration: const InputDecoration(labelText: 'Phone'),
+          enabled: true,
+          picker: picker,
+        ),
+      ),
+    ));
+
+    await tester.tap(find.text('Select Contact'));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Choose a phone number'), findsOneWidget);
+    expect(find.text('08031234567'), findsOneWidget);
+    await tester.tap(find.text('08131234567'));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(phone.text, '08131234567');
+    expect(picker.calls, 1);
+    await tester.pump(const Duration(milliseconds: 500));
+  });
+
+  testWidgets('cancelling multi-number selection leaves the field unchanged',
+      (tester) async {
+    final phone = TextEditingController();
+    final suggestions = PhoneNetworkSuggestionController(
+      phoneController: phone,
+      onSuggestion: (_) async {},
+    );
+    addTearDown(() {
+      phone.dispose();
+      suggestions.dispose();
+    });
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: BeneficiaryPhoneEntry(
+          phoneController: phone,
+          suggestions: suggestions,
+          selectedNetwork: 'MTN',
+          decoration: const InputDecoration(labelText: 'Phone'),
+          enabled: true,
+          picker: _Picker(null, phoneNumbers: ['08031234567', '08131234567']),
+        ),
+      ),
+    ));
+    await tester.tap(find.text('Select Contact'));
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('Cancel'));
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(phone.text, isEmpty);
+  });
+
+  testWidgets('contact action is busy-guarded while the picker is open',
+      (tester) async {
+    final phone = TextEditingController();
+    final suggestions = PhoneNetworkSuggestionController(
+      phoneController: phone,
+      onSuggestion: (_) async {},
+    );
+    addTearDown(() {
+      phone.dispose();
+      suggestions.dispose();
+    });
+    final pending = Completer<String?>();
+    final picker = _Picker(null, pendingResult: pending);
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: BeneficiaryPhoneEntry(
+          phoneController: phone,
+          suggestions: suggestions,
+          selectedNetwork: 'MTN',
+          decoration: const InputDecoration(labelText: 'Phone'),
+          enabled: true,
+          picker: picker,
+        ),
+      ),
+    ));
+    await tester.tap(find.text('Select Contact'));
+    await tester.pump();
+    expect(picker.calls, 1);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(
+      tester
+          .widget<OutlinedButton>(
+              find.byKey(const Key('beneficiary-select-contact')))
+          .onPressed,
+      isNull,
+    );
+    pending.complete('08031234567');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(phone.text, '08031234567');
+    expect(picker.calls, 1);
   });
 
   testWidgets('320px phone entry keeps contact action and suggestion visible',

@@ -1,10 +1,12 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import 'data_phone.dart';
+import 'contact_picker_stub.dart'
+    if (dart.library.io) 'contact_picker_native.dart'
+    if (dart.library.js_interop) 'contact_picker_web.dart' as platform;
 
 /// Prefix-based Nigerian mobile network suggestions. This is not an MNP
 /// lookup, so customers can always select a different network manually.
@@ -38,6 +40,7 @@ class PhoneNetworkSuggestionController extends ChangeNotifier {
       '0703',
       '0704',
       '0706',
+      '0707',
       '0803',
       '0806',
       '0810',
@@ -51,15 +54,18 @@ class PhoneNetworkSuggestionController extends ChangeNotifier {
     ],
     'Airtel': [
       '0701',
+      '0708',
       '0802',
       '0808',
       '0812',
       '0901',
       '0902',
+      '0904',
       '0907',
       '0912',
+      '0911',
     ],
-    'Glo': ['0805', '0807', '0811', '0815', '0905', '0915'],
+    'Glo': ['0705', '0805', '0807', '0811', '0815', '0905', '0915'],
     '9mobile': ['0809', '0817', '0818', '0908', '0909'],
   };
 
@@ -73,6 +79,18 @@ class PhoneNetworkSuggestionController extends ChangeNotifier {
   }
 
   String get normalizedPhone => _canonicalPhone;
+
+  String? get unsupportedNetworkExplanation {
+    if (_canonicalPhone.startsWith('0801')) {
+      return '0801 is not a prefix of MTN, Airtel, Glo or 9mobile. '
+          'Choose the current network manually only if this number was ported.';
+    }
+    if (_canonicalPhone.startsWith('0804')) {
+      return '0804 is allocated to M-Tel, not one of these four networks. '
+          'Choose the current network manually only if this number was ported.';
+    }
+    return null;
+  }
 
   void markManualSelection() {
     hasManualOverride = true;
@@ -137,23 +155,39 @@ class ContactPhonePicker {
   ContactPhonePicker({
     MethodChannel? channel,
     bool? supported,
-  })  : _channel = channel ?? const MethodChannel('ng.servicepay.app/contacts'),
+  })  : _channel = channel,
         _supported = supported;
 
-  final MethodChannel _channel;
+  final MethodChannel? _channel;
   final bool? _supported;
 
   bool get isSupported {
-    if (_supported != null) return _supported!;
-    return !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+    if (_supported != null) return _supported;
+    return platform.supported;
   }
 
-  Future<String?> pickPhoneNumber() async {
+  Future<String?> pickPhoneNumber({
+    Future<String?> Function(List<String> numbers)? chooseNumber,
+  }) async {
     if (!isSupported) {
       throw const ContactPickerException(ContactPickerFailure.unsupported);
     }
     try {
-      return await _channel.invokeMethod<String>('pickPhoneNumber');
+      final injectedChannel = _channel;
+      if (injectedChannel != null) {
+        return await injectedChannel.invokeMethod<String>('pickPhoneNumber');
+      }
+      final selected = await platform.selectPhoneNumbers();
+      if (selected == null) return null;
+      final numbers = selected
+          .map(normalizeDataPhone)
+          .where((number) => number.isNotEmpty)
+          .toSet()
+          .toList();
+      if (numbers.isEmpty) return null;
+      if (numbers.length == 1) return numbers.single;
+      // A contact may have several numbers. Never silently pick the first.
+      return chooseNumber == null ? null : await chooseNumber(numbers);
     } on PlatformException catch (error) {
       if (error.code == 'permission_denied') {
         throw const ContactPickerException(

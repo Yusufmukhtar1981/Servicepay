@@ -2841,37 +2841,10 @@ class _DashboardScreenState extends State<DashboardScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Wrap(
-            alignment: WrapAlignment.spaceBetween,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: 12,
-            runSpacing: 8,
-            children: <Widget>[
-              const Text(
-                'Services',
-                style: TextStyle(
-                  color: Color(0xFF173629),
-                  fontSize: 17,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              if (allServicesGate.visible)
-                TextButton(
-                  key: const Key('customer-all-services'),
-                  onPressed: allServicesGate.isBlocked ? null : openAllServices,
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 6),
-                    minimumSize: const Size(0, 44),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  child: Text(
-                    allServicesGate.isBlocked
-                        ? 'Services unavailable'
-                        : 'All Services',
-                    softWrap: true,
-                  ),
-                ),
-            ],
+          CustomerServicesSectionHeader(
+            showAllServices: allServicesGate.visible,
+            allServicesUnavailable: allServicesGate.isBlocked,
+            onAllServices: openAllServices,
           ),
           const SizedBox(height: 8),
           LayoutBuilder(
@@ -5823,6 +5796,69 @@ class _DashboardService {
       keywords: keywords ?? this.keywords,
       onTap: onTap ?? this.onTap,
       unavailable: unavailable ?? this.unavailable,
+    );
+  }
+}
+
+/// Shared by the quick-services section and focused layout tests so the real
+/// dashboard header remains a single, non-wrapping row at every width.
+class CustomerServicesSectionHeader extends StatelessWidget {
+  const CustomerServicesSectionHeader({
+    super.key,
+    required this.showAllServices,
+    required this.allServicesUnavailable,
+    required this.onAllServices,
+  });
+
+  final bool showAllServices;
+  final bool allServicesUnavailable;
+  final VoidCallback? onAllServices;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: <Widget>[
+        Flexible(
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: const Text(
+              'Services',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Color(0xFF173629),
+                fontSize: 17,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+        ),
+        if (showAllServices)
+          Flexible(
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                key: const Key('customer-all-services'),
+                onPressed: allServicesUnavailable ? null : onAllServices,
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 6),
+                  minimumSize: const Size(0, 44),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: Text(
+                  allServicesUnavailable
+                      ? 'Services unavailable'
+                      : 'All Services',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  softWrap: false,
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
