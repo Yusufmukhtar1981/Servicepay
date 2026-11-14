@@ -76,9 +76,9 @@ function createRouter({ authenticate = protect, loadRole = loadStaffRole, ready 
   router.get("/admin/controls", controls.controls);
   router.put("/admin/controls", ho, requirePermission(P.BUSINESS_NETWORK_MANAGE), controls.saveControls);
   router.get("/admin/pricing", controls.pricing);
-  router.put("/admin/pricing", ho, requireExplicitPermission(P.FINANCE_APPROVE), controls.savePricing);
+  router.put("/admin/pricing", ho, requirePermission(P.BUSINESS_NETWORK_MANAGE), controls.savePricing);
   router.get("/admin/airtime-pricing", controls.airtimePricing);
-  router.put("/admin/airtime-pricing", ho, requireExplicitPermission(P.FINANCE_APPROVE), controls.saveAirtimePricing);
+  router.put("/admin/airtime-pricing", ho, requirePermission(P.BUSINESS_NETWORK_MANAGE), controls.saveAirtimePricing);
   router.get("/admin/configuration-history", controls.history);
   router.get("/admin/premium", premium.settings);
   router.put("/admin/premium", ho, requirePermission(P.BUSINESS_NETWORK_MANAGE), (req, res, next) => {

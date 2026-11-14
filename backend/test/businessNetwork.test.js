@@ -176,7 +176,7 @@ test("disabled benefits reject direct business requests without hiding existing 
   assert.equal((await call("POST", `/profiles/${merchant._id}/branches`, { name: "Another", address: "Not admitted" })).status, 403);
   assert.equal((await call("PATCH", `/staff/${invitation.data.staff._id}`, { status: "SUSPENDED" })).status, 200);
 });
-test("Data category pricing uses the existing plan authority with explicit finance permission, atomic updates and no Customer price changes", async () => {
+test("Data category pricing uses Head Office network management, atomic updates and no Customer price changes", async () => {
   const C = require("../services/telecomAbodeDataCatalog.service"), Pricing = require("../services/businessNetwork.pricing");
   const original = C.getCatalog;
   C.getCatalog = async () => [{ code: "TEST-DATA-ID", pricingCode: "canonical-plan", name: "Sandbox 1GB", price: 80 }];
@@ -186,7 +186,8 @@ test("Data category pricing uses the existing plan authority with explicit finan
       { code: "TEST-DATA-ID", category: "AGENT", revision: 0, rule: { enabled: true, sellingPrice: 90, maximumProviderCost: 85 } },
       { code: "TEST-DATA-ID", category: "MERCHANT", revision: 0, rule: { enabled: true, sellingPrice: 95, maximumProviderCost: 90 } },
     ] };
-    assert.equal((await call("PUT", "/admin/pricing", request, users.admin)).status, 403);
+    assert.equal((await call("PUT", "/admin/pricing", request, users.other)).status, 403);
+    assert.equal((await call("PUT", "/admin/pricing", {}, users.admin)).status, 400);
     assert.equal((await call("PUT", "/admin/pricing", request, users.finance)).status, 200);
     const saved = await Pricing.Prices.findById(row._id).lean();
     assert.equal(saved.sellingPrice, 100); assert.equal(Pricing.dataPrice(saved, "CUSTOMER", 80), 100);
@@ -212,7 +213,7 @@ test("business price context requires the authenticated owner's active approved 
   await call("POST", `/admin/profiles/${profile._id}/review`, { status: "SUSPENDED", revision: profile.revision }, users.admin);
   await assert.rejects(Pricing.category(users.customer, "AGENT"), { code: "NETWORK_APPROVAL_REQUIRED" });
 });
-test("Airtime pricing requires explicit finance authority and preserves Customer pricing and provider routing", async () => {
+test("Airtime pricing requires Head Office network management and preserves Customer pricing and provider routing", async () => {
   const provider = require("../services/telecomAbodeBillsProvider.service"), manager = require("../services/providerManagement.service");
   const oldProvider = provider.createTelecomAbodeBillsProvider, oldConfig = manager.getServiceConfig;
   provider.createTelecomAbodeBillsProvider = () => ({ getAirtimeNetworks: async () => [{ providerId: 7, displayName: "Sandbox MTN" }] });
@@ -222,7 +223,8 @@ test("Airtime pricing requires explicit finance authority and preserves Customer
       { network: "7", category: "AGENT", enabled: true, markupBps: 400 },
       { network: "7", category: "MERCHANT", enabled: true, markupBps: 500 },
     ] };
-    assert.equal((await call("PUT", "/admin/airtime-pricing", body, users.admin)).status, 403);
+    assert.equal((await call("PUT", "/admin/airtime-pricing", body, users.other)).status, 403);
+    assert.equal((await call("PUT", "/admin/airtime-pricing", {}, users.admin)).status, 400);
     assert.equal((await call("PUT", "/admin/airtime-pricing", { ...body, changes: [{ ...body.changes[0], markupBps: -1 }] }, users.finance)).status, 400);
     assert.equal((await call("PUT", "/admin/airtime-pricing", { ...body, changes: [{ ...body.changes[0], markupBps: 100 }] }, users.finance)).status, 400);
     assert.equal((await call("PUT", "/admin/airtime-pricing", { ...body, changes: [{ ...body.changes[0], category: "CUSTOMER" }] }, users.finance)).status, 400);
