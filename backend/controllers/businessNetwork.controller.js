@@ -1,6 +1,7 @@
 "use strict";
 const S = require("../services/businessNetwork.service");
 const { M, P, User, Transaction } = S;
+const catalogue = require("../services/businessNetwork.catalogue");
 const detailsFields = ["businessName", "businessCategory", "ownerName", "phone", "email", "state", "lga", "address", "description", "registrationNumber"];
 const output = (res, data, status = 200) => res.status(status).json({ success: true, data });
 const wrap = callback => async (req, res, next) => { try { await callback(req, res); } catch (error) { next(error); } };
@@ -33,23 +34,35 @@ exports.support = wrap(async (req, res) => {
   const subject = P.text(req.body.subject, "support subject", 160, true);
   const message = P.text(req.body.message, "support message", 3000, true);
   const key = P.text(req.body.idempotencyKey, "support request key", 90, true);
+  const reference = P.text(req.body.transactionReference, "transaction reference", 150);
+  let transactionLookupId;
+  if (reference) {
+    const own = await Transaction.findOne({ customerId: req.user._id, reference }).select("_id").lean();
+    if (!own) P.fail("The selected transaction was not found in your history.", "NETWORK_NOT_FOUND", 404);
+    transactionLookupId = `transaction:${own._id}`;
+  }
   req.body = { subject: `${kind} business support: ${subject}`, description: message,
-    category: "OTHER", priority: "NORMAL", idempotencyKey: `network:${key}` };
+    category: "OTHER", priority: "NORMAL", idempotencyKey: `network:${key}`,
+    ...(transactionLookupId ? { transactionLookupId } : {}) };
   return require("./support.controller").createTicket(req, res);
 });
 exports.me = wrap(async (req, res) => {
   const user = await User.findById(req.user._id).select("fullName phone email kycVerified").lean();
   const applications = await M.Profile.find({ owner: req.user._id }).lean();
-  const memberships = await M.Staff.find({ user: req.user._id, status: { $in: ["INVITED", "ACTIVE"] } }).populate("profile", "networkId details.businessName status").lean();
+  const memberships = await M.Staff.find({ user: req.user._id, status: { $in: ["INVITED", "ACTIVE"] } }).populate("profile", "networkId kind services details.businessName status").lean();
+  const settings = await M.Settings.findById("network");
   output(res, { customer: user, applications, memberships, features: P.features,
-    categories: (await M.Settings.findById("network"))?.categories || new M.Settings().categories, supportedServices: P.billServices });
+    categories: settings?.categories || new M.Settings().categories,
+    supportedServices: P.billServices, serviceCatalogue: await catalogue.catalogue(settings) });
 });
 exports.save = wrap(async (req, res) => {
-  const kind = kindFrom(req), allowed = new Set([...detailsFields, "preferredServices", "revision"]);
+  const kind = kindFrom(req), allowed = new Set([...detailsFields, "preferredServices", "revision", "kind"]);
   if (Object.keys(req.body).some(k => !allowed.has(k))) P.fail("An unsupported application field was supplied.");
+  if (req.body.kind !== undefined && P.kind(req.body.kind) !== kind)
+    P.fail("The selected application type does not match this application.");
   const details = {};
   for (const key of detailsFields) details[key] = P.text(req.body[key], key, key === "description" ? 2000 : 300);
-  details.preferredServices = P.services(req.body.preferredServices || []);
+  details.preferredServices = catalogue.preferences(req.body.preferredServices || []);
   const result = await S.atomic(async session => {
     const prior = await M.Profile.findOne({ owner: req.user._id, kind }).session(session);
     if (prior && !["DRAFT", "REJECTED"].includes(prior.status)) P.fail("Only draft or rejected applications can be edited.", "NETWORK_CONFLICT", 409);
@@ -69,6 +82,7 @@ exports.submit = wrap(async (req, res) => {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(found.details.email)) P.fail("Provide a valid business contact email.");
   if (!/^\+?\d{10,15}$/.test(found.details.phone.replace(/[\s()-]/g, ""))) P.fail("Provide a valid contact phone.");
   if (!found.details.preferredServices.length) P.fail("Select at least one supported service.");
+  await catalogue.validate(found.details.preferredServices, found.kind, await M.Settings.findById("network"));
   if (found.kind === "MERCHANT") {
     P.text(found.details.businessCategory, "business category", 100, true);
     const categories = (await M.Settings.findById("network"))?.categories || new M.Settings().categories;
@@ -94,7 +108,9 @@ exports.dashboard = wrap(async (req, res) => {
   start = new Date(start.getTime() - 3600000);
   const summary = await S.summary({ profile: profile._id, ...(membership ? { branch: membership.branch } : {}) }, { from: start });
   const commissions = membership ? P.totals([]) : (await S.commissionRows({ profile: profile._id })).totals;
-  output(res, { profile, summary, commissions, features: P.features });
+  const safeProfile = profile.toObject();
+  if (membership) delete safeProfile.directory;
+  output(res, { profile: safeProfile, summary, commissions, features: P.features });
 });
 exports.transactions = wrap(async (req, res) => {
   const { profile, membership } = await S.profileFor(req.user, kindFrom(req), { profileId: req.query.profileId, approved: false });
@@ -177,7 +193,10 @@ exports.review = wrap(async (req, res) => {
       const owner = await User.findOne({ _id: profile.owner, role: "CUSTOMER", status: "ACTIVE", kycVerified: true }).session(session);
       if (!owner) P.fail("The Customer must be active with existing verified KYC before approval.", "NETWORK_KYC_REQUIRED", 409);
       profile.services = P.services(req.body.services || profile.services);
-      if (!profile.services.length || profile.services.some(v => !profile.details.preferredServices.includes(v))) P.fail("Approve only services requested by the applicant.");
+      await catalogue.validate(profile.services, profile.kind, await M.Settings.findById("network").session(session), { processing: true, session });
+      if (profile.services.some(v => !profile.details.preferredServices.includes(v))) P.fail("Approve only services requested by the applicant.");
+      // An approved product/logistics business need not receive bill-payment
+      // authority. Empty services grants NO purchase attribution or commission.
       profile.group = P.text(req.body.group || profile.group, "commission group", 80, true);
       const now = new Date(); profile.approvedAt ||= now; profile.approvalWindows.push({ start: now, services: profile.services, group: profile.group });
     }

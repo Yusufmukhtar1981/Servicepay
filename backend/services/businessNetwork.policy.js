@@ -1,7 +1,8 @@
 "use strict";
 const kinds = ["AGENT", "MERCHANT"];
 const billServices = ["AIRTIME", "DATA", "ELECTRICITY", "CABLE", "EXAM_PIN"];
-const features = Object.freeze({ merchantQr: false, payByLink: false, automaticPayouts: false });
+const features = Object.freeze({ merchantQr: false, payByLink: false, automaticPayouts: false,
+  rechargeVouchers: false, dataVouchers: false, specialPurchasePricing: false, bulkPurchases: false });
 function fail(message, code = "NETWORK_VALIDATION", status = 400) {
   const error = new Error(message); Object.assign(error, { code, status }); throw error;
 }
@@ -16,8 +17,9 @@ function integer(value, name, min = 0, max = Number.MAX_SAFE_INTEGER) {
   return value;
 }
 function kind(value) {
-  if (!kinds.includes(value)) fail("Select Agent or Merchant.");
-  return value;
+  const canonical = typeof value === "string" ? value.trim().toUpperCase() : "";
+  if (!kinds.includes(canonical)) fail("Select Agent or Merchant.");
+  return canonical;
 }
 function services(value) {
   if (!Array.isArray(value) || value.length > billServices.length || value.some(v => !billServices.includes(v))) fail("Unsupported business service.");

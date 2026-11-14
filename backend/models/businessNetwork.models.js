@@ -20,6 +20,9 @@ const profileSchema = new Schema({
   services: [String],
   group: { type: String, default: "STANDARD" },
   approvedAt: Date,
+  level: String,
+  publicProfile: { type: Boolean, default: false },
+  directory: [{ name: String, phone: String, email: String, consentAt: Date }],
   approvalWindows: [{ _id: false, start: { type: Date, required: true }, end: Date, services: [String], group: String }],
 }, options);
 profileSchema.index({ owner: 1, kind: 1 }, { unique: true });
@@ -88,6 +91,9 @@ auditSchema.index({ profile: 1, createdAt: -1 });
 const settingsSchema = new Schema({
   _id: { type: String, default: "network" },
   categories: { type: [String], default: ["Retail", "Food and hospitality", "Professional services", "Other"] },
+  premium: { type: Schema.Types.Mixed, default: undefined },
+  revision: { type: Number, default: 0 },
+  loyaltyFence: { type: Number, default: 0 },
 }, options);
 const settlementSchema = new Schema({
   reference: { type: String, required: true },

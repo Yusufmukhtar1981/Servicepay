@@ -103,6 +103,7 @@ async function reconcileActivity(activityId) {
     const profile = await M.Profile.findById(activity.profile).session(session);
     const tx = await Transaction.findById(activity.transaction).session(session).lean();
     if (!tx || !profile) return;
+    await require("./businessNetwork.premium").loyalty(activity, profile, tx, session);
     const accrual = await M.Ledger.findOne({ eventKey: `earn:${tx._id}` }).session(session);
     if (accrual && P.refunded(tx)) {
       if (!await M.Ledger.exists({ eventKey: `reverse:${tx._id}` }).session(session)) {

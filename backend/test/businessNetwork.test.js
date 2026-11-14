@@ -319,3 +319,232 @@ test("paginated commission statements retain complete totals and public transact
   assert.ok(first.data.items[0].reference); assert.equal(first.data.items[0].serviceType, "DATA");
   assert.deepEqual(first.data.totals, P.totals(all));
 });
+test("lowercase deployed Agent and Merchant URLs canonicalize without bypassing kind validation", async () => {
+  for (const kind of ["agent", "merchant"]) {
+    let r = await call("PUT", "/applications/" + kind, { businessName: "Partial draft" });
+    assert.equal(r.status, 200); assert.equal(r.data.profile.kind, kind.toUpperCase());
+    r = await call("PUT", "/applications/" + kind, { ...detail, revision: r.data.profile.revision });
+    assert.equal(r.status, 200);
+    assert.equal((await call("POST", `/applications/${kind}/submit`, { revision: r.data.profile.revision })).status, 200);
+    assert.equal((await call("PUT", "/applications/" + kind, { ...detail, revision: r.data.profile.revision })).status, 409);
+  }
+  assert.equal((await call("PUT", "/applications/nonsense", detail)).status, 400);
+});
+test("catalogue derives global controls, business-type availability and explicit non-payment interests", async () => {
+  const C = require("../services/businessNetwork.catalogue");
+  const rows = C.build({ fintechControl: { featureRegistry: { data: { enabled: false } } } },
+    { premium: { businessServices: { AGENT: ["AIRTIME", "DELIVERY"] } } });
+  assert.equal(rows.AGENT.find(x => x.code === "DATA").preferencesEnabled, false);
+  assert.equal(rows.AGENT.find(x => x.code === "ELECTRICITY").preferencesEnabled, false);
+  assert.equal(rows.AGENT.find(x => x.code === "AIRTIME").processable, true);
+  assert.equal(rows.AGENT.find(x => x.code === "DELIVERY").processable, false);
+  assert.match(rows.AGENT.find(x => x.code === "DELIVERY").reason, /interest only/);
+  assert.equal(rows.MERCHANT.find(x => x.code === "FLIGHT").available, false);
+  assert(rows.MERCHANT.some(x => x.code === "SOLAR")); assert(rows.AGENT.some(x => x.code === "NIN"));
+  assert(!rows.AGENT.some(x => /WALLET|TRANSFER/.test(x.code)));
+});
+test("full preferred catalogue persists without pretending business interests are bill-payment capabilities", async () => {
+  let r = await call("PUT", "/applications/AGENT", { ...detail, preferredServices: ["DATA", "DELIVERY", "SOLAR", "NIN"] });
+  assert.equal(r.status, 200);
+  r = await call("POST", "/applications/agent/submit", { revision: r.data.profile.revision });
+  assert.equal(r.status, 200);
+  assert.equal((await call("POST", `/admin/profiles/${r.data.profile._id}/review`,
+    { revision: r.data.profile.revision, status: "APPROVED", services: ["DELIVERY"], reason: "Unsupported delegation" }, users.admin)).status, 400);
+  assert.equal((await call("PUT", "/applications/MERCHANT", { ...detail, preferredServices: ["MADE_UP_PROVIDER"] })).status, 400);
+});
+test("a saved draft retains services disabled later but cannot submit or activate them", async () => {
+  let r = await call("PUT", "/applications/AGENT", detail);
+  await M.Settings.create({ _id: "network", premium: { businessServices: { AGENT: ["AIRTIME"] } } });
+  assert.equal((await call("GET", "/me")).data.applications[0].details.preferredServices.includes("DATA"), true);
+  assert.equal((await call("POST", "/applications/AGENT/submit", { revision: r.data.profile.revision })).status, 400);
+});
+test("private directory requires consent, isolates businesses and never exposes source user records", async () => {
+  await approved();
+  assert.equal((await call("POST", "/directory/agent", { name: "Private contact", phone: "08011112222" })).status, 400);
+  let r = await call("POST", "/directory/agent", { name: "Private contact", phone: "08011112222", consentAcknowledged: true });
+  assert.equal(r.status, 201);
+  const contact = r.data.items[0];
+  assert.equal((await call("GET", "/directory/agent", null, users.other)).status, 404);
+  assert.equal((await call("POST", "/directory/agent", { name: "Duplicate", phone: "08011112222", consentAcknowledged: true })).status, 409);
+  assert.equal((await call("DELETE", `/directory/agent/${contact._id}`)).status, 200);
+  assert.equal((await call("GET", "/directory/agent")).data.items.length, 0);
+  assert.equal((await User.findById(users.customer._id)).walletBalance, 4321.12);
+});
+test("manual expense retries are idempotent under concurrency and never debit wallets", async () => {
+  const p = await approved(), payload = { amountKobo: 1200, description: "Bookkeeping only", reference: "paper-1", idempotencyKey: randomUUID() };
+  const results = await Promise.all(Array.from({ length: 4 }, () => call("POST", "/expenses/agent", payload)));
+  assert(results.every(r => r.status === 200), JSON.stringify(results));
+  assert.equal(await M.Audit.countDocuments({ profile: p._id, action: "BUSINESS_EXPENSE_RECORDED" }), 1);
+  assert.equal((await call("POST", "/expenses/agent", { ...payload, amountKobo: 5000 })).status, 409);
+  const tools = await call("GET", "/tools/agent?period=day");
+  assert.equal(tools.data.expenses.amountKobo, 1200); assert.equal(tools.data.stats.transactions, 0);
+  assert.equal((await call("GET", "/expenses/agent")).data.walletDebit, false);
+});
+test("business profiles are opt-in, escaped and contain no contact, wallet or KYC details", async () => {
+  const p = await approved();
+  assert.equal((await call("GET", "/public/" + p.networkId)).status, 404);
+  assert.equal((await call("POST", "/public-profile/agent", { enabled: true })).status, 400);
+  await M.Profile.updateOne({ _id: p._id }, { $set: { "details.businessName": "<script>alert(1)</script>" } });
+  assert.equal((await call("POST", "/public-profile/agent", { enabled: true, consentAcknowledged: true })).status, 200);
+  const r = await fetch(origin + "/public/" + p.networkId), html = await r.text();
+  assert.equal(r.status, 200); assert(html.includes("&lt;script&gt;"));
+  assert(!html.includes("<script>")); assert(!html.includes(detail.phone)); assert(!html.includes(detail.email)); assert(!html.includes(String(users.customer._id)));
+  assert.equal((await call("POST", "/public-profile/agent", { enabled: false, consentAcknowledged: true })).status, 200);
+  assert.equal((await fetch(origin + "/public/" + p.networkId)).status, 404);
+});
+test("unsupported vouchers, special-price admissions and bulk purchases fail closed", async () => {
+  for (const capability of ["rechargeVouchers", "dataVouchers", "bulkPurchases", "specialPurchasePricing"]) {
+    const r = await call("POST", "/capabilities/" + capability, {});
+    assert.equal(r.status, 409); assert.equal(r.body.code, "NETWORK_CAPABILITY_DISABLED");
+  }
+  assert.equal(await Transaction.countDocuments({}), 0);
+});
+test("premium controls preserve all existing categories and reject unauthorized financial configuration", async () => {
+  assert.equal((await call("PUT", "/admin/premium", { revision: 0, reason: "Not authorized", configuration: { loyalty: {} } }, users.admin)).status, 403);
+  let r = await call("PUT", "/admin/premium", { revision: 0, reason: "Local catalogue scope", configuration: { businessServices: { AGENT: ["DATA"] } } }, users.admin);
+  assert.equal(r.status, 200);
+  assert((await M.Settings.findById("network")).categories.includes("Retail"));
+  assert.equal((await call("PUT", "/admin/premium", { revision: 0, reason: "Stale", configuration: { campaigns: [] } }, users.admin)).status, 409);
+  assert.equal((await call("PUT", "/admin/premium", { revision: 1, reason: "Unsafe", configuration: { automaticPayouts: true } }, users.finance)).status, 400);
+});
+test("loyalty earns once on a verified new purchase, respects lifetime caps and reverses without wallet changes", async () => {
+  const p = await approved();
+  const r = await call("PUT", "/admin/premium", { revision: 0, reason: "Sandbox non-cash point policy",
+    configuration: { loyalty: { enabled: true, pointsPerTransaction: 7, maxPointsPerCustomer: 10, expiryDays: 1, eligibleServices: ["DATA"] } } }, users.finance);
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const first = await source(), second = await source();
+  await link(first); await link(second);
+  const activities = await M.Activity.find({});
+  await Promise.all(Array.from({ length: 4 }, () => S.reconcileActivity(activities[0]._id)));
+  let tools = (await call("GET", "/tools/agent")).data;
+  assert.equal(tools.loyalty.earned, 10); assert.equal(tools.loyalty.available, 10);
+  assert.equal(tools.loyalty.cashValueKobo, 0); assert.equal(tools.loyalty.redemptionEnabled, false);
+  await Transaction.updateOne({ _id: first._id }, { $set: { status: "REFUNDED", reversalLedgerEntryId: finiteId() } });
+  await S.reconcileActivity(activities.find(a => String(a.transaction) === String(first._id))._id);
+  tools = (await call("GET", "/tools/agent")).data;
+  assert.equal(tools.loyalty.available, 3); assert.equal(tools.loyalty.reversed, 7);
+  assert.equal(await M.Audit.countDocuments({ profile: p._id, action: "LOYALTY_EARNED" }), 2);
+  assert.equal(tools.stats.transactions, 1); assert.equal(tools.stats.volumeKobo, 100000);
+});
+test("failed, pending, reversed, unconfirmed and pre-policy purchases never create usable loyalty rewards", async () => {
+  await approved();
+  const old = await source();
+  await call("PUT", "/admin/premium", { revision: 0, reason: "Local point policy", configuration: { loyalty: {
+    enabled: true, pointsPerTransaction: 5, maxPointsPerCustomer: 30, expiryDays: 1, eligibleServices: ["DATA"] } } }, users.finance);
+  for (const patch of [{ status: "FAILED" }, { status: "PENDING" }, { reversalLedgerEntryId: finiteId() }, { providerStatus: "UNKNOWN" }])
+    await link(await source(users.customer, patch));
+  await link(old);
+  assert.equal((await call("GET", "/tools/agent")).data.loyalty.available, 0);
+  const B = require("../services/businessNetwork.premium");
+  const config = B.defaults();
+  assert.throws(() => B.configure({ loyalty: { enabled: true, pointsPerTransaction: 5, maxPointsPerCustomer: 1, expiryDays: 0, eligibleServices: ["DATA"] } }, config));
+});
+test("Agent level assignment requires explicit finance permission and verified qualification", async () => {
+  const p = await approved(), B = require("../services/businessNetwork.premium");
+  const levels = B.defaults().levels;
+  Object.assign(levels[0], { enabled: true, minTransactions: 1, commissionGroup: "STARTER" });
+  let r = await call("PUT", "/admin/premium", { revision: 0, reason: "Sandbox levels", configuration: { levels } }, users.finance);
+  assert.equal(r.status, 200);
+  assert.equal((await call("POST", `/admin/profiles/${p._id}/level`, { level: "STARTER", revision: p.revision, reason: "Unqualified" }, users.finance)).status, 409);
+  await link(await source());
+  const refreshed = await M.Profile.findById(p._id);
+  assert.equal((await call("POST", `/admin/profiles/${p._id}/level`, { level: "STARTER", revision: refreshed.revision, reason: "No finance" }, users.admin)).status, 403);
+  r = await call("POST", `/admin/profiles/${p._id}/level`, { level: "STARTER", revision: refreshed.revision, reason: "Verified sandbox threshold" }, users.finance);
+  assert.equal(r.status, 200, JSON.stringify(r.body)); assert.equal(r.data.profile.level, "STARTER");
+  assert.equal(r.data.profile.group, "STARTER");
+  assert.equal(r.data.profile.approvalWindows.length, 2);
+  const ranks = await call("GET", "/admin/performance?kind=AGENT", null, users.admin);
+  assert.equal(ranks.data.items[0].transactions, 1);
+});
+test("staff cannot see private owner tools, contact lists, loyalty or owner bookkeeping", async () => {
+  const p = await approved("MERCHANT");
+  const branch = (await call("POST", `/profiles/${p._id}/branches`, { name: "Sandbox branch", address: "Sandbox" })).data.branch;
+  const staff = (await call("POST", `/profiles/${p._id}/staff`, { userId: String(users.other._id), branchId: branch._id, permissions: ["reports"] })).data.staff;
+  await call("POST", `/staff/${staff._id}/accept`, {}, users.other);
+  await call("POST", "/directory/MERCHANT", { name: "Private", phone: "08011112222", consentAcknowledged: true });
+  for (const endpoint of ["tools", "directory", "expenses"])
+    assert.equal((await call("GET", `/${endpoint}/MERCHANT?profileId=${p._id}`, null, users.other)).status, 403);
+  const dashboard = await call("GET", `/dashboard/MERCHANT?profileId=${p._id}`, null, users.other);
+  assert.equal(dashboard.status, 200); assert.equal(dashboard.data.profile.directory, undefined);
+});
+test("premium reports distinguish commission income from purchase volume and never invent live voucher stock", async () => {
+  await approved(); await rule(); await link(await source());
+  const r = await call("GET", "/tools/agent?period=day");
+  assert.equal(r.status, 200); assert.equal(r.data.stats.volumeKobo, 100000);
+  assert.equal(r.data.commissionIncomeKobo, 500); assert.equal(r.data.netCommissionAfterExpensesKobo, 500);
+  assert.equal(r.data.salesRevenueKobo, null);
+  assert.equal(r.data.bestSellingServices[0].service, "DATA");
+  assert.equal(r.data.transactionSummary.successful, 1);
+  assert.equal(r.data.voucherContract.enabled, false);
+  const stock = await call("GET", "/vouchers/agent");
+  assert.equal(stock.status, 200); assert.equal(stock.data.inventoryVerified, false); assert.equal(stock.data.items.length, 0);
+  assert.equal((await call("POST", "/vouchers/agent/purchase", { quantity: 1, type: "data" })).status, 409);
+  assert.equal((await call("GET", "/admin/vouchers", null, users.admin)).data.enabled, false);
+  const loyalty = await call("GET", "/admin/loyalty", null, users.admin);
+  assert.equal(loyalty.status, 200); assert.equal(loyalty.data.items.length, 1); assert.equal(loyalty.data.cashValueKobo, 0);
+});
+test("goals and campaigns use configured periods, verified counts and authoritative dates", async () => {
+  await approved();
+  const r = await call("PUT", "/admin/premium", { revision: 0, reason: "Local non-financial targets", configuration: {
+    goals: [{ title: "Local target", kind: "AGENT", period: "day", targetTransactions: 1, targetVolumeKobo: 100000 }],
+    campaigns: [{ title: "Local announcement", kind: "AGENT", description: "Synthetic sandbox announcement",
+      startsAt: new Date(Date.now() - 10000).toISOString(), endsAt: new Date(Date.now() + 60000).toISOString(), enabled: true }],
+  } }, users.admin);
+  assert.equal(r.status, 200);
+  await link(await source(users.customer, { status: "PENDING" }));
+  assert.equal((await call("GET", "/tools/agent")).data.goals[0].completed, false);
+  await link(await source());
+  const tools = (await call("GET", "/tools/agent")).data;
+  assert.equal(tools.goals[0].completed, true); assert.equal(tools.campaigns.length, 1);
+  const B = require("../services/businessNetwork.premium");
+  assert.throws(() => B.configure({ goals: [{ title: "Invalid", kind: "AGENT", period: "all", targetTransactions: 0, targetVolumeKobo: 0 }] }, B.defaults()));
+  assert.throws(() => B.configure({ campaigns: [{ title: "Invalid", kind: "AGENT", description: "Invalid dates",
+    startsAt: new Date().toISOString(), endsAt: new Date(0).toISOString(), enabled: true }] }, B.defaults()));
+});
+test("the customer loyalty cap is global across Agent and Merchant profiles under concurrent reconciliation", async () => {
+  const agent = await approved(), merchant = await approved("MERCHANT");
+  await call("PUT", "/admin/premium", { revision: 0, reason: "Global sandbox customer cap", configuration: {
+    loyalty: { enabled: true, pointsPerTransaction: 7, maxPointsPerCustomer: 10, expiryDays: 1, eligibleServices: ["DATA"] },
+  } }, users.finance);
+  const first = await source(), second = await source();
+  await M.Activity.insertMany([{ profile: agent._id, transaction: first._id, actor: users.customer._id, consent: { acknowledged: true, acknowledgedAt: new Date() } },
+    { profile: merchant._id, transaction: second._id, actor: users.customer._id, consent: { acknowledged: true, acknowledgedAt: new Date() } }]);
+  await Promise.all((await M.Activity.find({})).map(row => S.reconcileActivity(row._id)));
+  const rewards = await M.Audit.find({ action: "LOYALTY_EARNED" }).lean();
+  assert.equal(rewards.reduce((sum, row) => sum + row.metadata.points, 0), 10);
+  const config = await M.Settings.findById("network");
+  assert.equal(config.revision, 1); assert.equal(config.loyaltyFence, 2);
+});
+test("expired loyalty is unavailable without deleting or rewriting its immutable journal", async () => {
+  const p = await approved(), B = require("../services/businessNetwork.premium");
+  await call("PUT", "/admin/premium", { revision: 0, reason: "Expiry sandbox", configuration: {
+    loyalty: { enabled: true, pointsPerTransaction: 7, maxPointsPerCustomer: 10, expiryDays: 1, eligibleServices: ["DATA"] },
+  } }, users.finance);
+  await link(await source());
+  const statement = await B.loyaltyStatement(new mongoose.Types.ObjectId(p._id), Date.now() + 2 * 86400000);
+  assert.equal(statement.earned, 7); assert.equal(statement.available, 0); assert.equal(statement.expired, 7);
+  assert.equal(await M.Audit.countDocuments({ profile: p._id, action: "LOYALTY_EARNED" }), 1);
+});
+test("a product-only Merchant can be approved without receiving bill-payment or commission authority", async () => {
+  let r = await call("PUT", "/applications/merchant", { ...detail, preferredServices: ["DELIVERY", "SOLAR"] });
+  r = await call("POST", "/applications/merchant/submit", { revision: r.data.profile.revision });
+  r = await call("POST", `/admin/profiles/${r.data.profile._id}/review`, { status: "APPROVED", services: [],
+    revision: r.data.profile.revision, reason: "Business tools only; no bill-payment delegation" }, users.admin);
+  assert.equal(r.status, 200); assert.deepEqual(r.data.profile.services, []);
+  assert.equal((await call("GET", "/tools/merchant")).status, 200);
+  assert.equal((await link(await source(), "MERCHANT")).status, 403);
+});
+test("business support cannot attach another customer's transaction reference", async () => {
+  const tx = await source(users.other);
+  const r = await call("POST", "/support", { kind: "agent", subject: "Local ticket", message: "Sandbox",
+    idempotencyKey: randomUUID(), transactionReference: tx.reference });
+  assert.equal(r.status, 404);
+});
+test("the explicit Flutter payload kind must agree with the canonical route and legacy clients remain supported", async () => {
+  let r = await call("PUT", "/applications/agent", { ...detail, kind: "AGENT" });
+  assert.equal(r.status, 200); assert.equal(r.data.profile.kind, "AGENT");
+  assert.equal((await call("PUT", "/applications/merchant", { ...detail, kind: "AGENT" })).status, 400);
+  assert.equal((await call("PUT", "/applications/merchant", { ...detail, kind: { value: "MERCHANT" } })).status, 400);
+  r = await call("PUT", "/applications/merchant", detail);
+  assert.equal(r.status, 200); assert.equal(r.data.profile.kind, "MERCHANT");
+});
