@@ -2,6 +2,9 @@ const permission = (key, value, module, label, description, risk = "STANDARD") =
   Object.freeze({ key, value, module, label, description, risk });
 
 const STAFF_PERMISSION_CATALOG = Object.freeze([
+  permission("BUSINESS_NETWORK_VIEW", "business_network.view", "BUSINESS_NETWORK", "View Business Network", "Read retail Agent and SME Merchant records within the verified management scope.", "PRIVILEGED"),
+  permission("BUSINESS_NETWORK_MANAGE", "business_network.manage", "BUSINESS_NETWORK", "Manage Business Network", "Head Office application review and business configuration; no wallet or bank authority.", "HIGH"),
+  permission("BUSINESS_NETWORK_EXPORT", "business_network.export", "BUSINESS_NETWORK", "Export Business Network reports", "Export business transactions within the verified management scope.", "PRIVILEGED"),
   permission("EXECUTIVE_CONTROL_CENTER_VIEW", "executive.control_center.view", "ADMINISTRATION", "View Executive Control Center", "Explicit global staff grant with existing customer and transaction read permissions; no payment authority.", "HIGH"),
   permission("EXECUTIVE_CONTROL_CENTER_EXPORT", "executive.control_center.export", "ADMINISTRATION", "Export executive reports", "Read-only aggregate reports; financial exports additionally require existing Head Office finance access.", "HIGH"),
   permission("MARKETING_VIEW", "marketing.view", "MARKETING", "View Marketing department", "Read evidence-based acquisition and campaign reports; no customer wallet access."),

@@ -444,6 +444,7 @@ app.use("/api/business-partner", businessPartnerRoutes);
 app.use("/api/admin/assignments", adminAssignmentsRoutes);
 app.use("/api/branches", branchRoutes);
 app.use("/api/organizations", organizationsRoutes);
+app.use("/api/business-network", require("./routes/businessNetwork.routes"));
 app.use("/api/admin/organizations", adminOrganizationsRoutes);
 /* Interstate logistics is additive; legacy /api/delivery remains untouched. */
 app.use("/api/logistics/interstate", interstateLogisticsRoutes);
@@ -515,6 +516,7 @@ async function startServer() {
   require("./services/manualRefundEmail.service").startWorker();
   require("./services/pendingResolutionMonitor.service").start();
   require("./services/marketingPerformance.service").startNotifications();
+  require("./services/businessNetwork.service").start();
   require("./services/telecomAbodeReconciliationWorker.service").startTelecomAbodeReconciliationWorker();
   logFirebaseConfigurationStatus();
 
