@@ -75,6 +75,55 @@ void main() {
     client.close();
   });
 
+  testWidgets('Business Hub AppBar overrides inherited white foreground styles',
+      (tester) async {
+    const ink = Color(0xFF18372A);
+    final client = MockClient((request) async => http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {
+              'customer': {'fullName': 'Ada'},
+              'applications': [],
+              'memberships': [],
+              'categories': [],
+              'supportedServices': [],
+            },
+          }),
+          200,
+        ));
+    await tester.pumpWidget(MaterialApp(
+      theme: ThemeData(
+        appBarTheme: const AppBarTheme(
+          titleTextStyle: TextStyle(color: Colors.white),
+          iconTheme: IconThemeData(color: Colors.white),
+          actionsIconTheme: IconThemeData(color: Colors.white),
+        ),
+      ),
+      home: BusinessHubScreen(
+        api: BusinessNetworkApi(
+          client: client,
+          tokenProvider: () async => 'test-token',
+          baseUrl: 'https://test.servicepay.invalid/api',
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Become an Agent'));
+    await tester.pumpAndSettle();
+
+    final appBar = tester.widget<AppBar>(find.byType(AppBar));
+    expect(appBar.titleTextStyle?.color, ink);
+    expect(appBar.iconTheme?.color, ink);
+    expect(appBar.actionsIconTheme?.color, ink);
+    expect(
+      tester.widget<Text>(find.text('Business application')).style?.color,
+      ink,
+    );
+    expect(tester.widget<Icon>(find.byIcon(Icons.arrow_back)).color, ink);
+    expect(tester.widget<Icon>(find.byIcon(Icons.refresh)).color, ink);
+    client.close();
+  });
+
   testWidgets('merchant form uses server-configured categories and services',
       (tester) async {
     final client = MockClient((_) async => http.Response(

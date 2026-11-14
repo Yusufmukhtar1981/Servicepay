@@ -92,17 +92,35 @@ class _BusinessHubScreenState extends State<BusinessHubScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFFF4F8F5),
         foregroundColor: const Color(0xFF18372A),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
+        titleTextStyle: const TextStyle(
+          color: Color(0xFF18372A),
+          fontWeight: FontWeight.w800,
+        ),
+        iconTheme: const IconThemeData(color: Color(0xFF18372A)),
+        actionsIconTheme: const IconThemeData(color: Color(0xFF18372A)),
+        title: Text(
+          title,
+          style: const TextStyle(
+            color: Color(0xFF18372A),
+            fontWeight: FontWeight.w800,
+          ),
+        ),
         leading: _view == 'hub'
             ? null
             : IconButton(
                 onPressed: () => _open('hub'),
-                icon: const Icon(Icons.arrow_back)),
+                icon: const Icon(
+                  Icons.arrow_back,
+                  color: Color(0xFF18372A),
+                )),
         actions: [
           IconButton(
               onPressed: _loadMe,
               tooltip: 'Refresh',
-              icon: const Icon(Icons.refresh))
+              icon: const Icon(
+                Icons.refresh,
+                color: Color(0xFF18372A),
+              ))
         ],
       ),
       body: _loading && _me == null

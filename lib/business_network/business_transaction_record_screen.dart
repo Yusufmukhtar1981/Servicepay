@@ -106,7 +106,19 @@ class _BusinessTransactionRecordScreenState
     return Scaffold(
       appBar: AppBar(
         foregroundColor: const Color(0xFF18372A),
-        title: const Text('Business transaction record'),
+        titleTextStyle: const TextStyle(
+          color: Color(0xFF18372A),
+          fontWeight: FontWeight.w800,
+        ),
+        iconTheme: const IconThemeData(color: Color(0xFF18372A)),
+        actionsIconTheme: const IconThemeData(color: Color(0xFF18372A)),
+        title: const Text(
+          'Business transaction record',
+          style: TextStyle(
+            color: Color(0xFF18372A),
+            fontWeight: FontWeight.w800,
+          ),
+        ),
       ),
       body: ListView(
         padding: const EdgeInsets.all(20),
