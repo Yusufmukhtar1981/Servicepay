@@ -31,6 +31,7 @@ class _BusinessHubScreenState extends State<BusinessHubScreen> {
   Map<String, dynamic>? _me;
   String? _error;
   bool _loading = true;
+  int _meRevision = 0;
   String _view = 'hub';
   String _kind = 'AGENT';
   String? _selectedProfileId;
@@ -49,6 +50,10 @@ class _BusinessHubScreenState extends State<BusinessHubScreen> {
   }
 
   Future<void> _loadMe() async {
+    await _fetchMe();
+  }
+
+  Future<bool> _fetchMe() async {
     setState(() {
       _loading = true;
       _error = null;
@@ -58,9 +63,26 @@ class _BusinessHubScreenState extends State<BusinessHubScreen> {
       if (mounted) {
         setState(() {
           _me = Map<String, dynamic>.from(data as Map);
+          _meRevision++;
+          if (_view == 'dashboard' && _selectedProfileId != null) {
+            final refreshedCandidates = _dashboardCandidates(_kind).where(
+                (candidate) => _profileId(candidate) == _selectedProfileId);
+            final refreshedSelection =
+                refreshedCandidates.isEmpty ? null : refreshedCandidates.first;
+            if (refreshedSelection == null) {
+              _view = 'hub';
+              _selectedMembership = null;
+              _selectedProfileId = null;
+              _error = 'Selected business access is no longer available.';
+            } else {
+              _selectedMembership = refreshedSelection;
+              _selectedProfileId = _profileId(refreshedSelection);
+            }
+          }
           _loading = false;
         });
       }
+      return true;
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -68,12 +90,17 @@ class _BusinessHubScreenState extends State<BusinessHubScreen> {
           _loading = false;
         });
       }
+      return false;
     }
   }
 
   void _open(String view, {String? kind}) {
     setState(() {
       _view = view;
+      if (view != 'dashboard') {
+        _selectedMembership = null;
+        _selectedProfileId = null;
+      }
       if (kind != null) _kind = kind;
     });
   }
@@ -157,12 +184,15 @@ class _BusinessHubScreenState extends State<BusinessHubScreen> {
                           api: _api,
                           kind: _kind,
                           profile: _selectedMembership ?? _membership(_kind),
-                          profileId: _selectedProfileId ??
-                              _profileId(_membership(_kind)),
+                          profileId: _profileId(
+                              _selectedMembership ?? _membership(_kind)),
                           owner: _isOwner(
                               _selectedMembership ?? _membership(_kind)),
                           ownApprovedBusinessKind:
                               _ownApprovedBusinessKind(_kind),
+                          meRevision: _meRevision,
+                          lookupError: _error,
+                          onRefreshMe: _fetchMe,
                         )
                       : _view == 'applications'
                           ? _ApplicationsView(
@@ -213,13 +243,107 @@ class _BusinessHubScreenState extends State<BusinessHubScreen> {
   }
 
   Map<String, dynamic>? _membership(String kind) {
-    for (final raw in (_me?['memberships'] as List? ?? const [])) {
-      if (raw is Map &&
-          _membershipMatchesKind(Map<String, dynamic>.from(raw), kind)) {
-        return Map<String, dynamic>.from(raw);
-      }
+    final ownerApplication = _ownerApplication(kind);
+    if (ownerApplication != null) return ownerApplication;
+    final memberships = (_me?['memberships'] as List? ?? const [])
+        .whereType<Map>()
+        .map((raw) => Map<String, dynamic>.from(raw))
+        .where((membership) => _membershipMatchesKind(membership, kind))
+        .toList();
+    for (final membership in memberships) {
+      if (_isOwner(membership)) return membership;
     }
+    if (memberships.isNotEmpty) return memberships.first;
     return null;
+  }
+
+  Map<String, dynamic>? _ownerApplication(String kind) {
+    final application = _application(kind);
+    if (application == null) return null;
+    return {
+      'kind': kind,
+      'profileId': application['_id'] ?? application['id'],
+      'profile': application,
+      'status': application['status'],
+      'isOwner': true,
+    };
+  }
+
+  List<Map<String, dynamic>> _dashboardCandidates(String kind) {
+    final candidates = <Map<String, dynamic>>[];
+    final ownerApplication = _ownerApplication(kind);
+    if (ownerApplication != null) candidates.add(ownerApplication);
+    for (final raw in (_me?['memberships'] as List? ?? const [])) {
+      if (raw is! Map) continue;
+      final membership = Map<String, dynamic>.from(raw);
+      if (!_membershipMatchesKind(membership, kind)) continue;
+      final id = _profileId(membership);
+      if (candidates
+          .any((candidate) => id != null && _profileId(candidate) == id)) {
+        continue;
+      }
+      candidates.add(membership);
+    }
+    candidates.sort((a, b) {
+      final aIsOwner = _isOwner(a);
+      final bIsOwner = _isOwner(b);
+      if (aIsOwner == bIsOwner) return 0;
+      return aIsOwner ? -1 : 1;
+    });
+    return candidates;
+  }
+
+  Future<void> _openDashboard(String kind) async {
+    if (!await _fetchMe() || !mounted) return;
+    final candidates = _dashboardCandidates(kind);
+    Map<String, dynamic>? selected;
+    if (candidates.length == 1) {
+      selected = candidates.first;
+    } else if (candidates.length > 1) {
+      selected = await showDialog<Map<String, dynamic>>(
+        context: context,
+        builder: (context) => SimpleDialog(
+          title: const Text('Choose a business'),
+          children: candidates.map((candidate) {
+            final profile = candidate['profile'] is Map
+                ? Map<String, dynamic>.from(candidate['profile'] as Map)
+                : candidate;
+            final details = profile['details'] is Map
+                ? Map<String, dynamic>.from(profile['details'] as Map)
+                : const <String, dynamic>{};
+            final businessName = details['businessName']?.toString();
+            final networkId = profile['networkId']?.toString();
+            final label = businessName?.isNotEmpty == true
+                ? businessName!
+                : networkId?.isNotEmpty == true
+                    ? networkId!
+                    : _profileId(candidate) ?? '$kind business';
+            return SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, candidate),
+              child: Text(
+                '${_isOwner(candidate) ? 'My business' : 'Staff access'} · $label',
+              ),
+            );
+          }).toList(),
+        ),
+      );
+      if (selected == null) return;
+    }
+    if (selected != null && _profileId(selected) == null) {
+      if (mounted) {
+        setState(() {
+          _error = 'Business details could not be matched to a profile.';
+        });
+      }
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      _selectedMembership = selected;
+      _selectedProfileId = _profileId(selected);
+      _kind = kind;
+      _view = 'dashboard';
+    });
   }
 
   bool _membershipMatchesKind(Map<String, dynamic> membership, String kind) {
@@ -243,8 +367,7 @@ class _BusinessHubScreenState extends State<BusinessHubScreen> {
         : const <String, dynamic>{};
     final id = membership['profileId'] ??
         membership['businessProfileId'] ??
-        profile['_id'] ??
-        membership['_id'];
+        profile['_id'];
     return id?.toString();
   }
 
@@ -266,7 +389,6 @@ class _BusinessHubScreenState extends State<BusinessHubScreen> {
         }.contains(role)) {
       return false;
     }
-    if (membership['kind']?.toString().toUpperCase() == 'AGENT') return true;
     if (membership['isOwner'] == true ||
         membership['owner'] == true ||
         role == 'OWNER' ||
@@ -287,72 +409,34 @@ class _BusinessHubScreenState extends State<BusinessHubScreen> {
   }
 
   String? _ownApprovedBusinessKind(String currentKind) {
-    final memberships = (_me?['memberships'] as List? ?? const [])
-        .whereType<Map>()
-        .map((raw) => Map<String, dynamic>.from(raw))
-        .where((membership) =>
-            (membership['status'] ??
-                        (membership['profile'] is Map
-                            ? (membership['profile'] as Map)['status']
-                            : null))
-                    ?.toString()
-                    .toUpperCase() ==
-                'APPROVED' &&
-            _isOwner(membership))
-        .toList();
-    for (final membership in memberships) {
-      if (_membershipMatchesKind(membership, currentKind)) return currentKind;
-    }
-    for (final kind in const ['AGENT', 'MERCHANT']) {
-      if (memberships
-          .any((membership) => _membershipMatchesKind(membership, kind))) {
+    for (final kind in [
+      currentKind,
+      ...const ['AGENT', 'MERCHANT']
+    ]) {
+      final ownerProfile = _application(kind);
+      if (ownerProfile?['status']?.toString().toUpperCase() == 'APPROVED') {
         return kind;
       }
+      final legacyOwner = (_me?['memberships'] as List? ?? const [])
+          .whereType<Map>()
+          .map((raw) => Map<String, dynamic>.from(raw))
+          .where((membership) =>
+              _membershipMatchesKind(membership, kind) &&
+              _isOwner(membership) &&
+              (membership['status'] ??
+                          (membership['profile'] is Map
+                              ? (membership['profile'] as Map)['status']
+                              : null))
+                      ?.toString()
+                      .toUpperCase() ==
+                  'APPROVED');
+      if (legacyOwner.isNotEmpty) return kind;
     }
     return null;
   }
 
   Future<void> _openMerchantDashboard() async {
-    final memberships = (_me?['memberships'] as List? ?? const [])
-        .whereType<Map>()
-        .map((value) => Map<String, dynamic>.from(value))
-        .where((value) => _membershipMatchesKind(value, 'MERCHANT'))
-        .toList();
-    Map<String, dynamic>? selected;
-    if (memberships.length == 1) {
-      selected = memberships.first;
-    } else if (memberships.length > 1) {
-      selected = await showDialog<Map<String, dynamic>>(
-        context: context,
-        builder: (context) => SimpleDialog(
-          title: const Text('Choose a business'),
-          children: memberships.map((membership) {
-            final detail = membership['details'] is Map
-                ? Map<String, dynamic>.from(membership['details'] as Map)
-                : membership['profile'] is Map &&
-                        (membership['profile'] as Map)['details'] is Map
-                    ? Map<String, dynamic>.from(
-                        (membership['profile'] as Map)['details'] as Map)
-                    : <String, dynamic>{};
-            return SimpleDialogOption(
-              onPressed: () => Navigator.pop(context, membership),
-              child: Text(detail['businessName']?.toString() ??
-                  membership['profileId']?.toString() ??
-                  'Merchant business'),
-            );
-          }).toList(),
-        ),
-      );
-    } else {
-      selected = _membership('MERCHANT');
-    }
-    if (!mounted) return;
-    setState(() {
-      _selectedMembership = selected;
-      _selectedProfileId = _profileId(selected);
-      _kind = 'MERCHANT';
-      _view = 'dashboard';
-    });
+    await _openDashboard('MERCHANT');
   }
 
   Widget _hubBody() {
@@ -409,7 +493,7 @@ class _BusinessHubScreenState extends State<BusinessHubScreen> {
               icon: Icons.receipt_long_outlined,
               title: 'My Agent Dashboard',
               detail: _statusLabel(_membership('AGENT')),
-              onTap: () => _open('dashboard', kind: 'AGENT')),
+              onTap: () => _openDashboard('AGENT')),
           _HubAction(
               icon: Icons.analytics_outlined,
               title: 'My Business Dashboard',
@@ -477,6 +561,9 @@ class _BusinessDashboard extends StatefulWidget {
     required this.kind,
     required this.profileId,
     required this.owner,
+    required this.meRevision,
+    required this.onRefreshMe,
+    this.lookupError,
     this.profile,
     this.ownApprovedBusinessKind,
   });
@@ -484,6 +571,9 @@ class _BusinessDashboard extends StatefulWidget {
   final String kind;
   final String? profileId;
   final bool owner;
+  final int meRevision;
+  final Future<bool> Function() onRefreshMe;
+  final String? lookupError;
   final Map<String, dynamic>? profile;
   final String? ownApprovedBusinessKind;
   @override
@@ -505,6 +595,8 @@ class _BusinessDashboardState extends State<_BusinessDashboard> {
   int _commissionPage = 1;
   int _commissionTotal = 0;
   bool _eligibleLoaded = false;
+  bool _refreshingMe = false;
+  int _loadGeneration = 0;
 
   List<String> get _membershipPermissions =>
       (widget.profile?['permissions'] as List? ?? const [])
@@ -534,13 +626,78 @@ class _BusinessDashboardState extends State<_BusinessDashboard> {
     }
   }
 
+  @override
+  void didUpdateWidget(covariant _BusinessDashboard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final oldStatus = oldWidget.profile?['profile'] is Map
+        ? (oldWidget.profile!['profile'] as Map)['status']?.toString()
+        : oldWidget.profile?['status']?.toString();
+    final newStatus = widget.profile?['profile'] is Map
+        ? (widget.profile!['profile'] as Map)['status']?.toString()
+        : widget.profile?['status']?.toString();
+    final changed = oldWidget.kind != widget.kind ||
+        oldWidget.profileId != widget.profileId ||
+        oldWidget.owner != widget.owner ||
+        oldWidget.meRevision != widget.meRevision ||
+        oldStatus != newStatus;
+    if (!changed) return;
+    _loadGeneration++;
+    _dashboard = null;
+    _transactions = [];
+    _transactionTotal = 0;
+    _commissions = null;
+    _commissionTotal = 0;
+    _error = null;
+    _eligible = [];
+    _eligibleLoaded = false;
+    final status = newStatus?.toUpperCase();
+    if (status == 'APPROVED' || status == 'SUSPENDED') {
+      if (!_refreshingMe) _load();
+    } else {
+      _loading = false;
+    }
+  }
+
+  Future<void> _refreshDashboard() async {
+    _refreshingMe = true;
+    final refreshed = await widget.onRefreshMe();
+    if (!mounted) return;
+    if (!refreshed) {
+      _refreshingMe = false;
+      setState(() {
+        _error = 'Could not refresh business status. Please try again.';
+        _loading = false;
+      });
+      return;
+    }
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
+    _refreshingMe = false;
+    await _load();
+  }
+
   Future<void> _load() async {
+    final generation = ++_loadGeneration;
     setState(() {
       _loading = true;
       _error = null;
     });
+    final status = _profileMetadata?['status']?.toString().toUpperCase();
+    if (status != 'APPROVED' && status != 'SUSPENDED') {
+      if (mounted && generation == _loadGeneration) {
+        setState(() {
+          _dashboard = null;
+          _transactions = [];
+          _transactionTotal = 0;
+          _commissions = null;
+          _commissionTotal = 0;
+          _loading = false;
+        });
+      }
+      return;
+    }
     if (!_canViewReports) {
-      if (mounted) {
+      if (mounted && generation == _loadGeneration) {
         setState(() {
           _dashboard = null;
           _transactions = [];
@@ -558,7 +715,6 @@ class _BusinessDashboardState extends State<_BusinessDashboard> {
         if (widget.profileId?.isNotEmpty == true)
           'profileId': widget.profileId!,
       };
-      final status = _profileMetadata?['status']?.toString().toUpperCase();
       final dashboardAllowed = status == 'APPROVED';
       final requests = <Future<dynamic>>[];
       if (dashboardAllowed) {
@@ -580,7 +736,7 @@ class _BusinessDashboardState extends State<_BusinessDashboard> {
         }));
       }
       final results = await Future.wait<dynamic>(requests);
-      if (!mounted) return;
+      if (!mounted || generation != _loadGeneration) return;
       var resultIndex = 0;
       final commissionResult = widget.owner
           ? Map<String, dynamic>.from(
@@ -603,7 +759,7 @@ class _BusinessDashboardState extends State<_BusinessDashboard> {
         _loading = false;
       });
     } catch (e) {
-      if (mounted) {
+      if (mounted && generation == _loadGeneration) {
         setState(() {
           _error = e.toString();
           _loading = false;
@@ -789,62 +945,66 @@ class _BusinessDashboardState extends State<_BusinessDashboard> {
     Map<String, dynamic>? profile, {
     bool paymentToolsAvailable = true,
   }) =>
-      ListView(
-        padding: const EdgeInsets.all(18),
-        children: [
-          _StatusBanner(profile: profile ?? const {'status': 'APPROVED'}),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: const Color(0xFFE8F3EC),
-              borderRadius: BorderRadius.circular(14),
+      RefreshIndicator(
+        onRefresh: _refreshDashboard,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(18),
+          children: [
+            _StatusBanner(profile: profile ?? const {'status': 'APPROVED'}),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE8F3EC),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Text(
+                'This staff membership does not include business reporting. '
+                'Dashboards, commission statements, and business transaction '
+                'history are unavailable.',
+                style: TextStyle(height: 1.45),
+              ),
             ),
-            child: const Text(
-              'This staff membership does not include business reporting. '
-              'Dashboards, commission statements, and business transaction '
-              'history are unavailable.',
+            const SizedBox(height: 18),
+            const Text(
+              'Own-wallet purchase tools',
+              style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Find eligible purchases from your own ServicePay account. '
+              'Attribution records activity only and never changes a payment.',
               style: TextStyle(height: 1.45),
             ),
-          ),
-          const SizedBox(height: 18),
-          const Text(
-            'Own-wallet purchase tools',
-            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
-          ),
-          const SizedBox(height: 6),
-          const Text(
-            'Find eligible purchases from your own ServicePay account. '
-            'Attribution records activity only and never changes a payment.',
-            style: TextStyle(height: 1.45),
-          ),
-          if (paymentToolsAvailable && _canUsePayments) ...[
-            const SizedBox(height: 12),
-            OutlinedButton.icon(
-              onPressed: _loadEligible,
-              icon: const Icon(Icons.receipt_long_outlined),
-              label: const Text('Find my eligible purchases'),
-            ),
-            if (_eligibleLoaded && _eligible.isEmpty)
-              const _EmptyState(
-                text: 'No eligible own-account purchases were returned.',
+            if (paymentToolsAvailable && _canUsePayments) ...[
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: _loadEligible,
+                icon: const Icon(Icons.receipt_long_outlined),
+                label: const Text('Find my eligible purchases'),
               ),
-            ..._eligible.map((raw) {
-              final item = Map<String, dynamic>.from(raw as Map);
-              return ListTile(
-                title: Text(item['reference']?.toString() ?? 'Purchase'),
-                subtitle: Text(item['serviceType']?.toString() ?? ''),
-                trailing: TextButton(
-                  onPressed: () => _attribute(item),
-                  child: const Text('Attribute'),
+              if (_eligibleLoaded && _eligible.isEmpty)
+                const _EmptyState(
+                  text: 'No eligible own-account purchases were returned.',
                 ),
-              );
-            }),
-          ] else if (paymentToolsAvailable)
-            const _EmptyState(
-              text: 'No own-wallet payment permissions are assigned.',
-            ),
-        ],
+              ..._eligible.map((raw) {
+                final item = Map<String, dynamic>.from(raw as Map);
+                return ListTile(
+                  title: Text(item['reference']?.toString() ?? 'Purchase'),
+                  subtitle: Text(item['serviceType']?.toString() ?? ''),
+                  trailing: TextButton(
+                    onPressed: () => _attribute(item),
+                    child: const Text('Attribute'),
+                  ),
+                );
+              }),
+            ] else if (paymentToolsAvailable)
+              const _EmptyState(
+                text: 'No own-wallet payment permissions are assigned.',
+              ),
+          ],
+        ),
       );
 
   @override
@@ -857,6 +1017,12 @@ class _BusinessDashboardState extends State<_BusinessDashboard> {
         : <String, dynamic>{};
     final status =
         profile?['status']?.toString().toUpperCase() ?? 'NOT_APPLIED';
+    if (widget.lookupError != null) {
+      return _BusinessError(
+        message: widget.lookupError!,
+        retry: _refreshDashboard,
+      );
+    }
     if (_loading && _dashboard == null) return const _BusinessLoading();
     if (_error != null && _dashboard == null) {
       return _BusinessError(message: _error!, retry: _load);
@@ -868,28 +1034,35 @@ class _BusinessDashboardState extends State<_BusinessDashboard> {
       return _suspendedView(profile);
     }
     if (status != 'APPROVED') {
-      return ListView(padding: const EdgeInsets.all(20), children: [
-        _StatusBanner(profile: profile ?? {'status': status}),
-        const SizedBox(height: 12),
-        const Text(
-            'Dashboard details are available after approval. Applications are reviewed by ServicePay; customer and staff identities do not change.',
-            style: TextStyle(height: 1.5)),
-        if (widget.kind == 'MERCHANT') ...[
-          const SizedBox(height: 18),
-          _FeatureNotice(
-            features: profile?['features'] is Map
-                ? Map<String, dynamic>.from(profile!['features'] as Map)
-                : const <String, dynamic>{},
-          ),
-        ],
-      ]);
+      return RefreshIndicator(
+        onRefresh: _refreshDashboard,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(20),
+          children: [
+            _StatusBanner(profile: profile ?? {'status': status}),
+            const SizedBox(height: 12),
+            const Text(
+                'Dashboard details are available after approval. Applications are reviewed by ServicePay; customer and staff identities do not change.',
+                style: TextStyle(height: 1.5)),
+            if (widget.kind == 'MERCHANT') ...[
+              const SizedBox(height: 18),
+              _FeatureNotice(
+                features: profile?['features'] is Map
+                    ? Map<String, dynamic>.from(profile!['features'] as Map)
+                    : const <String, dynamic>{},
+              ),
+            ],
+          ],
+        ),
+      );
     }
     if (!_canViewReports) return _paymentsOnlyView(profile);
     final features = _dashboard?['features'] is Map
         ? Map<String, dynamic>.from(_dashboard!['features'] as Map)
         : <String, dynamic>{};
     return RefreshIndicator(
-        onRefresh: _load,
+        onRefresh: _refreshDashboard,
         child: ListView(padding: const EdgeInsets.all(18), children: [
           Row(children: [
             Expanded(
@@ -904,6 +1077,8 @@ class _BusinessDashboardState extends State<_BusinessDashboard> {
                 onPressed: _export,
                 icon: const Icon(Icons.download_outlined))
           ]),
+          if (_error != null)
+            _InlineError(message: _error!, retry: _refreshDashboard),
           Text(
               '${profile?['details']?['businessName'] ?? 'Approved profile'}  ·  ${profile?['networkId'] ?? ''}',
               style: const TextStyle(color: Color(0xFF53645B))),
@@ -1069,8 +1244,9 @@ class _BusinessDashboardState extends State<_BusinessDashboard> {
 
   Widget _suspendedView(Map<String, dynamic>? profile) {
     return RefreshIndicator(
-      onRefresh: _load,
+      onRefresh: _refreshDashboard,
       child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(18),
         children: [
           _StatusBanner(profile: profile ?? const {'status': 'SUSPENDED'}),

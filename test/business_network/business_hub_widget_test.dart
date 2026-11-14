@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -334,16 +335,15 @@ void main() {
             'success': true,
             'data': {
               'customer': {'fullName': 'Ada', '_id': 'owner-1'},
-              'applications': [],
-              'memberships': [
+              'applications': [
                 {
+                  '_id': 'agent-1',
                   'kind': 'AGENT',
-                  'profileId': 'agent-1',
                   'status': 'SUSPENDED',
-                  'isOwner': true,
                   'networkId': 'SP-AG-1',
                 }
               ],
+              'memberships': [],
               'categories': [],
               'supportedServices': [],
             },
@@ -431,15 +431,14 @@ void main() {
             'success': true,
             'data': {
               'customer': {'fullName': 'Ada', '_id': 'owner-1'},
-              'applications': [],
-              'memberships': [
+              'applications': [
                 {
+                  '_id': 'merchant-1',
                   'kind': 'MERCHANT',
-                  'profileId': 'merchant-1',
                   'status': 'APPROVED',
-                  'isOwner': true,
                 }
               ],
+              'memberships': [],
               'categories': [],
               'supportedServices': [],
             },
@@ -711,6 +710,9 @@ void main() {
         findsOneWidget);
     expect(find.text('Transaction history'), findsNothing);
     expect(find.text('Transactions'), findsNothing);
+    await tester.drag(find.byType(ListView).last, const Offset(0, 360));
+    await tester.pumpAndSettle();
+    expect(reportRequests, isEmpty);
     await _scrollTo(tester, find.text('Find my eligible purchases'));
     await tester.tap(find.text('Find my eligible purchases'));
     await tester.pumpAndSettle();
@@ -1125,6 +1127,568 @@ void main() {
     await tester.pumpAndSettle();
     expect(submitted?['revision'], 8);
     expect(find.textContaining('BN-ME-311'), findsOneWidget);
+    client.close();
+  });
+
+  testWidgets(
+      'owner Profile rows in applications open the matching Agent and Merchant dashboards',
+      (tester) async {
+    final dashboardRequests = <Uri>[];
+    final client = MockClient((request) async {
+      final path = request.url.path;
+      if (path.endsWith('/me')) {
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {
+              'customer': {'_id': 'customer-a', 'fullName': 'Ada Okafor'},
+              'applications': [
+                {
+                  '_id': 'agent-owned-a',
+                  'kind': 'AGENT',
+                  'status': 'APPROVED',
+                  'networkId': 'SP-AG-A',
+                  'details': {'businessName': 'Ada Retail'},
+                },
+                {
+                  '_id': 'merchant-owned-a',
+                  'kind': 'MERCHANT',
+                  'status': 'APPROVED',
+                  'networkId': 'SP-ME-A',
+                  'details': {'businessName': 'Ada Stores'},
+                },
+              ],
+              'memberships': [],
+              'categories': [],
+              'supportedServices': [],
+            },
+          }),
+          200,
+        );
+      }
+      if (path.endsWith('/dashboard/agent') ||
+          path.endsWith('/dashboard/merchant')) {
+        dashboardRequests.add(request.url);
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {
+              'profile': {'status': 'APPROVED'},
+              'summary': {},
+              'features': {},
+            },
+          }),
+          200,
+        );
+      }
+      if (path.endsWith('/transactions/agent') ||
+          path.endsWith('/transactions/merchant')) {
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {'items': [], 'total': 0}
+          }),
+          200,
+        );
+      }
+      if (path.endsWith('/commissions/agent') ||
+          path.endsWith('/commissions/merchant')) {
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {'items': [], 'total': 0, 'totals': {}},
+          }),
+          200,
+        );
+      }
+      return http.Response(
+        jsonEncode({'success': false, 'message': 'Unexpected route: $path'}),
+        404,
+      );
+    });
+    await tester.pumpWidget(MaterialApp(
+      home: BusinessHubScreen(
+        api: BusinessNetworkApi(
+          client: client,
+          tokenProvider: () async => 'customer-a-token',
+          baseUrl: 'https://test.servicepay.invalid/api',
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('My Agent Dashboard'));
+    await tester.pumpAndSettle();
+    expect(find.text('Agent dashboard'), findsOneWidget);
+    expect(
+        dashboardRequests.single.queryParameters['profileId'], 'agent-owned-a');
+
+    await tester.tap(find.byIcon(Icons.arrow_back));
+    await tester.pumpAndSettle();
+    await _scrollTo(tester, find.text('My Business Dashboard'));
+    await tester.tap(find.text('My Business Dashboard'));
+    await tester.pumpAndSettle();
+    expect(find.text('Business dashboard'), findsNWidgets(2));
+    expect(
+      dashboardRequests.last.queryParameters['profileId'],
+      'merchant-owned-a',
+    );
+    expect(
+      dashboardRequests
+          .map((request) => request.queryParameters['profileId'])
+          .toList(),
+      ['agent-owned-a', 'merchant-owned-a'],
+    );
+    client.close();
+  });
+
+  testWidgets('opening dashboard and refreshing picks up a later approval',
+      (tester) async {
+    var meCalls = 0;
+    var dashboardRequested = false;
+    final client = MockClient((request) async {
+      final path = request.url.path;
+      if (path.endsWith('/me')) {
+        meCalls++;
+        final status = meCalls < 3 ? 'PENDING' : 'APPROVED';
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {
+              'customer': {'_id': 'customer-a'},
+              'applications': [
+                {
+                  '_id': 'agent-later-approved',
+                  'kind': 'AGENT',
+                  'status': status,
+                },
+              ],
+              'memberships': [],
+            },
+          }),
+          200,
+        );
+      }
+      if (path.endsWith('/dashboard/agent')) {
+        dashboardRequested = true;
+        expect(
+            request.url.queryParameters['profileId'], 'agent-later-approved');
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {
+              'profile': {'status': 'APPROVED', 'kind': 'AGENT'},
+              'summary': {},
+              'features': {},
+            },
+          }),
+          200,
+        );
+      }
+      if (path.endsWith('/transactions/agent')) {
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {'items': [], 'total': 0}
+          }),
+          200,
+        );
+      }
+      if (path.endsWith('/commissions/agent')) {
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {'items': [], 'total': 0, 'totals': {}},
+          }),
+          200,
+        );
+      }
+      return http.Response(
+        jsonEncode({'success': false, 'message': 'Unexpected route: $path'}),
+        404,
+      );
+    });
+    await tester.pumpWidget(MaterialApp(
+      home: BusinessHubScreen(
+        api: BusinessNetworkApi(
+          client: client,
+          tokenProvider: () async => 'customer-a-token',
+          baseUrl: 'https://test.servicepay.invalid/api',
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('My Agent Dashboard'));
+    await tester.pumpAndSettle();
+    expect(find.text('PENDING'), findsOneWidget);
+    expect(dashboardRequested, isFalse);
+
+    await tester.tap(find.byTooltip('Refresh'));
+    await tester.pumpAndSettle();
+    expect(meCalls, 3);
+    expect(dashboardRequested, isTrue);
+    expect(find.text('Agent dashboard'), findsOneWidget);
+    client.close();
+  });
+
+  testWidgets('late dashboard response cannot restore a superseded status',
+      (tester) async {
+    var meCalls = 0;
+    final staleDashboard = Completer<http.Response>();
+    final client = MockClient((request) async {
+      final path = request.url.path;
+      if (path.endsWith('/me')) {
+        meCalls++;
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {
+              'customer': {'_id': 'customer-a'},
+              'applications': [
+                {
+                  '_id': 'agent-stable-id',
+                  'kind': 'AGENT',
+                  'status': meCalls < 3 ? 'APPROVED' : 'PENDING',
+                },
+              ],
+              'memberships': [],
+            },
+          }),
+          200,
+        );
+      }
+      if (path.endsWith('/dashboard/agent')) {
+        return staleDashboard.future;
+      }
+      if (path.endsWith('/transactions/agent')) {
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {'items': [], 'total': 0}
+          }),
+          200,
+        );
+      }
+      if (path.endsWith('/commissions/agent')) {
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {'items': [], 'total': 0, 'totals': {}},
+          }),
+          200,
+        );
+      }
+      return http.Response(
+        jsonEncode({'success': false, 'message': 'Unexpected route: $path'}),
+        404,
+      );
+    });
+    await tester.pumpWidget(MaterialApp(
+      home: BusinessHubScreen(
+        api: BusinessNetworkApi(
+          client: client,
+          tokenProvider: () async => 'customer-a-token',
+          baseUrl: 'https://test.servicepay.invalid/api',
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('My Agent Dashboard'));
+    await tester.pump();
+    await tester.tap(find.byTooltip('Refresh'));
+    await tester.pumpAndSettle();
+    expect(find.text('PENDING'), findsOneWidget);
+
+    staleDashboard.complete(http.Response(
+      jsonEncode({
+        'success': true,
+        'data': {
+          'profile': {'status': 'APPROVED', 'kind': 'AGENT'},
+          'summary': {'total': 91},
+          'features': {},
+        },
+      }),
+      200,
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('PENDING'), findsOneWidget);
+    expect(find.text('Agent dashboard'), findsNothing);
+    client.close();
+  });
+
+  testWidgets('pending dashboard pull refreshes status without report calls',
+      (tester) async {
+    final requestedPaths = <String>[];
+    final client = MockClient((request) async {
+      final path = request.url.path;
+      requestedPaths.add(path);
+      if (path.endsWith('/me')) {
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {
+              'customer': {'_id': 'customer-a'},
+              'applications': [
+                {
+                  '_id': 'agent-pending',
+                  'kind': 'AGENT',
+                  'status': 'PENDING',
+                },
+              ],
+              'memberships': [],
+            },
+          }),
+          200,
+        );
+      }
+      return http.Response(
+        jsonEncode({'success': false, 'message': 'Unexpected route: $path'}),
+        404,
+      );
+    });
+    await tester.pumpWidget(MaterialApp(
+      home: BusinessHubScreen(
+        api: BusinessNetworkApi(
+          client: client,
+          tokenProvider: () async => 'customer-a-token',
+          baseUrl: 'https://test.servicepay.invalid/api',
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('My Agent Dashboard'));
+    await tester.pumpAndSettle();
+    final list = find.byType(ListView).last;
+    await tester.drag(list, const Offset(0, 360));
+    await tester.pumpAndSettle();
+    expect(requestedPaths.where((path) => path.endsWith('/me')), hasLength(3));
+    expect(
+        requestedPaths.where((path) =>
+            path.contains('/dashboard/') ||
+            path.contains('/transactions/') ||
+            path.contains('/commissions/')),
+        isEmpty);
+    client.close();
+  });
+
+  testWidgets('pending, rejected, and suspended owner applications keep status',
+      (tester) async {
+    for (final status in ['PENDING', 'REJECTED', 'SUSPENDED']) {
+      final requested = <String>[];
+      final client = MockClient((request) async {
+        final path = request.url.path;
+        requested.add(path);
+        if (path.endsWith('/me')) {
+          return http.Response(
+            jsonEncode({
+              'success': true,
+              'data': {
+                'customer': {'_id': 'customer-a'},
+                'applications': [
+                  {
+                    '_id': 'agent-$status',
+                    'kind': 'AGENT',
+                    'status': status,
+                  },
+                ],
+                'memberships': [],
+              },
+            }),
+            200,
+          );
+        }
+        if (path.endsWith('/transactions/agent')) {
+          return http.Response(
+            jsonEncode({
+              'success': true,
+              'data': {'items': [], 'total': 0}
+            }),
+            200,
+          );
+        }
+        if (path.endsWith('/commissions/agent')) {
+          return http.Response(
+            jsonEncode({
+              'success': true,
+              'data': {'items': [], 'total': 0, 'totals': {}},
+            }),
+            200,
+          );
+        }
+        return http.Response(
+          jsonEncode({'success': false, 'message': 'Unexpected route: $path'}),
+          404,
+        );
+      });
+      await tester.pumpWidget(MaterialApp(
+        home: BusinessHubScreen(
+          api: BusinessNetworkApi(
+            client: client,
+            tokenProvider: () async => 'customer-a-token',
+            baseUrl: 'https://test.servicepay.invalid/api',
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('My Agent Dashboard'));
+      await tester.pumpAndSettle();
+      expect(find.text(status), findsOneWidget);
+      expect(requested.where((path) => path.endsWith('/dashboard/agent')),
+          isEmpty);
+      if (status == 'SUSPENDED') {
+        expect(requested, contains('/api/business-network/transactions/agent'));
+        expect(requested, contains('/api/business-network/commissions/agent'));
+      } else {
+        expect(
+          requested.where((path) => path.endsWith('/transactions/agent')),
+          isEmpty,
+        );
+      }
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpAndSettle();
+      client.close();
+    }
+  });
+
+  testWidgets('owner and staff businesses require an explicit selection',
+      (tester) async {
+    final reportRequests = <String>[];
+    final client = MockClient((request) async {
+      final path = request.url.path;
+      if (path.endsWith('/me')) {
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {
+              'customer': {'_id': 'customer-a'},
+              'applications': [
+                {
+                  '_id': 'owner-merchant-a',
+                  'kind': 'MERCHANT',
+                  'status': 'APPROVED',
+                  'details': {'businessName': 'Ada Shops'},
+                },
+              ],
+              'memberships': [
+                {
+                  '_id': 'staff-access-b',
+                  'profile': {
+                    '_id': 'staff-merchant-b',
+                    'status': 'APPROVED',
+                    'details': {'businessName': 'Kite Corner'},
+                  },
+                  'permissions': ['payments'],
+                  'status': 'ACTIVE',
+                },
+              ],
+            },
+          }),
+          200,
+        );
+      }
+      if (path.endsWith('/dashboard/merchant') ||
+          path.endsWith('/transactions/merchant') ||
+          path.endsWith('/commissions/merchant')) {
+        reportRequests.add(path);
+        if (path.endsWith('/dashboard/merchant')) {
+          expect(request.url.queryParameters['profileId'], 'staff-merchant-b');
+        }
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {
+              'profile': {
+                '_id': 'staff-merchant-b',
+                'kind': 'MERCHANT',
+                'status': 'APPROVED',
+                'details': {'businessName': 'Kite Corner'},
+              },
+              'summary': {},
+              'features': {},
+              'items': [],
+              'total': 0,
+            },
+          }),
+          200,
+        );
+      }
+      return http.Response(
+        jsonEncode({'success': false, 'message': 'Unexpected route: $path'}),
+        404,
+      );
+    });
+    await tester.pumpWidget(MaterialApp(
+      home: BusinessHubScreen(
+        api: BusinessNetworkApi(
+          client: client,
+          tokenProvider: () async => 'customer-a-token',
+          baseUrl: 'https://test.servicepay.invalid/api',
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await _scrollTo(tester, find.text('My Business Dashboard'));
+    await tester.tap(find.text('My Business Dashboard'));
+    await tester.pumpAndSettle();
+    expect(find.text('Choose a business'), findsOneWidget);
+    expect(find.textContaining('My business · Ada Shops'), findsOneWidget);
+    expect(find.textContaining('Staff access · Kite Corner'), findsOneWidget);
+    await tester
+        .ensureVisible(find.textContaining('Staff access · Kite Corner'));
+    await tester.tap(find.textContaining('Staff access · Kite Corner'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('does not include business reporting'),
+        findsOneWidget);
+    expect(reportRequests, isEmpty);
+    client.close();
+  });
+
+  testWidgets('failed authoritative lookup does not become NOT_APPLIED',
+      (tester) async {
+    var meCalls = 0;
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/me')) {
+        meCalls++;
+        if (meCalls == 1) {
+          return http.Response(
+            jsonEncode({
+              'success': true,
+              'data': {
+                'customer': {'_id': 'customer-a'},
+                'applications': [],
+                'memberships': [],
+              },
+            }),
+            200,
+          );
+        }
+        return http.Response(
+          jsonEncode(
+              {'success': false, 'message': 'Status service unavailable'}),
+          503,
+        );
+      }
+      return http.Response(
+        jsonEncode({'success': false, 'message': 'Unexpected route'}),
+        404,
+      );
+    });
+    await tester.pumpWidget(MaterialApp(
+      home: BusinessHubScreen(
+        api: BusinessNetworkApi(
+          client: client,
+          tokenProvider: () async => 'customer-a-token',
+          baseUrl: 'https://test.servicepay.invalid/api',
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('My Agent Dashboard'));
+    await tester.pumpAndSettle();
+    expect(find.text('Business Hub'), findsOneWidget);
+    expect(find.text('NOT_APPLIED'), findsNothing);
+    await _scrollTo(tester, find.textContaining('Status service unavailable'));
+    expect(find.textContaining('Status service unavailable'), findsOneWidget);
     client.close();
   });
 }

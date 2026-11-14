@@ -21,25 +21,38 @@ Future<void> _openPurchaseScreen(
     if (path.endsWith('/me')) {
       data = {
         'customer': {'fullName': 'Ada Okafor', '_id': 'customer-1'},
-        'applications': [],
-        'memberships': [
-          {
-            'kind': 'AGENT',
-            'profileId': 'agent-1',
-            'status': 'APPROVED',
-            if (staffMembership) ...{
-              'role': 'STAFF',
-              'permissions': ['reports', 'payments'],
-            } else
-              'isOwner': true,
-          }
-        ],
+        'applications': staffMembership
+            ? []
+            : [
+                {
+                  '_id': 'agent-1',
+                  'kind': 'AGENT',
+                  'status': 'APPROVED',
+                }
+              ],
+        'memberships': staffMembership
+            ? [
+                {
+                  '_id': 'staff-1',
+                  'profile': {
+                    '_id': 'merchant-1',
+                    'kind': 'MERCHANT',
+                    'status': 'APPROVED',
+                  },
+                  'status': 'ACTIVE',
+                  'role': 'STAFF',
+                  'permissions': ['reports', 'payments'],
+                }
+              ]
+            : [],
       };
-    } else if (path.endsWith('/dashboard/agent')) {
+    } else if (path.endsWith('/dashboard/agent') ||
+        path.endsWith('/dashboard/merchant')) {
+      final kind = path.endsWith('/dashboard/merchant') ? 'MERCHANT' : 'AGENT';
       data = {
         'profile': {
-          '_id': 'agent-1',
-          'kind': 'AGENT',
+          '_id': kind == 'MERCHANT' ? 'merchant-1' : 'agent-1',
+          'kind': kind,
           'status': 'APPROVED',
         },
         'summary': {},
@@ -49,15 +62,16 @@ Future<void> _openPurchaseScreen(
             'label': 'Airtime',
             'ready': true,
             'history': true,
-            'categories': {'AGENT': 'ENABLED'},
+            'categories': {kind: 'ENABLED'},
           }
         ],
         'pricingContext': {
-          'businessKind': 'AGENT',
+          'businessKind': kind,
           'walletAuthority': 'AUTHENTICATED_CUSTOMER_ONLY',
         },
       };
-    } else if (path.endsWith('/transactions/agent')) {
+    } else if (path.endsWith('/transactions/agent') ||
+        path.endsWith('/transactions/merchant')) {
       data = {'items': [], 'total': 0};
     } else if (path.endsWith('/commissions/agent')) {
       data = {
@@ -100,8 +114,19 @@ Future<void> _openPurchaseScreen(
     ),
   ));
   await tester.pumpAndSettle();
-  await tester.tap(find.text('My Agent Dashboard'));
+  final dashboard = staffMembership
+      ? find.text('My Business Dashboard')
+      : find.text('My Agent Dashboard');
+  await tester.ensureVisible(dashboard);
+  await tester.drag(
+    find.byWidgetPredicate((widget) =>
+        widget is Scrollable && widget.axisDirection == AxisDirection.down).first,
+    const Offset(0, -180),
+  );
   await tester.pumpAndSettle();
+  await tester.tap(dashboard);
+  await tester.pumpAndSettle();
+  if (staffMembership) return;
   final cta = find.text('Pay a bill from my account');
   await tester.scrollUntilVisible(
     cta,
@@ -156,12 +181,9 @@ void main() {
       'Airtime',
       staffMembership: true,
     );
-    expect(find.byType(AirtimeScreen), findsOneWidget);
-    expect(
-      tester.widget<AirtimeScreen>(find.byType(AirtimeScreen)).businessKind,
-      isNull,
-    );
-    await _closePurchaseScreen(tester);
+    expect(find.text('Business dashboard'), findsNWidgets(2));
+    expect(find.text('Purchase account · CUSTOMER'), findsOneWidget);
+    expect(find.text('Pay a bill from my account'), findsNothing);
   });
 
   testWidgets('feature matrix explains availability and preserves history',

@@ -59,16 +59,14 @@ void main() {
             'success': true,
             'data': {
               'customer': {'fullName': 'Ada Okafor', '_id': 'customer-1'},
-              'applications': [],
-              'memberships': [
+              'applications': [
                 {
+                  '_id': 'agent-7',
                   'kind': 'AGENT',
-                  'profileId': 'agent-7',
-                  'networkId': 'SPN-1234567890ABCDEF',
                   'status': 'APPROVED',
-                  'isOwner': true,
                 }
               ],
+              'memberships': [],
               'categories': [],
               'supportedServices': [],
               'serviceCatalogue': {'AGENT': [], 'MERCHANT': []},
