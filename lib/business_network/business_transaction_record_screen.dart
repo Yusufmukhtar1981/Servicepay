@@ -39,15 +39,15 @@ class _BusinessTransactionRecordScreenState
       'Amount: $amountLabel',
       'Status: ${transaction['status'] ?? 'Not supplied'}',
       'Created: ${transaction['createdAt'] ?? 'Not supplied'}',
-      if (transaction['branch'] != null)
-        'Branch: ${transaction['branch']}',
+      if (transaction['branch'] != null) 'Branch: ${transaction['branch']}',
     ].join('\n');
   }
 
   String get _fileName {
-    final raw =
-        (widget.transaction['reference'] ?? widget.transaction['_id'] ?? 'record')
-            .toString();
+    final raw = (widget.transaction['reference'] ??
+            widget.transaction['_id'] ??
+            'record')
+        .toString();
     final safe = raw.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
     return 'servicepay-business-record-${safe.isEmpty ? 'record' : safe}.txt';
   }
@@ -91,7 +91,8 @@ class _BusinessTransactionRecordScreenState
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Unable to share the business record: $error')),
+          SnackBar(
+              content: Text('Unable to share the business record: $error')),
         );
       }
     } finally {
@@ -103,7 +104,10 @@ class _BusinessTransactionRecordScreenState
   Widget build(BuildContext context) {
     final transaction = widget.transaction;
     return Scaffold(
-      appBar: AppBar(title: const Text('Business transaction record')),
+      appBar: AppBar(
+        foregroundColor: const Color(0xFF18372A),
+        title: const Text('Business transaction record'),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
@@ -122,9 +126,14 @@ class _BusinessTransactionRecordScreenState
           _recordField('Reference',
               (transaction['reference'] ?? transaction['_id'])?.toString()),
           _recordField('Service', transaction['serviceType']?.toString()),
-          _recordField('Amount', _recordText.split('\n').firstWhere(
-            (line) => line.startsWith('Amount: '),
-          ).replaceFirst('Amount: ', '')),
+          _recordField(
+              'Amount',
+              _recordText
+                  .split('\n')
+                  .firstWhere(
+                    (line) => line.startsWith('Amount: '),
+                  )
+                  .replaceFirst('Amount: ', '')),
           _recordField('Status', transaction['status']?.toString()),
           _recordField('Created', transaction['createdAt']?.toString()),
           if (transaction['branch'] != null)

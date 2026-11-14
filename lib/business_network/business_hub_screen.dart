@@ -91,6 +91,7 @@ class _BusinessHubScreenState extends State<BusinessHubScreen> {
       backgroundColor: const Color(0xFFF4F8F5),
       appBar: AppBar(
         backgroundColor: const Color(0xFFF4F8F5),
+        foregroundColor: const Color(0xFF18372A),
         title: Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
         leading: _view == 'hub'
             ? null
@@ -264,7 +265,7 @@ class _BusinessHubScreenState extends State<BusinessHubScreen> {
                 borderRadius: BorderRadius.circular(24)),
             child:
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('Your next chapter,\\nbuilt on ServicePay.',
+              const Text('Your next chapter,\nbuilt on ServicePay.',
                   style: TextStyle(
                       color: Colors.white,
                       fontSize: 25,
