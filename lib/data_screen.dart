@@ -21,7 +21,9 @@ class DataScreen extends StatefulWidget {
       this.pendingContext,
       this.loadBeneficiaries,
       this.saveBeneficiary,
+      this.businessKind,
       this.contactPicker});
+  final String? businessKind;
   final BeneficiaryLoader? loadBeneficiaries;
   final BeneficiarySaver? saveBeneficiary;
   final DataPurchaseIntent? purchaseIntent;
@@ -300,7 +302,7 @@ class _DataScreenState extends State<DataScreen> {
     try {
       final Map<String, dynamic> result = widget.loadPlans != null
           ? await widget.loadPlans!(network).timeout(const Duration(seconds: 8))
-          : await ApiService.getDataPlans(network: network)
+          : await ApiService.getDataPlans(network: network, businessKind: widget.businessKind)
               .timeout(const Duration(seconds: 8));
 
       if (!mounted || generation != _catalogGeneration) return;
@@ -564,6 +566,7 @@ class _DataScreenState extends State<DataScreen> {
               'phone': phone,
               'planCode': code,
               'productQuote': productQuote,
+              if (widget.businessKind != null) 'businessKind': widget.businessKind,
               'amount': price,
               'acknowledgePendingPurchase': true,
               'idempotencyKey': idempotencyKey
@@ -575,6 +578,7 @@ class _DataScreenState extends State<DataScreen> {
               phone: phone,
               planCode: code,
               productQuote: productQuote,
+              businessKind: widget.businessKind,
 
               // Backward compatibility only.
               // Backend now determines real selling price.

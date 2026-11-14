@@ -45,6 +45,19 @@ void main() {
         'status': status,
         'httpStatus': httpStatus,
       };
+  test('business contexts never reuse another category pending purchase identity',
+      () async {
+    final storage = _MemoryIntentStorage();
+    final intent = createIntent(storage);
+    final key = await intent.keyForSubmission(
+      network: 'MTN', phone: '08012345678', amount: '100', businessKind: 'AGENT');
+    expect(await intent.keyForSubmission(
+      network: 'MTN', phone: '08012345678', amount: '100', businessKind: 'AGENT'), key);
+    await expectLater(intent.keyForSubmission(
+      network: 'MTN', phone: '08012345678', amount: '100', businessKind: 'MERCHANT'), throwsStateError);
+    await expectLater(intent.keyForSubmission(
+      network: 'MTN', phone: '08012345678', amount: '100'), throwsStateError);
+  });
 
   test('more than 100 unresolved Airtime requests retain independent keys',
       () async {

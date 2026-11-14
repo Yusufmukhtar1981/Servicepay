@@ -172,6 +172,7 @@ class ApiService {
 
   static Future<Map<String, dynamic>> getDataPlans({
     required String network,
+    String? businessKind,
   }) async {
     final String token = await _getAuthToken();
 
@@ -186,7 +187,7 @@ class ApiService {
     final Uri uri = Uri.parse(
       '$baseUrl/clubkonnect/data-plans/'
       '${Uri.encodeComponent(selectedNetwork)}',
-    );
+    ).replace(queryParameters: businessKind == null ? null : {'businessKind': businessKind});
 
     return _catalogRead(token: token, uri: uri);
   }
@@ -202,6 +203,7 @@ class ApiService {
     String? deviceId,
     int? providerNetworkId,
     double? customerSellingPrice,
+    String? businessKind,
   }) async {
     if (idempotencyKey.trim().isEmpty) {
       throw ArgumentError.value(idempotencyKey, 'idempotencyKey');
@@ -225,6 +227,7 @@ class ApiService {
             if (providerNetworkId != null) 'provider': 'TELECOM_ABODE',
             if (customerSellingPrice != null)
               'customerSellingPrice': customerSellingPrice,
+            if (businessKind != null) 'businessKind': businessKind,
             if (acknowledgePendingPurchase) 'acknowledgePendingPurchase': true,
             'phone': phone.trim(),
             'amount': amount.trim(),
@@ -250,6 +253,7 @@ class ApiService {
     required int networkId,
     required String amount,
     String? phone,
+    String? businessKind,
   }) async {
     final token = await _getAuthToken();
     final response = await http
@@ -262,6 +266,7 @@ class ApiService {
               'network': networkId,
               'provider': 'TELECOM_ABODE',
               'amount': amount,
+              if (businessKind != null) 'businessKind': businessKind,
               if (phone != null) 'phone': phone
             }))
         .timeout(requestTimeout);
@@ -375,6 +380,7 @@ class ApiService {
     String? deviceId,
     required String idempotencyKey,
     String? productQuote,
+    String? businessKind,
   }) async {
     if (idempotencyKey.trim().isEmpty || idempotencyKey.length > 128) {
       throw StateError(
@@ -398,6 +404,7 @@ class ApiService {
             'network': network.trim(),
             'phone': phone.trim(),
             'planCode': planCode.trim(),
+            if (businessKind != null) 'businessKind': businessKind,
             if (acknowledgePendingPurchase) 'acknowledgePendingPurchase': true,
             'idempotencyKey': idempotencyKey,
             'amount': amount,

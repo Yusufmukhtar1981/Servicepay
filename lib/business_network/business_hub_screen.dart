@@ -12,6 +12,7 @@ import '../referral_screen.dart';
 import '../referral_service.dart';
 import '../services/receipt_download.dart';
 import 'business_network_api.dart';
+import 'business_feature_access_panel.dart';
 import 'business_transaction_record_screen.dart';
 
 part 'business_hub_application_form.dart';
@@ -160,6 +161,8 @@ class _BusinessHubScreenState extends State<BusinessHubScreen> {
                               _profileId(_membership(_kind)),
                           owner: _isOwner(
                               _selectedMembership ?? _membership(_kind)),
+                          ownApprovedBusinessKind:
+                              _ownApprovedBusinessKind(_kind),
                         )
                       : _view == 'applications'
                           ? _ApplicationsView(
@@ -247,13 +250,23 @@ class _BusinessHubScreenState extends State<BusinessHubScreen> {
 
   bool _isOwner(Map<String, dynamic>? membership) {
     if (membership == null) return false;
-    if (membership['kind']?.toString().toUpperCase() == 'AGENT') return true;
     final role = (membership['role'] ??
             membership['membershipRole'] ??
             membership['accessLevel'] ??
             '')
         .toString()
         .toUpperCase();
+    if (membership['isOwner'] == false ||
+        membership['owner'] == false ||
+        const {
+          'STAFF',
+          'BRANCH_STAFF',
+          'EMPLOYEE',
+          'MEMBER',
+        }.contains(role)) {
+      return false;
+    }
+    if (membership['kind']?.toString().toUpperCase() == 'AGENT') return true;
     if (membership['isOwner'] == true ||
         membership['owner'] == true ||
         role == 'OWNER' ||
@@ -271,6 +284,32 @@ class _BusinessHubScreenState extends State<BusinessHubScreen> {
     return ownerId != null &&
         customerId != null &&
         ownerId.toString() == customerId.toString();
+  }
+
+  String? _ownApprovedBusinessKind(String currentKind) {
+    final memberships = (_me?['memberships'] as List? ?? const [])
+        .whereType<Map>()
+        .map((raw) => Map<String, dynamic>.from(raw))
+        .where((membership) =>
+            (membership['status'] ??
+                        (membership['profile'] is Map
+                            ? (membership['profile'] as Map)['status']
+                            : null))
+                    ?.toString()
+                    .toUpperCase() ==
+                'APPROVED' &&
+            _isOwner(membership))
+        .toList();
+    for (final membership in memberships) {
+      if (_membershipMatchesKind(membership, currentKind)) return currentKind;
+    }
+    for (final kind in const ['AGENT', 'MERCHANT']) {
+      if (memberships
+          .any((membership) => _membershipMatchesKind(membership, kind))) {
+        return kind;
+      }
+    }
+    return null;
   }
 
   Future<void> _openMerchantDashboard() async {
@@ -387,6 +426,15 @@ class _BusinessHubScreenState extends State<BusinessHubScreen> {
               detail: 'Send a question to the ServicePay team',
               onTap: () => _open('support')),
           ..._staffInvitations(),
+          if (_me?['featureAccess'] is List &&
+              (_me!['featureAccess'] as List).isNotEmpty) ...[
+            const SizedBox(height: 18),
+            BusinessFeatureAccessPanel(
+              featureAccess: _me!['featureAccess'] as List,
+              kind: 'CUSTOMER',
+              title: 'Service availability',
+            ),
+          ],
           if (_error != null)
             Padding(
                 padding: const EdgeInsets.only(top: 12),
@@ -430,12 +478,14 @@ class _BusinessDashboard extends StatefulWidget {
     required this.profileId,
     required this.owner,
     this.profile,
+    this.ownApprovedBusinessKind,
   });
   final BusinessNetworkApi api;
   final String kind;
   final String? profileId;
   final bool owner;
   final Map<String, dynamic>? profile;
+  final String? ownApprovedBusinessKind;
   @override
   State<_BusinessDashboard> createState() => _BusinessDashboardState();
 }
@@ -890,12 +940,33 @@ class _BusinessDashboardState extends State<_BusinessDashboard> {
               api: widget.api,
               kind: widget.kind,
               profileId: widget.profileId ?? profile?['_id']?.toString() ?? '',
+              featureAccess: _dashboard?['featureAccess'] as List? ?? const [],
+            ),
+          if (_dashboard?['featureAccess'] is List &&
+              (_dashboard!['featureAccess'] as List).isNotEmpty) ...[
+            const SizedBox(height: 10),
+            BusinessFeatureAccessPanel(
+              featureAccess: _dashboard!['featureAccess'] as List,
+              kind: widget.kind,
+              title: 'Business feature status',
+            ),
+          ],
+          if (_dashboard?['pricingContext'] is Map ||
+              (_dashboard?['featureAccess'] is List &&
+                  (_dashboard!['featureAccess'] as List).isNotEmpty))
+            _PricingContextNotice(
+              kind: widget.ownApprovedBusinessKind,
+              pricingContext: _dashboard?['pricingContext'] is Map
+                  ? Map<String, dynamic>.from(
+                      _dashboard!['pricingContext'] as Map)
+                  : const <String, dynamic>{},
             ),
           if (widget.kind == 'MERCHANT') _FeatureNotice(features: features),
           if (widget.kind == 'MERCHANT' && widget.owner)
             _MerchantManagement(
               api: widget.api,
               profileId: widget.profileId ?? profile?['_id']?.toString() ?? '',
+              featureAccess: _dashboard?['featureAccess'] as List? ?? const [],
             ),
           if (widget.kind == 'MERCHANT' && !widget.owner)
             const _EmptyState(
@@ -981,7 +1052,10 @@ class _BusinessDashboardState extends State<_BusinessDashboard> {
           if (widget.kind == 'AGENT' && _canUsePayments) ...[
             const SizedBox(height: 16),
             FilledButton.icon(
-                onPressed: () => _openBillPayment(context),
+                onPressed: () => _openBillPayment(
+                      context,
+                      businessKind: widget.ownApprovedBusinessKind,
+                    ),
                 icon: const Icon(Icons.receipt_long_outlined),
                 label: const Text('Pay a bill from my account')),
             const Padding(
@@ -1080,35 +1154,44 @@ class _BusinessDashboardState extends State<_BusinessDashboard> {
   }
 }
 
-Future<void> _openBillPayment(BuildContext context) async {
+Future<void> _openBillPayment(
+  BuildContext context, {
+  String? businessKind,
+}) async {
   final choice = await showModalBottomSheet<String>(
-      context: context,
-      showDragHandle: true,
-      builder: (context) => SafeArea(
-              child: Padding(
-            padding: const EdgeInsets.all(18),
-            child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Choose a bill payment',
-                      style:
-                          TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-                  const SizedBox(height: 8),
-                  const Text(
-                      'Payments continue through your existing ServicePay wallet and authorization flow.'),
-                  const SizedBox(height: 8),
-                  ...['Airtime', 'Data', 'Electricity', 'Cable TV'].map(
-                      (name) => ListTile(
-                          title: Text(name),
-                          leading: const Icon(Icons.receipt_long_outlined),
-                          onTap: () => Navigator.pop(context, name))),
-                ]),
-          )));
+    context: context,
+    showDragHandle: true,
+    builder: (context) => SafeArea(
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Choose a bill payment',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+              const SizedBox(height: 8),
+              const Text(
+                  'Payments continue through your existing ServicePay wallet and authorization flow.'),
+              const SizedBox(height: 8),
+              ...['Airtime', 'Data', 'Electricity', 'Cable TV'].map(
+                (name) => ListTile(
+                  title: Text(name),
+                  leading: const Icon(Icons.receipt_long_outlined),
+                  onTap: () => Navigator.pop(context, name),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
   if (!context.mounted || choice == null) return;
   final Widget? destination = switch (choice) {
-    'Airtime' => const AirtimeScreen(),
-    'Data' => const DataScreen(),
+    'Airtime' => AirtimeScreen(businessKind: businessKind),
+    'Data' => DataScreen(businessKind: businessKind),
     'Electricity' => const ElectricityScreen(),
     'Cable TV' => const CableScreen(),
     _ => null,
@@ -1120,9 +1203,14 @@ Future<void> _openBillPayment(BuildContext context) async {
 }
 
 class _MerchantManagement extends StatefulWidget {
-  const _MerchantManagement({required this.api, required this.profileId});
+  const _MerchantManagement({
+    required this.api,
+    required this.profileId,
+    this.featureAccess = const [],
+  });
   final BusinessNetworkApi api;
   final String profileId;
+  final List<dynamic> featureAccess;
   @override
   State<_MerchantManagement> createState() => _MerchantManagementState();
 }
@@ -1133,6 +1221,40 @@ class _MerchantManagementState extends State<_MerchantManagement> {
   bool _loaded = false;
   bool _started = false;
   String? _error;
+
+  Map<String, dynamic>? _featureFor(List<String> keys) {
+    final normalized = keys
+        .map(
+            (value) => value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), ''))
+        .toSet();
+    for (final raw in widget.featureAccess.whereType<Map>()) {
+      final feature = Map<String, dynamic>.from(raw);
+      final key = (feature['key'] ?? '').toString().toLowerCase().replaceAll(
+            RegExp(r'[^a-z0-9]'),
+            '',
+          );
+      if (normalized.contains(key)) return feature;
+    }
+    return null;
+  }
+
+  bool _canManage(List<String> keys) {
+    final feature = _featureFor(keys);
+    return feature == null ||
+        businessFeatureAvailableForKind(feature, 'MERCHANT');
+  }
+
+  String? _managementReason(List<String> keys) {
+    final feature = _featureFor(keys);
+    if (feature == null || _canManage(keys)) return null;
+    final categories = feature['categories'];
+    final category = categories is Map ? categories['MERCHANT'] : null;
+    return category is Map && category['reason'] != null
+        ? category['reason'].toString()
+        : feature['reason']?.toString() ??
+            'This management action is not enabled for this business.';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -1165,6 +1287,7 @@ class _MerchantManagementState extends State<_MerchantManagement> {
   }
 
   Future<void> _createBranch() async {
+    if (!_canManage(const ['branchManagement', 'branches'])) return;
     final name = TextEditingController(), address = TextEditingController();
     final ok = await showDialog<bool>(
         context: context,
@@ -1201,6 +1324,7 @@ class _MerchantManagementState extends State<_MerchantManagement> {
   }
 
   Future<void> _inviteStaff() async {
+    if (!_canManage(const ['staffManagement', 'staff'])) return;
     final user = TextEditingController();
     final ok = await showDialog<bool>(
         context: context,
@@ -1246,6 +1370,7 @@ class _MerchantManagementState extends State<_MerchantManagement> {
   }
 
   Future<void> _staffAction(Map staff) async {
+    if (!_canManage(const ['staffManagement', 'staff'])) return;
     final id = (staff['_id'] ?? '').toString();
     try {
       await widget.api.patch('staff/$id', {'status': 'SUSPENDED'});
@@ -1259,6 +1384,7 @@ class _MerchantManagementState extends State<_MerchantManagement> {
   }
 
   Future<void> _branchAction(Map<String, dynamic> branch) async {
+    if (!_canManage(const ['branchManagement', 'branches'])) return;
     final branchId = (branch['_id'] ?? '').toString();
     if (branchId.isEmpty) return;
     final suspended =
@@ -1278,6 +1404,7 @@ class _MerchantManagementState extends State<_MerchantManagement> {
   }
 
   Future<void> _reinviteStaff(Map<String, dynamic> staff) async {
+    if (!_canManage(const ['staffManagement', 'staff'])) return;
     final staffId = (staff['_id'] ?? '').toString();
     if (staffId.isEmpty || _branches.isEmpty) return;
     final currentBranch = staff['branchId'] is Map
@@ -1418,6 +1545,13 @@ class _MerchantManagementState extends State<_MerchantManagement> {
                   ],
                 ),
               if (_branches.isEmpty) const Text('No branches added yet.'),
+              if (_managementReason(const ['branchManagement', 'branches']) !=
+                  null)
+                Text(
+                  _managementReason(const ['branchManagement', 'branches'])!,
+                  style:
+                      const TextStyle(fontSize: 12, color: Color(0xFF59685F)),
+                ),
               ..._branches.map((raw) {
                 final branch = Map<String, dynamic>.from(raw as Map);
                 final status =
@@ -1430,7 +1564,10 @@ class _MerchantManagementState extends State<_MerchantManagement> {
                     '${branch['address'] ?? ''} · $status',
                   ),
                   trailing: TextButton(
-                    onPressed: () => _branchAction(branch),
+                    onPressed:
+                        _canManage(const ['branchManagement', 'branches'])
+                            ? () => _branchAction(branch)
+                            : null,
                     child: Text(status == 'SUSPENDED' ? 'Resume' : 'Pause'),
                   ),
                 );
@@ -1449,6 +1586,7 @@ class _MerchantManagementState extends State<_MerchantManagement> {
                   ),
                   trailing: PopupMenuButton<String>(
                     tooltip: 'Staff access actions',
+                    enabled: _canManage(const ['staffManagement', 'staff']),
                     onSelected: (action) {
                       if (action == 'reinvite') {
                         _reinviteStaff(staff);
@@ -1470,13 +1608,24 @@ class _MerchantManagementState extends State<_MerchantManagement> {
                   ),
                 );
               }),
+              if (_managementReason(const ['staffManagement', 'staff']) != null)
+                Text(
+                  _managementReason(const ['staffManagement', 'staff'])!,
+                  style:
+                      const TextStyle(fontSize: 12, color: Color(0xFF59685F)),
+                ),
               Wrap(spacing: 8, children: [
                 OutlinedButton.icon(
-                    onPressed: _createBranch,
+                    onPressed:
+                        _canManage(const ['branchManagement', 'branches'])
+                            ? _createBranch
+                            : null,
                     icon: const Icon(Icons.add),
                     label: const Text('Add branch')),
                 OutlinedButton.icon(
-                    onPressed: _inviteStaff,
+                    onPressed: _canManage(const ['staffManagement', 'staff'])
+                        ? _inviteStaff
+                        : null,
                     icon: const Icon(Icons.person_add_alt),
                     label: const Text('Invite staff'))
               ]),
@@ -1785,6 +1934,58 @@ class _CommissionCard extends StatelessWidget {
           ])));
 }
 
+class _PricingContextNotice extends StatelessWidget {
+  const _PricingContextNotice({
+    required this.kind,
+    required this.pricingContext,
+  });
+
+  final String? kind;
+  final Map<String, dynamic> pricingContext;
+
+  @override
+  Widget build(BuildContext context) {
+    final category = kind?.toUpperCase() ?? 'CUSTOMER';
+    final walletAuthority =
+        pricingContext['walletAuthority']?.toString().toUpperCase();
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEAF3ED),
+        borderRadius: BorderRadius.circular(15),
+        border: Border.all(color: const Color(0xFFD5E5D9)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Purchase account · $category',
+              style:
+                  const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
+          const SizedBox(height: 5),
+          const Text(
+            'ServicePay resolves the purchase category on the server. An approved business purchase does not automatically inherit Customer pricing, and this dashboard does not promise a special-price discount.',
+            style: TextStyle(height: 1.4, fontSize: 13),
+          ),
+          const SizedBox(height: 5),
+          const Text(
+            'Airtime provider cost and profit are unknown until an invoice is available.',
+            style: TextStyle(height: 1.4, fontSize: 12),
+          ),
+          if (walletAuthority == 'AUTHENTICATED_CUSTOMER_ONLY')
+            const Padding(
+              padding: EdgeInsets.only(top: 5),
+              child: Text(
+                'Payments use the authenticated customer wallet and existing authorization flow.',
+                style: TextStyle(height: 1.4, fontSize: 12),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 class _FeatureNotice extends StatelessWidget {
   const _FeatureNotice({required this.features});
   final Map<String, dynamic> features;
@@ -1801,11 +2002,14 @@ class _FeatureNotice extends StatelessWidget {
               ? 'No independently verified payout capability is configured.'
               : 'Provider collection verification is required before activation.';
           return ListTile(
-            enabled: enabled,
-            leading:
-                Icon(enabled ? Icons.check_circle_outline : Icons.lock_outline),
+            leading: Icon(
+              enabled ? Icons.info_outline : Icons.lock_outline,
+              color: const Color(0xFF59685F),
+            ),
             title: Text(label),
-            subtitle: Text(enabled ? 'Available' : unavailableText),
+            subtitle: Text(enabled
+                ? 'Reported enabled by the service, but this screen does not implement the payment capability.'
+                : unavailableText),
           );
         }).toList(),
       );

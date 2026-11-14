@@ -5,11 +5,13 @@ class _BusinessPremiumTools extends StatefulWidget {
     required this.api,
     required this.kind,
     required this.profileId,
+    this.featureAccess = const [],
   });
 
   final BusinessNetworkApi api;
   final String kind;
   final String profileId;
+  final List<dynamic> featureAccess;
 
   @override
   State<_BusinessPremiumTools> createState() => _BusinessPremiumToolsState();
@@ -28,6 +30,49 @@ class _BusinessPremiumToolsState extends State<_BusinessPremiumTools> {
       'business-expense-${DateTime.now().microsecondsSinceEpoch}';
 
   Map<String, String> get _query => {'profileId': widget.profileId};
+
+  Map<String, dynamic>? _writeFeature(List<String> keys) {
+    final normalized = keys.map(_normalizeFeatureKey).toSet();
+    for (final raw in widget.featureAccess.whereType<Map>()) {
+      final feature = Map<String, dynamic>.from(raw);
+      if (normalized
+          .contains(_normalizeFeatureKey(feature['key']?.toString() ?? ''))) {
+        return feature;
+      }
+    }
+    return null;
+  }
+
+  bool _canWrite(List<String> keys) {
+    final feature = _writeFeature(keys);
+    return feature == null ||
+        businessFeatureAvailableForKind(feature, widget.kind);
+  }
+
+  String? _writeBlockedReason(List<String> keys) {
+    final feature = _writeFeature(keys);
+    if (feature == null || _canWrite(keys)) return null;
+    final categories = feature['categories'];
+    final category = categories is Map ? categories[widget.kind] : null;
+    final reason = category is Map ? category['reason'] : feature['reason'];
+    return reason?.toString() ??
+        'This action is not enabled for this business category.';
+  }
+
+  String _normalizeFeatureKey(String value) =>
+      value.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '');
+
+  Widget _writeBlockedNotice(List<String> keys) {
+    final reason = _writeBlockedReason(keys);
+    if (reason == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 2, bottom: 6),
+      child: Text(
+        reason,
+        style: const TextStyle(fontSize: 12, color: Color(0xFF59685F)),
+      ),
+    );
+  }
 
   @override
   void initState() {
@@ -379,10 +424,24 @@ class _BusinessPremiumToolsState extends State<_BusinessPremiumTools> {
               'Private owner-only contacts. Add a customer only with permission; staff accounts cannot access this directory.',
               style: TextStyle(height: 1.4),
             ),
+            _writeBlockedNotice(const [
+              'customerDirectory',
+              'businessDirectory',
+              'directory',
+              'directoryWrite',
+            ]),
             Align(
               alignment: Alignment.centerRight,
               child: TextButton.icon(
-                onPressed: _busy ? null : _addContact,
+                onPressed: _busy ||
+                        !_canWrite(const [
+                          'customerDirectory',
+                          'businessDirectory',
+                          'directory',
+                          'directoryWrite',
+                        ])
+                    ? null
+                    : _addContact,
                 icon: const Icon(Icons.person_add_alt_1_outlined),
                 label: const Text('Add contact'),
               ),
@@ -399,7 +458,15 @@ class _BusinessPremiumToolsState extends State<_BusinessPremiumTools> {
                     '${contact['phone'] ?? ''}${contact['email']?.toString().isNotEmpty == true ? ' · ${contact['email']}' : ''}'),
                 trailing: IconButton(
                   tooltip: 'Remove contact',
-                  onPressed: _busy ? null : () => _removeContact(contact),
+                  onPressed: _busy ||
+                          !_canWrite(const [
+                            'customerDirectory',
+                            'businessDirectory',
+                            'directory',
+                            'directoryWrite',
+                          ])
+                      ? null
+                      : () => _removeContact(contact),
                   icon: const Icon(Icons.delete_outline),
                 ),
               );
@@ -417,10 +484,24 @@ class _BusinessPremiumToolsState extends State<_BusinessPremiumTools> {
               'Manual business bookkeeping only. Entries never change wallet balances or move money.',
               style: TextStyle(height: 1.4),
             ),
+            _writeBlockedNotice(const [
+              'businessExpenses',
+              'expenseTracking',
+              'expenses',
+              'expenseWrite',
+            ]),
             Align(
               alignment: Alignment.centerRight,
               child: TextButton.icon(
-                onPressed: _busy ? null : _addExpense,
+                onPressed: _busy ||
+                        !_canWrite(const [
+                          'businessExpenses',
+                          'expenseTracking',
+                          'expenses',
+                          'expenseWrite',
+                        ])
+                    ? null
+                    : _addExpense,
                 icon: const Icon(Icons.add),
                 label: const Text('Record expense'),
               ),
@@ -447,6 +528,13 @@ class _BusinessPremiumToolsState extends State<_BusinessPremiumTools> {
   Widget _publicProfileCard() {
     final enabled = _tools['publicProfile'] == true;
     final uri = _publicProfileUri;
+    const publicationKeys = [
+      'publicProfile',
+      'publishProfile',
+      'businessProfilePublishing',
+      'publish',
+    ];
+    final canPublish = _canWrite(publicationKeys);
     return _card(
       title: 'Verified business profile',
       child: Column(
@@ -456,13 +544,14 @@ class _BusinessPremiumToolsState extends State<_BusinessPremiumTools> {
             'An informational profile only. It does not accept payments and is not a payment QR.',
             style: TextStyle(height: 1.4),
           ),
+          _writeBlockedNotice(publicationKeys),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('Share public profile'),
             subtitle:
                 Text(enabled ? 'Public profile is on' : 'Currently private'),
             value: enabled,
-            onChanged: _busy ? null : _changePublication,
+            onChanged: _busy || !canPublish ? null : _changePublication,
           ),
           if (enabled && uri != null) ...[
             Center(
@@ -547,6 +636,11 @@ class _BusinessPremiumToolsState extends State<_BusinessPremiumTools> {
           const Text(
             'Telecom Abode publishes official airtime and data PIN request documentation. This customer app does not buy or print vouchers: pre-purchase price/availability, duplicate and timeout recovery, reference mapping, data catalogue/body consistency, dedicated encryption key, settlement admission, printer verification and redemption authority are still unverified.',
             style: TextStyle(height: 1.4),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Printer readiness can be checked for 58 mm or 80 mm paper after issuance and print transport are verified. No PIN or printer connection is created here.',
+            style: TextStyle(fontSize: 12, height: 1.4),
           ),
           const SizedBox(height: 8),
           if (airtime['documentation'] != null)

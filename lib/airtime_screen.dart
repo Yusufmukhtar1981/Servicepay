@@ -23,7 +23,9 @@ class AirtimeScreen extends StatefulWidget {
     this.loadBeneficiaries,
     this.pendingContext,
     this.contactPicker,
+    this.businessKind,
   });
+  final String? businessKind;
 
   final AirtimePurchaseIntent? purchaseIntent;
   final Future<Map<String, dynamic>> Function()? loadNetworks;
@@ -201,7 +203,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
         return;
       }
       final quoted = await ApiService.quoteAirtime(
-          networkId: providerId, amount: purchaseAmount, phone: phone);
+          networkId: providerId, amount: purchaseAmount, phone: phone, businessKind: widget.businessKind);
       final quote = quoted['data'] as Map?;
       final sellingPrice =
           double.tryParse(quote?['customerSellingPrice'].toString() ?? '');
@@ -337,6 +339,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
       String requestKey = '';
       final Map<String, dynamic> result = await _purchaseIntent.submit(
         newPurchase: true,
+        businessKind: widget.businessKind,
         network: network,
         phone: phone,
         amount: purchaseAmount,
@@ -350,6 +353,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
             acknowledgePendingPurchase: true,
             providerNetworkId: providerId,
             customerSellingPrice: sellingPrice,
+            businessKind: widget.businessKind,
             phone: phone,
             amount: purchaseAmount,
             idempotencyKey: idempotencyKey,
@@ -680,6 +684,7 @@ class AirtimePurchaseIntent {
     required String network,
     required String phone,
     required String amount,
+    String? businessKind,
   }) {
     final int? cents = amountInCents(amount);
     if (cents == null) {
@@ -690,6 +695,7 @@ class AirtimePurchaseIntent {
       network.trim().toUpperCase(),
       phone.trim().replaceAll(RegExp(r'\s+'), ''),
       cents,
+      if (businessKind != null) businessKind.trim().toUpperCase(),
     ]);
   }
 
@@ -714,12 +720,14 @@ class AirtimePurchaseIntent {
     required String phone,
     required String amount,
     bool newPurchase = false,
+    String? businessKind,
   }) =>
       _withStorageLock<String>(() async {
         final fingerprint = _fingerprint(
           network: network,
           phone: phone,
           amount: amount,
+          businessKind: businessKind,
         );
         final saved = await _storage.read(_storageKey);
         if (saved != null && newPurchase) {
@@ -789,11 +797,13 @@ class AirtimePurchaseIntent {
     required String phone,
     required String amount,
     bool newPurchase = false,
+    String? businessKind,
     required Future<Map<String, dynamic>> Function(String idempotencyKey)
         dispatch,
   }) async {
     final key = await keyForSubmission(
       newPurchase: newPurchase,
+      businessKind: businessKind,
       network: network,
       phone: phone,
       amount: amount,
