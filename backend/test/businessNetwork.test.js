@@ -225,6 +225,13 @@ test("Airtime pricing requires Head Office network management and preserves Cust
     ] };
     assert.equal((await call("PUT", "/admin/airtime-pricing", body, users.other)).status, 403);
     assert.equal((await call("PUT", "/admin/airtime-pricing", {}, users.admin)).status, 400);
+    const inherited = (await call("GET", "/admin/airtime-pricing", null, users.admin)).data.items[0].categories;
+    for (const category of ["AGENT", "MERCHANT"]) {
+      assert.equal(inherited[category].configured, false);
+      assert.equal(inherited[category].inherited, true);
+      assert.equal(inherited[category].enabled, true);
+      assert.equal(inherited[category].markupBps, 300);
+    }
     assert.equal((await call("PUT", "/admin/airtime-pricing", { ...body, changes: [{ ...body.changes[0], markupBps: -1 }] }, users.finance)).status, 400);
     assert.equal((await call("PUT", "/admin/airtime-pricing", { ...body, changes: [{ ...body.changes[0], markupBps: 100 }] }, users.finance)).status, 400);
     assert.equal((await call("PUT", "/admin/airtime-pricing", { ...body, changes: [{ ...body.changes[0], category: "CUSTOMER" }] }, users.finance)).status, 400);
@@ -233,6 +240,9 @@ test("Airtime pricing requires Head Office network management and preserves Cust
     assert.equal(page.data.customerMarkupBps, 300); assert.equal(page.data.providerCost, null);
     assert.equal(page.data.items[0].categories.AGENT.markupBps, 400);
     assert.equal(page.data.items[0].categories.MERCHANT.markupBps, 500);
+    assert.equal(page.data.items[0].categories.AGENT.configured, true);
+    assert.equal(page.data.items[0].categories.AGENT.inherited, false);
+    assert.equal(page.data.items[0].categories.AGENT.enabled, true);
     assert.equal((await call("PUT", "/admin/airtime-pricing", body, users.finance)).status, 409);
     assert.equal(await M.Audit.countDocuments({ action: "BUSINESS_AIRTIME_PRICE_CHANGED" }), 1);
   } finally { provider.createTelecomAbodeBillsProvider = oldProvider; manager.getServiceConfig = oldConfig; }

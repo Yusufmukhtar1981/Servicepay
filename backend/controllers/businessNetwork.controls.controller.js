@@ -109,7 +109,12 @@ exports.airtimePricing = wrap(async (_req, res) => {
     providerCost: null, margin: null, customerMarkupBps: config.airtimeMarkupBps || 0,
     costWarning: "Provider cost is confirmed only from an authenticated invoice. Until a provider cost ceiling is verified, category markups cannot undercut the existing Customer markup.",
     items: networks.map(network => ({ network: String(network.providerId), name: network.displayName,
-      categories: doc?.premium?.airtimePricing?.[String(network.providerId)] || {} })) });
+      categories: Object.fromEntries(["AGENT", "MERCHANT"].map(category => {
+        const rule = doc?.premium?.airtimePricing?.[String(network.providerId)]?.[category];
+        return [category, { ...(rule || {}), configured: !!rule, inherited: !rule,
+          enabled: rule ? rule.enabled === true : true,
+          markupBps: rule?.markupBps ?? config.airtimeMarkupBps ?? 0 }];
+      })) })) });
 });
 exports.saveAirtimePricing = wrap(async (req, res) => {
   if (Object.keys(req.body).some(key => !["revision", "changes", "reason"].includes(key))) P.fail("Unsupported Airtime pricing field.");
