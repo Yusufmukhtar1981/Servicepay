@@ -486,4 +486,230 @@ void main() {
     expect(staffBody['status'], isNot('ACTIVE'));
     client.close();
   });
+
+  testWidgets(
+      'payments-only Merchant staff sees own-wallet tools without report requests',
+      (tester) async {
+    final reportRequests = <String>[];
+    var eligibleRequested = false;
+    var attributionRequested = false;
+    final client = MockClient((request) async {
+      final path = request.url.path;
+      if (path.endsWith('/me')) {
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {
+              'customer': {'fullName': 'Mina', '_id': 'customer-1'},
+              'applications': [],
+              'memberships': [
+                {
+                  '_id': 'staff-1',
+                  'profile': {
+                    '_id': 'merchant-1',
+                    'networkId': 'MER-104',
+                    'details': {'businessName': 'Mina Market'},
+                    'status': 'APPROVED',
+                  },
+                  'branch': 'branch-1',
+                  'permissions': ['payments'],
+                  'status': 'ACTIVE',
+                }
+              ],
+              'categories': [],
+              'supportedServices': [],
+            },
+          }),
+          200,
+        );
+      }
+      if (path.endsWith('/dashboard/merchant') ||
+          (path.endsWith('/transactions/merchant') &&
+              request.method == 'GET') ||
+          path.endsWith('/commissions/merchant')) {
+        reportRequests.add(path);
+        return http.Response(
+          jsonEncode({'success': false, 'message': 'Reports not permitted'}),
+          403,
+        );
+      }
+      if (path.endsWith('/eligible-transactions/merchant')) {
+        eligibleRequested = true;
+        expect(request.url.queryParameters['profileId'], 'merchant-1');
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {
+              'items': [
+                {
+                  '_id': 'own-purchase-1',
+                  'reference': 'SP-OWN-510',
+                  'serviceType': 'AIRTIME',
+                  'status': 'SUCCESSFUL',
+                }
+              ],
+            },
+          }),
+          200,
+        );
+      }
+      if (path.endsWith('/transactions/merchant') && request.method == 'POST') {
+        attributionRequested = true;
+        expect(request.url.queryParameters['profileId'], 'merchant-1');
+        expect(
+          jsonDecode(request.body),
+          {'transactionId': 'own-purchase-1', 'consentAcknowledged': true},
+        );
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {'activity': {}}
+          }),
+          201,
+        );
+      }
+      return http.Response(
+        jsonEncode({'success': false, 'message': 'Unexpected route: $path'}),
+        404,
+      );
+    });
+    await tester.pumpWidget(MaterialApp(
+      home: BusinessHubScreen(
+        api: BusinessNetworkApi(
+          client: client,
+          tokenProvider: () async => 'test-token',
+          baseUrl: 'https://test.servicepay.invalid/api',
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await _scrollTo(tester, find.text('My Business Dashboard'));
+    await tester.tap(find.text('My Business Dashboard'));
+    await tester.pumpAndSettle();
+
+    expect(reportRequests, isEmpty);
+    expect(find.textContaining('does not include business reporting'),
+        findsOneWidget);
+    expect(find.text('Transaction history'), findsNothing);
+    expect(find.text('Transactions'), findsNothing);
+    await _scrollTo(tester, find.text('Find my eligible purchases'));
+    await tester.tap(find.text('Find my eligible purchases'));
+    await tester.pumpAndSettle();
+    expect(eligibleRequested, isTrue);
+    await _scrollTo(tester, find.text('Attribute'));
+    await tester.tap(find.text('Attribute'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('I have consent'));
+    await tester.pumpAndSettle();
+    expect(attributionRequested, isTrue);
+    expect(reportRequests, isEmpty);
+    client.close();
+  });
+
+  testWidgets('reports-only Merchant staff cannot access payment tools',
+      (tester) async {
+    final requestedPaths = <String>[];
+    final client = MockClient((request) async {
+      final path = request.url.path;
+      requestedPaths.add(path);
+      if (path.endsWith('/me')) {
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {
+              'customer': {'fullName': 'Mina', '_id': 'customer-1'},
+              'applications': [],
+              'memberships': [
+                {
+                  '_id': 'staff-2',
+                  'profile': {
+                    '_id': 'merchant-2',
+                    'networkId': 'MER-208',
+                    'details': {'businessName': 'Kite Corner'},
+                    'status': 'APPROVED',
+                  },
+                  'branch': 'branch-2',
+                  'permissions': ['reports'],
+                  'status': 'ACTIVE',
+                }
+              ],
+              'categories': [],
+              'supportedServices': [],
+            },
+          }),
+          200,
+        );
+      }
+      if (path.endsWith('/dashboard/merchant')) {
+        expect(request.url.queryParameters['profileId'], 'merchant-2');
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {
+              'profile': {
+                '_id': 'merchant-2',
+                'networkId': 'MER-208',
+                'kind': 'MERCHANT',
+                'status': 'APPROVED',
+                'details': {'businessName': 'Kite Corner'},
+              },
+              'summary': {
+                'total': 3,
+                'successful': 2,
+                'pending': 1,
+                'failed': 0,
+                'volumeKobo': 12000,
+              },
+              'features': {},
+            },
+          }),
+          200,
+        );
+      }
+      if (path.endsWith('/transactions/merchant')) {
+        expect(request.url.queryParameters['profileId'], 'merchant-2');
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {'items': [], 'total': 0},
+          }),
+          200,
+        );
+      }
+      return http.Response(
+        jsonEncode({'success': false, 'message': 'Unexpected route: $path'}),
+        404,
+      );
+    });
+    await tester.pumpWidget(MaterialApp(
+      home: BusinessHubScreen(
+        api: BusinessNetworkApi(
+          client: client,
+          tokenProvider: () async => 'test-token',
+          baseUrl: 'https://test.servicepay.invalid/api',
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await _scrollTo(tester, find.text('My Business Dashboard'));
+    await tester.tap(find.text('My Business Dashboard'));
+    await tester.pumpAndSettle();
+
+    expect(find.textContaining('Kite Corner'), findsOneWidget);
+    await _scrollTo(tester, find.text('Transaction history'));
+    expect(find.text('Transaction history'), findsOneWidget);
+    expect(find.text('Link own purchase'), findsNothing);
+    expect(find.text('Find my eligible purchases'), findsNothing);
+    expect(find.text('Pay a bill from my account'), findsNothing);
+    expect(
+      requestedPaths
+          .where((path) => path.endsWith('/eligible-transactions/merchant')),
+      isEmpty,
+    );
+    expect(
+        requestedPaths, contains('/api/business-network/dashboard/merchant'));
+    expect(requestedPaths,
+        contains('/api/business-network/transactions/merchant'));
+    client.close();
+  });
 }

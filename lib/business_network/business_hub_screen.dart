@@ -159,11 +159,26 @@ class _BusinessHubScreenState extends State<BusinessHubScreen> {
 
   Map<String, dynamic>? _membership(String kind) {
     for (final raw in (_me?['memberships'] as List? ?? const [])) {
-      if (raw is Map && raw['kind']?.toString().toUpperCase() == kind) {
+      if (raw is Map &&
+          _membershipMatchesKind(Map<String, dynamic>.from(raw), kind)) {
         return Map<String, dynamic>.from(raw);
       }
     }
     return null;
+  }
+
+  bool _membershipMatchesKind(Map<String, dynamic> membership, String kind) {
+    final profile = membership['profile'] is Map
+        ? Map<String, dynamic>.from(membership['profile'] as Map)
+        : const <String, dynamic>{};
+    final membershipKind =
+        (membership['kind'] ?? profile['kind'])?.toString().toUpperCase();
+    if (membershipKind != null && membershipKind.isNotEmpty) {
+      return membershipKind == kind;
+    }
+    // GET /me returns Merchant Staff documents with a populated profile but
+    // does not include a top-level kind or the profile's kind in that populate.
+    return kind == 'MERCHANT' && profile.isNotEmpty;
   }
 
   String? _profileId(Map<String, dynamic>? membership) {
@@ -210,7 +225,7 @@ class _BusinessHubScreenState extends State<BusinessHubScreen> {
     final memberships = (_me?['memberships'] as List? ?? const [])
         .whereType<Map>()
         .map((value) => Map<String, dynamic>.from(value))
-        .where((value) => value['kind']?.toString().toUpperCase() == 'MERCHANT')
+        .where((value) => _membershipMatchesKind(value, 'MERCHANT'))
         .toList();
     Map<String, dynamic>? selected;
     if (memberships.length == 1) {
@@ -387,11 +402,29 @@ class _BusinessDashboardState extends State<_BusinessDashboard> {
   static const int _commissionLimit = 50;
   int _commissionPage = 1;
   int _commissionTotal = 0;
+  bool _eligibleLoaded = false;
+
+  List<String> get _membershipPermissions =>
+      (widget.profile?['permissions'] as List? ?? const [])
+          .map((permission) => permission.toString().toLowerCase())
+          .toList();
+
+  bool get _canViewReports =>
+      widget.owner || _membershipPermissions.contains('reports');
+
+  bool get _canUsePayments =>
+      widget.owner || _membershipPermissions.contains('payments');
+
+  Map<String, dynamic>? get _profileMetadata {
+    final profile = widget.profile?['profile'];
+    if (profile is Map) return Map<String, dynamic>.from(profile);
+    return widget.profile;
+  }
 
   @override
   void initState() {
     super.initState();
-    final status = widget.profile?['status']?.toString().toUpperCase();
+    final status = _profileMetadata?['status']?.toString().toUpperCase();
     if (status == 'APPROVED' || status == 'SUSPENDED') {
       _load();
     } else {
@@ -404,13 +437,26 @@ class _BusinessDashboardState extends State<_BusinessDashboard> {
       _loading = true;
       _error = null;
     });
+    if (!_canViewReports) {
+      if (mounted) {
+        setState(() {
+          _dashboard = null;
+          _transactions = [];
+          _transactionTotal = 0;
+          _commissions = null;
+          _commissionTotal = 0;
+          _loading = false;
+        });
+      }
+      return;
+    }
     try {
       final kind = widget.kind.toLowerCase();
       final profileQuery = <String, String>{
         if (widget.profileId?.isNotEmpty == true)
           'profileId': widget.profileId!,
       };
-      final status = widget.profile?['status']?.toString().toUpperCase();
+      final status = _profileMetadata?['status']?.toString().toUpperCase();
       final dashboardAllowed = status == 'APPROVED';
       final requests = <Future<dynamic>>[];
       if (dashboardAllowed) {
@@ -578,12 +624,19 @@ class _BusinessDashboardState extends State<_BusinessDashboard> {
   }
 
   Future<void> _loadEligible() async {
+    if (!_canUsePayments) return;
     try {
-      final data = await widget.api
-          .get('eligible-transactions/${widget.kind.toLowerCase()}');
+      final data = await widget.api.get(
+        'eligible-transactions/${widget.kind.toLowerCase()}',
+        query: {
+          if (widget.profileId?.isNotEmpty == true)
+            'profileId': widget.profileId!,
+        },
+      );
       if (mounted) {
         setState(() {
           _eligible = (data as Map)['items'] as List? ?? [];
+          _eligibleLoaded = true;
         });
       }
     } catch (e) {
@@ -595,6 +648,7 @@ class _BusinessDashboardState extends State<_BusinessDashboard> {
   }
 
   Future<void> _attribute(Map item) async {
+    if (!_canUsePayments) return;
     final id = (item['_id'] ?? '').toString();
     final consent = await showDialog<bool>(
         context: context,
@@ -613,8 +667,13 @@ class _BusinessDashboardState extends State<_BusinessDashboard> {
             ));
     if (!mounted || consent != true) return;
     try {
-      await widget.api.post('transactions/${widget.kind.toLowerCase()}',
-          {'transactionId': id, 'consentAcknowledged': true});
+      await widget.api.post('transactions/${widget.kind.toLowerCase()}', {
+        'transactionId': id,
+        'consentAcknowledged': true
+      }, query: {
+        if (widget.profileId?.isNotEmpty == true)
+          'profileId': widget.profileId!,
+      });
       await _load();
     } catch (e) {
       if (mounted) {
@@ -624,11 +683,73 @@ class _BusinessDashboardState extends State<_BusinessDashboard> {
     }
   }
 
+  Widget _paymentsOnlyView(
+    Map<String, dynamic>? profile, {
+    bool paymentToolsAvailable = true,
+  }) =>
+      ListView(
+        padding: const EdgeInsets.all(18),
+        children: [
+          _StatusBanner(profile: profile ?? const {'status': 'APPROVED'}),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFFE8F3EC),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: const Text(
+              'This staff membership does not include business reporting. '
+              'Dashboards, commission statements, and business transaction '
+              'history are unavailable.',
+              style: TextStyle(height: 1.45),
+            ),
+          ),
+          const SizedBox(height: 18),
+          const Text(
+            'Own-wallet purchase tools',
+            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 17),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Find eligible purchases from your own ServicePay account. '
+            'Attribution records activity only and never changes a payment.',
+            style: TextStyle(height: 1.45),
+          ),
+          if (paymentToolsAvailable && _canUsePayments) ...[
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _loadEligible,
+              icon: const Icon(Icons.receipt_long_outlined),
+              label: const Text('Find my eligible purchases'),
+            ),
+            if (_eligibleLoaded && _eligible.isEmpty)
+              const _EmptyState(
+                text: 'No eligible own-account purchases were returned.',
+              ),
+            ..._eligible.map((raw) {
+              final item = Map<String, dynamic>.from(raw as Map);
+              return ListTile(
+                title: Text(item['reference']?.toString() ?? 'Purchase'),
+                subtitle: Text(item['serviceType']?.toString() ?? ''),
+                trailing: TextButton(
+                  onPressed: () => _attribute(item),
+                  child: const Text('Attribute'),
+                ),
+              );
+            }),
+          ] else if (paymentToolsAvailable)
+            const _EmptyState(
+              text: 'No own-wallet payment permissions are assigned.',
+            ),
+        ],
+      );
+
   @override
   Widget build(BuildContext context) {
     final profile = _dashboard?['profile'] is Map
         ? Map<String, dynamic>.from(_dashboard!['profile'] as Map)
-        : widget.profile;
+        : _profileMetadata;
     final summary = _dashboard?['summary'] is Map
         ? Map<String, dynamic>.from(_dashboard!['summary'] as Map)
         : <String, dynamic>{};
@@ -638,7 +759,12 @@ class _BusinessDashboardState extends State<_BusinessDashboard> {
     if (_error != null && _dashboard == null) {
       return _BusinessError(message: _error!, retry: _load);
     }
-    if (status == 'SUSPENDED') return _suspendedView(profile);
+    if (status == 'SUSPENDED') {
+      if (!_canViewReports) {
+        return _paymentsOnlyView(profile, paymentToolsAvailable: false);
+      }
+      return _suspendedView(profile);
+    }
     if (status != 'APPROVED') {
       return ListView(padding: const EdgeInsets.all(20), children: [
         _StatusBanner(profile: profile ?? {'status': status}),
@@ -656,6 +782,7 @@ class _BusinessDashboardState extends State<_BusinessDashboard> {
         ],
       ]);
     }
+    if (!_canViewReports) return _paymentsOnlyView(profile);
     final features = _dashboard?['features'] is Map
         ? Map<String, dynamic>.from(_dashboard!['features'] as Map)
         : <String, dynamic>{};
@@ -723,9 +850,10 @@ class _BusinessDashboardState extends State<_BusinessDashboard> {
                 child: Text('Transaction history',
                     style:
                         TextStyle(fontWeight: FontWeight.w800, fontSize: 17))),
-            TextButton(
-                onPressed: _loadEligible,
-                child: const Text('Link own purchase'))
+            if (_canUsePayments)
+              TextButton(
+                  onPressed: _loadEligible,
+                  child: const Text('Link own purchase'))
           ]),
           DropdownButtonFormField<String>(
             value: _transactionStatus,
@@ -778,7 +906,7 @@ class _BusinessDashboardState extends State<_BusinessDashboard> {
                 ),
               ],
             ),
-          if (_eligible.isNotEmpty) ...[
+          if (_canUsePayments && _eligible.isNotEmpty) ...[
             const SizedBox(height: 8),
             const Text('Eligible purchases',
                 style: TextStyle(fontWeight: FontWeight.w700)),
@@ -792,7 +920,7 @@ class _BusinessDashboardState extends State<_BusinessDashboard> {
                       child: const Text('Attribute')));
             })
           ],
-          if (widget.kind == 'AGENT') ...[
+          if (widget.kind == 'AGENT' && _canUsePayments) ...[
             const SizedBox(height: 16),
             FilledButton.icon(
                 onPressed: () => _openBillPayment(context),

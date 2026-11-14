@@ -30,8 +30,9 @@ class BusinessNetworkApi {
   Future<dynamic> put(String path, Map<String, dynamic> body) =>
       _request('PUT', path, body: body);
 
-  Future<dynamic> post(String path, Map<String, dynamic> body) =>
-      _request('POST', path, body: body);
+  Future<dynamic> post(String path, Map<String, dynamic> body,
+          {Map<String, String>? query}) =>
+      _request('POST', path, body: body, query: query);
 
   Future<dynamic> patch(String path, Map<String, dynamic> body) =>
       _request('PATCH', path, body: body);
@@ -68,9 +69,13 @@ class BusinessNetworkApi {
     String accept = 'application/json',
   }) async {
     final rawToken = (await _tokenProvider())?.trim() ?? '';
-    if (rawToken.isEmpty) throw const BusinessNetworkException('Please sign in again.');
-    final token = rawToken.replaceFirst(RegExp(r'^Bearer\s+', caseSensitive: false), '');
-    final uri = Uri.parse('$baseUrl/business-network/$path').replace(queryParameters: query);
+    if (rawToken.isEmpty) {
+      throw const BusinessNetworkException('Please sign in again.');
+    }
+    final token =
+        rawToken.replaceFirst(RegExp(r'^Bearer\s+', caseSensitive: false), '');
+    final uri = Uri.parse('$baseUrl/business-network/$path')
+        .replace(queryParameters: query);
     final headers = <String, String>{
       'Accept': accept,
       'Authorization': 'Bearer $token',
@@ -79,13 +84,21 @@ class BusinessNetworkApi {
     late final http.Response response;
     switch (method) {
       case 'GET':
-        response = await _client.get(uri, headers: headers).timeout(const Duration(seconds: 25));
+        response = await _client
+            .get(uri, headers: headers)
+            .timeout(const Duration(seconds: 25));
       case 'PUT':
-        response = await _client.put(uri, headers: headers, body: jsonEncode(body)).timeout(const Duration(seconds: 25));
+        response = await _client
+            .put(uri, headers: headers, body: jsonEncode(body))
+            .timeout(const Duration(seconds: 25));
       case 'POST':
-        response = await _client.post(uri, headers: headers, body: jsonEncode(body)).timeout(const Duration(seconds: 25));
+        response = await _client
+            .post(uri, headers: headers, body: jsonEncode(body))
+            .timeout(const Duration(seconds: 25));
       case 'PATCH':
-        response = await _client.patch(uri, headers: headers, body: jsonEncode(body)).timeout(const Duration(seconds: 25));
+        response = await _client
+            .patch(uri, headers: headers, body: jsonEncode(body))
+            .timeout(const Duration(seconds: 25));
       default:
         throw ArgumentError.value(method, 'method');
     }
@@ -99,7 +112,8 @@ class BusinessNetworkApi {
     try {
       decoded = jsonDecode(response.body);
     } catch (_) {
-      throw BusinessNetworkException('The service returned an unreadable response (${response.statusCode}).');
+      throw BusinessNetworkException(
+          'The service returned an unreadable response (${response.statusCode}).');
     }
     if (response.statusCode < 200 ||
         response.statusCode >= 300 ||
