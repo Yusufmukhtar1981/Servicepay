@@ -74,5 +74,36 @@ void main() {
           api.get('dashboard/agent'), throwsA(isA<BusinessNetworkException>()));
       client.close();
     });
+
+    test('customer delete method preserves authenticated profile query',
+        () async {
+      final client = MockClient((request) async {
+        expect(request.method, 'DELETE');
+        expect(
+          request.url.path,
+          '/api/business-network/directory/AGENT/contact-7',
+        );
+        expect(request.url.queryParameters['profileId'], 'agent-7');
+        expect(request.headers['authorization'], 'Bearer customer-token');
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {'removed': true}
+          }),
+          200,
+        );
+      });
+      final api = BusinessNetworkApi(
+        client: client,
+        tokenProvider: () async => 'customer-token',
+        baseUrl: 'https://test.servicepay.invalid/api',
+      );
+      final result = await api.delete(
+        'directory/AGENT/contact-7',
+        query: {'profileId': 'agent-7'},
+      ) as Map;
+      expect(result['removed'], isTrue);
+      client.close();
+    });
   });
 }

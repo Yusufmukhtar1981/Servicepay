@@ -8,7 +8,11 @@ class _ApplicationForm extends StatefulWidget {
     required this.customer,
     required this.categories,
     required this.supportedServices,
+    required this.serviceCatalogue,
+    required this.hasServiceCatalogue,
+    required this.onKindChanged,
     this.existing,
+    this.onProfileSaved,
   });
   final BusinessNetworkApi api;
   final String kind;
@@ -16,6 +20,10 @@ class _ApplicationForm extends StatefulWidget {
   final Map<String, dynamic> customer;
   final List<String> categories;
   final List<String> supportedServices;
+  final List<Map<String, dynamic>> serviceCatalogue;
+  final bool hasServiceCatalogue;
+  final ValueChanged<String> onKindChanged;
+  final ValueChanged<Map<String, dynamic>>? onProfileSaved;
   final Future<void> Function() onSaved;
 
   @override
@@ -50,12 +58,17 @@ class _ApplicationFormState extends State<_ApplicationForm> {
   ];
   final Map<String, TextEditingController> _fields = {};
   final Set<String> _services = {};
+  final Map<String, Set<String>> _servicesByKind = {};
+  final Map<String, Map<String, String>> _fieldsByKind = {};
   bool _busy = false;
   String? _error;
+  String? _servicesError;
+  late int _revision;
 
   @override
   void initState() {
     super.initState();
+    _revision = (widget.existing?['revision'] as num?)?.toInt() ?? 0;
     final details = widget.existing?['details'] is Map
         ? Map<String, dynamic>.from(widget.existing!['details'] as Map)
         : <String, dynamic>{};
@@ -69,11 +82,41 @@ class _ApplicationFormState extends State<_ApplicationForm> {
         text: (details[name] ?? identityDefaults[name])?.toString() ?? '',
       );
     }
-    _services.addAll(
-      (details['preferredServices'] as List? ?? const [])
-          .map((value) => value.toString())
-          .where(widget.supportedServices.contains),
-    );
+    _services.addAll((details['preferredServices'] as List? ?? const [])
+        .map((value) => value.toString()));
+    _servicesByKind[widget.kind] = Set<String>.from(_services);
+  }
+
+  @override
+  void didUpdateWidget(covariant _ApplicationForm oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.kind != widget.kind) {
+      _fieldsByKind[oldWidget.kind] = {
+        for (final name in _names) name: _fields[name]!.text,
+      };
+      _servicesByKind[oldWidget.kind] = Set<String>.from(_services);
+      final details = widget.existing?['details'] is Map
+          ? Map<String, dynamic>.from(widget.existing!['details'] as Map)
+          : const <String, dynamic>{};
+      final previousFields = _fieldsByKind[widget.kind];
+      if (previousFields != null || widget.existing != null) {
+        for (final name in _names) {
+          _fields[name]!.text =
+              previousFields?[name] ?? details[name]?.toString() ?? '';
+        }
+      }
+      _services
+        ..clear()
+        ..addAll(_servicesByKind[widget.kind] ??
+            (details['preferredServices'] as List? ?? const [])
+                .map((value) => value.toString()));
+      _servicesByKind[widget.kind] = Set<String>.from(_services);
+      _revision = (widget.existing?['revision'] as num?)?.toInt() ?? 0;
+      _servicesError = null;
+      _error = null;
+    } else if (widget.existing?['revision'] is num) {
+      _revision = (widget.existing!['revision'] as num).toInt();
+    }
   }
 
   @override
@@ -85,26 +128,39 @@ class _ApplicationFormState extends State<_ApplicationForm> {
   }
 
   Future<void> _save({required bool submit}) async {
-    if (!_formKey.currentState!.validate()) return;
-    if (_services.isEmpty) {
-      setState(() => _error = widget.supportedServices.isEmpty
-          ? 'Supported services are unavailable right now. Refresh and try again.'
-          : 'Choose at least one preferred service.');
-      return;
+    if (submit) {
+      final fieldsValid = _formKey.currentState!.validate();
+      final servicesValid = _services.isNotEmpty &&
+          _services.every((code) {
+            final match = _availableServices.where(
+              (service) => service['code']?.toString() == code,
+            );
+            return match.length == 1 &&
+                match.single['preferencesEnabled'] != false;
+          });
+      setState(() {
+        _servicesError = _services.isEmpty
+            ? 'Choose at least one preferred service or business interest.'
+            : servicesValid
+                ? null
+                : 'One or more selected services are unavailable. Remove them or refresh the current catalogue.';
+      });
+      if (!fieldsValid || !servicesValid) return;
     }
     setState(() {
       _busy = true;
       _error = null;
+      if (submit) _servicesError = null;
     });
+    String? networkId;
     try {
-      final revision = (widget.existing?['revision'] as num?)?.toInt() ?? 0;
       final details = <String, dynamic>{
         for (final name in _names) name: _fields[name]!.text.trim(),
         'preferredServices': _services.toList(),
       };
       final saved = await widget.api.put(
-        'applications/${widget.kind.toLowerCase()}',
-        {...details, 'revision': revision},
+        'applications/${widget.kind}',
+        {...details, 'kind': widget.kind, 'revision': _revision},
       );
       final savedProfile = saved is Map && saved['profile'] is Map
           ? Map<String, dynamic>.from(saved['profile'] as Map)
@@ -113,19 +169,43 @@ class _ApplicationFormState extends State<_ApplicationForm> {
               : const <String, dynamic>{};
       final nextRevision = savedProfile['revision'] is num
           ? (savedProfile['revision'] as num).toInt()
-          : revision + 1;
+          : _revision + 1;
+      _revision = nextRevision;
+      final currentProfile = {
+        ...savedProfile,
+        'kind': widget.kind,
+        'revision': nextRevision,
+        'details':
+            savedProfile['details'] is Map ? savedProfile['details'] : details,
+      };
+      networkId = currentProfile['networkId']?.toString();
+      widget.onProfileSaved?.call(currentProfile);
       if (submit) {
-        await widget.api.post(
-          'applications/${widget.kind.toLowerCase()}/submit',
+        final submitted = await widget.api.post(
+          'applications/${widget.kind}/submit',
           {'revision': nextRevision},
         );
+        final submittedProfile = submitted is Map && submitted['profile'] is Map
+            ? Map<String, dynamic>.from(submitted['profile'] as Map)
+            : submitted is Map
+                ? Map<String, dynamic>.from(submitted)
+                : <String, dynamic>{};
+        networkId = submittedProfile['networkId']?.toString() ?? networkId;
+        widget.onProfileSaved?.call({
+          ...currentProfile,
+          ...submittedProfile,
+          'kind': widget.kind,
+          'revision': submittedProfile['revision'] ?? nextRevision,
+        });
       }
       await widget.onSaved();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              submit ? 'Application submitted for review.' : 'Draft saved.',
+              submit
+                  ? 'Application submitted for review${networkId?.isNotEmpty == true ? ' · $networkId' : ''}.'
+                  : 'Draft saved.',
             ),
           ),
         );
@@ -137,6 +217,20 @@ class _ApplicationFormState extends State<_ApplicationForm> {
     }
   }
 
+  List<Map<String, dynamic>> get _availableServices {
+    if (widget.hasServiceCatalogue) return widget.serviceCatalogue;
+    return widget.supportedServices
+        .map((code) => {
+              'code': code,
+              'label': _supportedServiceLabel(code),
+              'category': 'Service',
+              'preferencesEnabled': true,
+              'processable': true,
+              'available': true,
+            })
+        .toList();
+  }
+
   @override
   Widget build(BuildContext context) {
     final agent = widget.kind == 'AGENT';
@@ -145,6 +239,44 @@ class _ApplicationFormState extends State<_ApplicationForm> {
       child: ListView(
         padding: const EdgeInsets.all(18),
         children: [
+          const Text(
+            'APPLICATION TYPE',
+            style: TextStyle(
+              color: Color(0xFF53645B),
+              fontSize: 11,
+              letterSpacing: 1,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _applicationTypeOption(
+                  kind: 'AGENT',
+                  label: 'Retail Agent',
+                  icon: Icons.storefront_outlined,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _applicationTypeOption(
+                  kind: 'MERCHANT',
+                  label: 'SME Merchant',
+                  icon: Icons.business_outlined,
+                ),
+              ),
+            ],
+          ),
+          if (widget.existing != null)
+            const Padding(
+              padding: EdgeInsets.only(top: 7),
+              child: Text(
+                'This application type is locked to your saved application.',
+                style: TextStyle(fontSize: 12, color: Color(0xFF59685F)),
+              ),
+            ),
+          const SizedBox(height: 20),
           Text(
             agent ? 'Retail Agent application' : 'SME Merchant application',
             style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
@@ -245,30 +377,86 @@ class _ApplicationFormState extends State<_ApplicationForm> {
             'Preferred services',
             style: TextStyle(fontWeight: FontWeight.w700),
           ),
-          const SizedBox(height: 4),
-          if (widget.supportedServices.isNotEmpty)
-            Wrap(
-              spacing: 6,
-              children: widget.supportedServices
-                  .map(
-                    (service) => FilterChip(
-                      label: Text(_supportedServiceLabel(service)),
-                      selected: _services.contains(service),
-                      onSelected: (selected) => setState(() {
-                        if (selected) {
-                          _services.add(service);
-                        } else {
-                          _services.remove(service);
-                        }
-                      }),
-                    ),
-                  )
-                  .toList(),
+          const SizedBox(height: 5),
+          const Text(
+            'Choose at least one supported bill service or business product you are interested in. Product and logistics interests do not grant bill-payment or commission authority; Head Office approves processable services separately.',
+            style: TextStyle(
+              color: Color(0xFF59685F),
+              fontSize: 12,
+              height: 1.4,
             ),
-          if (widget.supportedServices.isEmpty)
+          ),
+          const SizedBox(height: 6),
+          if (_availableServices.isNotEmpty)
+            ..._availableServices.map((service) {
+              final code = service['code']?.toString() ?? '';
+              final label =
+                  service['label']?.toString().trim().isNotEmpty == true
+                      ? service['label'].toString()
+                      : _supportedServiceLabel(code);
+              final available = service['available'] != false;
+              final preferencesEnabled = service['preferencesEnabled'] != false;
+              final processable = service['processable'] == true;
+              final selected = _services.contains(code);
+              final reason = !preferencesEnabled
+                  ? (service['reason']?.toString().trim().isNotEmpty == true
+                      ? service['reason'].toString()
+                      : 'This service is not enabled for preferences.')
+                  : !available
+                      ? '${service['reason']?.toString().trim().isNotEmpty == true ? service['reason'] : 'Globally unavailable in ServicePay.'} You may record interest, but it cannot be processed now.'
+                      : !processable
+                          ? 'Interest only — processing is not enabled.'
+                          : (service['category']?.toString() ?? '');
+              return CheckboxListTile(
+                contentPadding: const EdgeInsets.symmetric(horizontal: 4),
+                controlAffinity: ListTileControlAffinity.leading,
+                value: selected,
+                title: Text(label),
+                subtitle: reason.isEmpty
+                    ? null
+                    : Text(
+                        reason,
+                        style: TextStyle(
+                          color: available && preferencesEnabled
+                              ? const Color(0xFF59685F)
+                              : const Color(0xFF9A4F31),
+                          fontSize: 12,
+                        ),
+                      ),
+                onChanged: selected
+                    ? (value) {
+                        if (value != true) {
+                          setState(() {
+                            _services.remove(code);
+                            _servicesError = null;
+                          });
+                        }
+                      }
+                    : preferencesEnabled
+                        ? (value) {
+                            setState(() {
+                              if (value == true) _services.add(code);
+                              _servicesError = null;
+                            });
+                          }
+                        : null,
+              );
+            })
+          else
             const Text(
-              'Service options are unavailable. Refresh to load the supported list.',
+              'Service options are unavailable for this application type. Refresh to load the current catalogue.',
               style: TextStyle(color: Color(0xFF59685F), fontSize: 12),
+            ),
+          if (_servicesError != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4, left: 12),
+              child: Text(
+                _servicesError!,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.error,
+                  fontSize: 12,
+                ),
+              ),
             ),
           const SizedBox(height: 9),
           const Text(
@@ -301,6 +489,59 @@ class _ApplicationFormState extends State<_ApplicationForm> {
                 : const Text('Submit for review'),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _applicationTypeOption({
+    required String kind,
+    required String label,
+    required IconData icon,
+  }) {
+    final selected = widget.kind == kind;
+    final locked = widget.existing != null;
+    return Semantics(
+      button: true,
+      selected: selected,
+      child: OutlinedButton(
+        onPressed: locked || selected
+            ? null
+            : () {
+                _servicesByKind[widget.kind] = Set<String>.from(_services);
+                widget.onKindChanged(kind);
+              },
+        style: OutlinedButton.styleFrom(
+          backgroundColor: selected ? const Color(0xFFE1F0E6) : Colors.white,
+          foregroundColor: const Color(0xFF18372A),
+          disabledForegroundColor: const Color(0xFF18372A),
+          disabledBackgroundColor:
+              selected ? const Color(0xFFE1F0E6) : Colors.white,
+          side: BorderSide(
+            color: selected ? const Color(0xFF08783E) : const Color(0xFFD5E1D9),
+            width: selected ? 1.6 : 1,
+          ),
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 19),
+            const SizedBox(width: 7),
+            Flexible(
+              child: Text(
+                label,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+            ),
+            if (selected) ...[
+              const SizedBox(width: 5),
+              const Icon(Icons.check_circle, size: 17),
+            ],
+          ],
+        ),
       ),
     );
   }

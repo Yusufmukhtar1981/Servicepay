@@ -20,13 +20,15 @@ Future<void> _scrollTo(WidgetTester tester, Finder target) async {
         tester.view.physicalSize.height / tester.view.devicePixelRatio;
     for (var attempt = 0; attempt < 8; attempt++) {
       final y = tester.getCenter(target).dy;
-      if (y >= 64 && y <= viewportHeight - 40) return;
+      if (y >= 64 && y <= viewportHeight - 120) return;
       await tester.drag(
         verticalScrollable,
         Offset(0, y > viewportHeight / 2 ? -240 : 240),
       );
       await tester.pumpAndSettle();
     }
+    await tester.ensureVisible(target.first);
+    await tester.pumpAndSettle();
     return;
   }
   await tester.scrollUntilVisible(
@@ -169,6 +171,71 @@ void main() {
     client.close();
   });
 
+  testWidgets('application type switch preserves business field values',
+      (tester) async {
+    final client = MockClient((request) async => http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {
+              'customer': {'fullName': 'Ada'},
+              'applications': [],
+              'memberships': [],
+              'categories': ['Market retail'],
+              'serviceCatalogue': {
+                'AGENT': [
+                  {
+                    'code': 'AIRTIME',
+                    'label': 'Airtime',
+                    'preferencesEnabled': true,
+                    'processable': true,
+                    'available': true,
+                  }
+                ],
+                'MERCHANT': [
+                  {
+                    'code': 'MARKETPLACE',
+                    'label': 'Marketplace',
+                    'preferencesEnabled': true,
+                    'processable': false,
+                    'available': true,
+                  }
+                ],
+              },
+            },
+          }),
+          200,
+        ));
+    await tester.pumpWidget(MaterialApp(
+      home: BusinessHubScreen(
+        api: BusinessNetworkApi(
+          client: client,
+          tokenProvider: () async => 'test-token',
+          baseUrl: 'https://test.servicepay.invalid/api',
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Become an Agent'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextFormField).first, 'Ada Mini Mart');
+    await tester.tap(find.text('SME Merchant'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('SME Merchant application'), findsOneWidget);
+    expect(find.text('Business category'), findsOneWidget);
+    expect(
+      tester
+          .widget<TextFormField>(find.byType(TextFormField).first)
+          .controller!
+          .text,
+      'Ada Mini Mart',
+    );
+    await _scrollTo(tester, find.text('Marketplace'));
+    expect(find.text('Marketplace'), findsOneWidget);
+    expect(find.text('Airtime'), findsNothing);
+    client.close();
+  });
+
   testWidgets('support retries reuse one idempotency key until accepted',
       (tester) async {
     final submitted = <Map<String, dynamic>>[];
@@ -221,6 +288,7 @@ void main() {
         find.byType(TextFormField).at(0), 'Account question');
     await tester.enterText(find.byType(TextFormField).at(1),
         'Please review my business account status.');
+    await tester.enterText(find.byType(TextFormField).at(2), 'SP-OWN-510');
     await _scrollTo(tester, find.text('Send message'));
     await tester.tap(find.text('Send message'));
     await tester.pumpAndSettle();
@@ -232,6 +300,8 @@ void main() {
     expect(submitted[0]['idempotencyKey'], submitted[1]['idempotencyKey']);
     expect(submitted[0]['idempotencyKey'].toString().length,
         lessThanOrEqualTo(90));
+    expect(submitted[0]['transactionReference'], 'SP-OWN-510');
+    expect(submitted[1]['transactionReference'], 'SP-OWN-510');
     client.close();
   });
 
@@ -759,6 +829,302 @@ void main() {
         requestedPaths, contains('/api/business-network/dashboard/merchant'));
     expect(requestedPaths,
         contains('/api/business-network/transactions/merchant'));
+    client.close();
+  });
+
+  testWidgets(
+      'Agent draft saves incomplete data, advances revision, and retries submit',
+      (tester) async {
+    tester.view.physicalSize = const Size(800, 1200);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    Map<String, dynamic>? profile;
+    final putBodies = <Map<String, dynamic>>[];
+    var submitAttempts = 0;
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/me')) {
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {
+              'customer': {
+                'fullName': 'Ada Okafor',
+                'phone': '08000000000',
+                'email': 'ada@example.test',
+              },
+              'applications': profile == null ? [] : [profile],
+              'memberships': [],
+              'categories': ['Market retail'],
+              'serviceCatalogue': {
+                'AGENT': [
+                  {
+                    'code': 'AIRTIME',
+                    'label': 'Airtime',
+                    'category': 'Bill payments',
+                    'preferencesEnabled': true,
+                    'processable': true,
+                    'available': true,
+                  }
+                ],
+                'MERCHANT': [],
+              },
+            },
+          }),
+          200,
+        );
+      }
+      if (request.method == 'PUT') {
+        expect(request.url.path, '/api/business-network/applications/AGENT');
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        putBodies.add(body);
+        final revision = (body['revision'] as num).toInt() + 1;
+        profile = {
+          'kind': 'AGENT',
+          'status': 'DRAFT',
+          'revision': revision,
+          'networkId': 'BN-AG-774',
+          'details': body,
+        };
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {'profile': profile}
+          }),
+          200,
+        );
+      }
+      if (request.method == 'POST' &&
+          request.url.path.endsWith('/applications/AGENT/submit')) {
+        submitAttempts++;
+        if (submitAttempts == 1) {
+          return http.Response(
+              jsonEncode({'success': false, 'message': 'Review service busy'}),
+              503);
+        }
+        profile = {
+          ...?profile,
+          'status': 'SUBMITTED',
+          'networkId': 'BN-AG-774',
+        };
+        return http.Response(
+            jsonEncode({
+              'success': true,
+              'data': {'profile': profile}
+            }),
+            200);
+      }
+      return http.Response(
+        jsonEncode({'success': false, 'message': 'Unexpected route'}),
+        404,
+      );
+    });
+    await tester.pumpWidget(MaterialApp(
+      home: BusinessHubScreen(
+        api: BusinessNetworkApi(
+          client: client,
+          tokenProvider: () async => 'test-token',
+          baseUrl: 'https://test.servicepay.invalid/api',
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Become an Agent'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Retail Agent'), findsOneWidget);
+    expect(find.text('SME Merchant'), findsOneWidget);
+    await _scrollTo(tester, find.text('Save draft'));
+    await tester.tap(find.text('Save draft'));
+    await tester.pumpAndSettle();
+    expect(putBodies.single['businessName'], '');
+    expect(putBodies.single['kind'], 'AGENT');
+    expect(putBodies.single['revision'], 0);
+
+    // Saved drafts are reopened in the same kind and use the newest revision.
+    await _scrollTo(tester, find.text('Save draft'));
+    await tester.tap(find.text('Save draft'));
+    await tester.pumpAndSettle();
+    expect(putBodies[1]['revision'], 1);
+    await tester.tap(find.byIcon(Icons.arrow_back));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Become an Agent'));
+    await tester.pumpAndSettle();
+    await _scrollTo(
+        tester,
+        find.text(
+            'This application type is locked to your saved application.'));
+    expect(
+        find.text('This application type is locked to your saved application.'),
+        findsOneWidget);
+    expect(find.text('BN-AG-774'), findsNothing);
+
+    Future<void> enterField(String label, String value) async {
+      await _scrollTo(tester, find.text(label));
+      await tester.enterText(
+        find.ancestor(
+          of: find.text(label),
+          matching: find.byType(TextFormField),
+        ),
+        value,
+      );
+    }
+
+    await enterField('Business / shop name', 'Ada Mini Mart');
+    await enterField('Owner’s full name', 'Ada Okafor');
+    await enterField('Phone number', '08000000000');
+    await enterField('Email address', 'ada@example.test');
+    await enterField('State', 'Lagos');
+    await enterField('LGA', 'Ikeja');
+    await enterField('Business address', '12 Market Road');
+    await enterField('Business description', 'Neighbourhood retail shop');
+    await tester.pump(const Duration(seconds: 6));
+    await tester.pumpAndSettle();
+    await _scrollTo(tester, find.text('Submit for review'));
+    await tester.tap(find.text('Submit for review'));
+    await tester.pumpAndSettle();
+    expect(submitAttempts, 0);
+    expect(putBodies.length, 2);
+    expect(
+        find.text(
+            'Choose at least one preferred service or business interest.'),
+        findsOneWidget);
+
+    await _scrollTo(tester, find.text('Airtime'));
+    await tester.tap(find.byType(CheckboxListTile).first);
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 6));
+    await tester.pumpAndSettle();
+    await _scrollTo(tester, find.text('Submit for review'));
+    await tester.tap(find.text('Submit for review'));
+    await tester.pumpAndSettle();
+    expect(submitAttempts, 1);
+    expect(find.textContaining('Review service busy'), findsOneWidget);
+    expect(putBodies.last['revision'], 2);
+    expect(putBodies.last['preferredServices'], contains('AIRTIME'));
+
+    await tester.pump(const Duration(seconds: 6));
+    await tester.pumpAndSettle();
+    await _scrollTo(tester, find.text('Submit for review'));
+    await tester.tap(find.text('Submit for review'));
+    await tester.pumpAndSettle();
+    expect(submitAttempts, 2);
+    expect(putBodies.last['revision'], 3);
+    expect(putBodies.last['preferredServices'], contains('AIRTIME'));
+    expect(find.textContaining('BN-AG-774'), findsOneWidget);
+    client.close();
+  });
+
+  testWidgets('Merchant application posts the selected kind and service code',
+      (tester) async {
+    Map<String, dynamic>? profile = {
+      'kind': 'MERCHANT',
+      'status': 'DRAFT',
+      'revision': 7,
+      'networkId': 'BN-ME-311',
+      'details': {
+        'businessName': 'Mina Stores',
+        'businessCategory': 'Market retail',
+        'ownerName': 'Mina Yusuf',
+        'phone': '08012345678',
+        'email': 'mina@example.test',
+        'state': 'Kano',
+        'lga': 'Nassarawa',
+        'address': '4 Central Market',
+        'description': 'General goods retailer',
+        'preferredServices': ['MARKETPLACE'],
+      },
+    };
+    Map<String, dynamic>? submitted;
+    final client = MockClient((request) async {
+      if (request.url.path.endsWith('/me')) {
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {
+              'customer': {'fullName': 'Mina Yusuf'},
+              'applications': profile == null ? [] : [profile],
+              'memberships': [],
+              'categories': ['Market retail'],
+              'serviceCatalogue': {
+                'AGENT': [],
+                'MERCHANT': [
+                  {
+                    'code': 'MARKETPLACE',
+                    'label': 'Marketplace',
+                    'category': 'Commerce',
+                    'preferencesEnabled': true,
+                    'processable': false,
+                    'available': true,
+                  }
+                ],
+              },
+            },
+          }),
+          200,
+        );
+      }
+      if (request.method == 'PUT') {
+        expect(request.url.path, '/api/business-network/applications/MERCHANT');
+        final body = jsonDecode(request.body) as Map<String, dynamic>;
+        expect(body['kind'], 'MERCHANT');
+        expect(body['businessCategory'], 'Market retail');
+        expect(body['preferredServices'], contains('MARKETPLACE'));
+        expect(body['revision'], 7);
+        profile = {
+          'kind': 'MERCHANT',
+          'status': 'DRAFT',
+          'revision': 8,
+          'networkId': 'BN-ME-311',
+          'details': body,
+        };
+        return http.Response(
+          jsonEncode({
+            'success': true,
+            'data': {'profile': profile}
+          }),
+          200,
+        );
+      }
+      if (request.method == 'POST' &&
+          request.url.path.endsWith('/applications/MERCHANT/submit')) {
+        submitted = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response(
+            jsonEncode({
+              'success': true,
+              'data': {
+                'profile': {
+                  ...?profile,
+                  'status': 'SUBMITTED',
+                  'networkId': 'BN-ME-311',
+                }
+              }
+            }),
+            200);
+      }
+      return http.Response(
+          jsonEncode({'success': false, 'message': 'Unexpected route'}), 404);
+    });
+    await tester.pumpWidget(MaterialApp(
+      home: BusinessHubScreen(
+        api: BusinessNetworkApi(
+          client: client,
+          tokenProvider: () async => 'test-token',
+          baseUrl: 'https://test.servicepay.invalid/api',
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Register as a Merchant'));
+    await tester.pumpAndSettle();
+    expect(find.text('SME Merchant'), findsOneWidget);
+    await _scrollTo(tester, find.text('Marketplace'));
+    expect(find.textContaining('Interest only'), findsOneWidget);
+    await _scrollTo(tester, find.text('Submit for review'));
+    await tester.tap(find.text('Submit for review'));
+    await tester.pumpAndSettle();
+    expect(submitted?['revision'], 8);
+    expect(find.textContaining('BN-ME-311'), findsOneWidget);
     client.close();
   });
 }

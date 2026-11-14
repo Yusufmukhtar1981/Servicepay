@@ -37,6 +37,9 @@ class BusinessNetworkApi {
   Future<dynamic> patch(String path, Map<String, dynamic> body) =>
       _request('PATCH', path, body: body);
 
+  Future<dynamic> delete(String path, {Map<String, String>? query}) =>
+      _request('DELETE', path, query: query);
+
   Future<String> getCsv(String path, {Map<String, String>? query}) async {
     final response = await _send(
       'GET',
@@ -98,6 +101,10 @@ class BusinessNetworkApi {
       case 'PATCH':
         response = await _client
             .patch(uri, headers: headers, body: jsonEncode(body))
+            .timeout(const Duration(seconds: 25));
+      case 'DELETE':
+        response = await _client
+            .delete(uri, headers: headers)
             .timeout(const Duration(seconds: 25));
       default:
         throw ArgumentError.value(method, 'method');

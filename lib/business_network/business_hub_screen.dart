@@ -1,18 +1,21 @@
 import 'dart:convert';
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 import '../airtime_screen.dart';
 import '../cable_screen.dart';
 import '../data_screen.dart';
 import '../electricity_screen.dart';
+import '../referral_screen.dart';
+import '../referral_service.dart';
 import '../services/receipt_download.dart';
 import 'business_network_api.dart';
 import 'business_transaction_record_screen.dart';
 
 part 'business_hub_application_form.dart';
+part 'business_hub_premium.dart';
 
 class BusinessHubScreen extends StatefulWidget {
   const BusinessHubScreen({super.key, this.api});
@@ -142,6 +145,10 @@ class _BusinessHubScreenState extends State<BusinessHubScreen> {
                           (_me?['supportedServices'] as List? ?? const [])
                               .map((value) => value.toString())
                               .toList(),
+                      serviceCatalogue: _servicesForKind(_kind),
+                      hasServiceCatalogue: _me?['serviceCatalogue'] is Map,
+                      onKindChanged: (kind) => setState(() => _kind = kind),
+                      onProfileSaved: _rememberApplication,
                       onSaved: _loadMe,
                     )
                   : _view == 'dashboard'
@@ -173,6 +180,33 @@ class _BusinessHubScreenState extends State<BusinessHubScreen> {
       }
     }
     return null;
+  }
+
+  List<Map<String, dynamic>> _servicesForKind(String kind) {
+    final catalogue = _me?['serviceCatalogue'];
+    final services = catalogue is Map ? catalogue[kind] : null;
+    if (services is! List) return const [];
+    return services
+        .whereType<Map>()
+        .map((service) => Map<String, dynamic>.from(service))
+        .toList();
+  }
+
+  void _rememberApplication(Map<String, dynamic> profile) {
+    final kind = profile['kind']?.toString().toUpperCase() ?? _kind;
+    final applications = (_me?['applications'] as List? ?? const [])
+        .whereType<Map>()
+        .map((application) => Map<String, dynamic>.from(application))
+        .where((application) =>
+            application['kind']?.toString().toUpperCase() != kind)
+        .toList();
+    applications.add({...profile, 'kind': kind});
+    setState(() {
+      _me = {
+        ...?_me,
+        'applications': applications,
+      };
+    });
   }
 
   Map<String, dynamic>? _membership(String kind) {
@@ -851,6 +885,12 @@ class _BusinessDashboardState extends State<_BusinessDashboard> {
           const SizedBox(height: 14),
           if (widget.owner) _commissionHistory(),
           const SizedBox(height: 12),
+          if (widget.owner)
+            _BusinessPremiumTools(
+              api: widget.api,
+              kind: widget.kind,
+              profileId: widget.profileId ?? profile?['_id']?.toString() ?? '',
+            ),
           if (widget.kind == 'MERCHANT') _FeatureNotice(features: features),
           if (widget.kind == 'MERCHANT' && widget.owner)
             _MerchantManagement(
@@ -1458,6 +1498,7 @@ class _SupportFormState extends State<_SupportForm> {
   final _form = GlobalKey<FormState>();
   final _subject = TextEditingController();
   final _message = TextEditingController();
+  final _transactionReference = TextEditingController();
   String _kind = 'AGENT';
   String? _idempotencyKey;
   bool _busy = false;
@@ -1465,6 +1506,7 @@ class _SupportFormState extends State<_SupportForm> {
   void dispose() {
     _subject.dispose();
     _message.dispose();
+    _transactionReference.dispose();
     super.dispose();
   }
 
@@ -1479,11 +1521,14 @@ class _SupportFormState extends State<_SupportForm> {
         'message': _message.text.trim(),
         'kind': _kind,
         'idempotencyKey': _idempotencyKey,
+        if (_transactionReference.text.trim().isNotEmpty)
+          'transactionReference': _transactionReference.text.trim(),
       });
       _idempotencyKey = null;
       if (mounted) {
         _subject.clear();
         _message.clear();
+        _transactionReference.clear();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Your message was sent.')),
         );
@@ -1533,6 +1578,14 @@ class _SupportFormState extends State<_SupportForm> {
                   validator: (v) => (v?.trim().length ?? 0) < 10
                       ? 'Please add a little more detail'
                       : null),
+              TextFormField(
+                controller: _transactionReference,
+                decoration: const InputDecoration(
+                  labelText: 'Related receipt reference (optional)',
+                  helperText:
+                      'Use the human-readable reference from your own existing purchase.',
+                ),
+              ),
               const SizedBox(height: 16),
               FilledButton(
                   onPressed: _busy ? null : _send,
