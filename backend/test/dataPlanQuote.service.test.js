@@ -19,6 +19,12 @@ const selection = {
   plan,
   price: 150,
 };
+test("signed business quotes cannot be relabelled as Customer or another business category", () => {
+  const quote = issueDataPlanQuote({ ...selection, pricingCategory: "AGENT" });
+  assert.equal(verifyDataPlanQuote(quote, { ...selection, pricingCategory: "AGENT" }), true);
+  assert.equal(verifyDataPlanQuote(quote, selection), false);
+  assert.equal(verifyDataPlanQuote(quote, { ...selection, pricingCategory: "MERCHANT" }), false);
+});
 
 test("quote binds provider, network ID, full product identity, price, customer and expiry", () => {
   const now = Date.now();

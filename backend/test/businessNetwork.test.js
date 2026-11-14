@@ -53,6 +53,8 @@ test.before(async () => {
   assert.match(uri, /^mongodb:\/\/127\.0\.0\.1:/);
   await mongoose.connect(uri, { autoCreate: false, autoIndex: false });
   await User.createCollection(); await Transaction.createCollection();
+  await require("../models/dataPriceOverride.model").createCollection();
+  await require("../models/notification.model").createCollection();
   await provision({ apply: true });
   const app = express(); app.use(express.json());
   app.use("/network", createRouter({ loadRole(req, _res, next) {
@@ -66,6 +68,8 @@ test.before(async () => {
 test.beforeEach(async () => {
   for (const Model of Object.values(M)) await Model.collection.deleteMany({});
   await User.deleteMany({}); await Transaction.deleteMany({});
+  await require("../models/dataPriceOverride.model").deleteMany({});
+  await require("../models/notification.model").deleteMany({});
   users = {};
   for (const [i, name, roleName] of [[1, "customer", "CUSTOMER"], [2, "other", "CUSTOMER"], [3, "admin", "HEAD_OFFICE"], [4, "finance", "HEAD_OFFICE"], [5, "staff", "STAFF"]]) {
     users[name] = await User.create({ fullName: `Sandbox ${name}`, phone: "0807000000" + i, email: `${name}@network.example.invalid`,
@@ -103,6 +107,133 @@ test("approval requires existing verified KYC, without triggering identity verif
   r = await call("POST", "/applications/AGENT/submit", { revision: r.data.profile.revision });
   r = await call("POST", `/admin/profiles/${r.data.profile._id}/review`, { status: "APPROVED", revision: r.data.profile.revision, reason: "Review only", services: ["DATA"] }, users.admin);
   assert.equal(r.status, 409); assert.equal(r.body.code, "NETWORK_KYC_REQUIRED");
+});
+test("one-click Agent and Merchant approval needs no reason, group or service grants and retries are idempotent", async () => {
+  for (const kind of ["AGENT", "MERCHANT"]) {
+    let r = await call("PUT", "/applications/" + kind, detail);
+    const id = r.data.profile._id;
+    r = await call("POST", "/applications/" + kind + "/submit", { revision: r.data.profile.revision });
+    const decision = { status: "APPROVED", revision: r.data.profile.revision };
+    const results = await Promise.all([call("POST", `/admin/profiles/${id}/review`, decision, users.admin),
+      call("POST", `/admin/profiles/${id}/review`, decision, users.admin)]);
+    assert.deepEqual(results.map(x => x.status), [200, 200]);
+    assert.equal(results.filter(x => x.data.replay).length, 1);
+    const profile = await M.Profile.findById(id).lean();
+    assert.equal(profile.status, "APPROVED"); assert.equal(profile.group, "STANDARD");
+    assert.deepEqual(profile.services, []); assert.equal(profile.approvalWindows.length, 1);
+    assert.equal(await M.Audit.countDocuments({ profile: id, action: "APPLICATION_APPROVED" }), 1);
+    assert.equal(await require("../models/notification.model").countDocuments({ referenceId: id, relatedStatus: "APPROVED" }), 1);
+    assert.equal((await call("GET", "/dashboard/" + kind)).status, 200);
+    assert.equal((await call("POST", `/admin/profiles/${id}/review`, { ...decision, services: ["DATA"] }, users.admin)).status, 409);
+  }
+});
+test("Review and Reject accept optional feedback; retries do not create extra audit events", async () => {
+  let r = await call("PUT", "/applications/AGENT", detail);
+  const id = r.data.profile._id;
+  r = await call("POST", "/applications/AGENT/submit", { revision: r.data.profile.revision });
+  for (const status of ["UNDER_REVIEW", "REJECTED"]) {
+    const decision = { status, revision: r.data.profile.revision };
+    r = await call("POST", `/admin/profiles/${id}/review`, decision, users.admin);
+    assert.equal(r.status, 200); assert.equal(r.data.profile.status, status);
+    const again = await call("POST", `/admin/profiles/${id}/review`, decision, users.admin);
+    assert.equal(again.status, 200); assert.equal(again.data.replay, true);
+    assert.equal(await M.Audit.countDocuments({ profile: id, action: "APPLICATION_" + status }), 1);
+  }
+  assert.equal((await call("GET", "/dashboard/AGENT")).status, 403);
+});
+test("feature controls are scoped, revisioned and cannot activate unavailable payment or direct infrastructure", async () => {
+  let r = await call("GET", "/admin/controls", null, users.admin);
+  assert.equal(r.status, 200);
+  assert.equal(r.data.features.find(row => row.key === "airtime").categories.CUSTOMER, "ENABLED");
+  assert.equal((await call("PUT", "/admin/controls", { revision: 0, reason: "Unauthorized", features: {} })).status, 403);
+  for (const key of ["directAirtime", "directData", "rechargePrinting", "bluetooth", "merchantQr"]) {
+    r = await call("PUT", "/admin/controls", { revision: 0, reason: "No false activation", features: { MERCHANT: { [key]: "ENABLED" } } }, users.admin);
+    assert.equal(r.status, 409); assert.equal(await M.Settings.countDocuments(), 0);
+  }
+  r = await call("PUT", "/admin/controls", { revision: 0, reason: "Scoped maintenance", features: { AGENT: { customerDirectory: "MAINTENANCE" } } }, users.admin);
+  assert.equal(r.status, 200);
+  assert.equal(r.data.features.find(row => row.key === "customerDirectory").categories.MERCHANT, "ENABLED");
+  assert.equal((await call("PUT", "/admin/controls", { revision: 0, reason: "Stale", features: {} }, users.admin)).status, 409);
+  assert.equal(await M.Audit.countDocuments({ action: "FEATURE_ACCESS_CHANGED" }), 1);
+});
+test("disabled benefits reject direct business requests without hiding existing records or disabling the other category", async () => {
+  await approved("AGENT"); const merchant = await approved("MERCHANT");
+  const r = await call("PUT", "/admin/controls", { revision: 0, reason: "Pause new directory activity", features: { AGENT: { customerDirectory: "DISABLED" } } }, users.admin);
+  assert.equal(r.status, 200);
+  const contact = { name: "Consenting sandbox customer", phone: "08071111111", consentAcknowledged: true };
+  assert.equal((await call("POST", "/directory/AGENT", contact)).status, 403);
+  assert.equal((await call("GET", "/directory/AGENT")).status, 200);
+  assert.equal((await call("POST", "/directory/MERCHANT", contact)).status, 201);
+  const branch = await call("POST", `/profiles/${merchant._id}/branches`, { name: "Sandbox branch", address: "Sandbox address" });
+  assert.equal(branch.status, 201);
+  const invitation = await call("POST", `/profiles/${merchant._id}/staff`, {
+    userId: String(users.other._id), branchId: branch.data.branch._id, permissions: ["reports"],
+  });
+  assert.equal(invitation.status, 201);
+  assert.equal((await call("PUT", "/admin/controls", { revision: 1, reason: "Pause new staff access",
+    features: { MERCHANT: { merchantStaff: "DISABLED" } } }, users.admin)).status, 200);
+  assert.equal((await call("POST", `/staff/${invitation.data.staff._id}/accept`, {}, users.other)).status, 403);
+  assert.equal((await call("POST", `/profiles/${merchant._id}/branches`, { name: "Another", address: "Not admitted" })).status, 403);
+  assert.equal((await call("PATCH", `/staff/${invitation.data.staff._id}`, { status: "SUSPENDED" })).status, 200);
+});
+test("Data category pricing uses the existing plan authority with explicit finance permission, atomic updates and no Customer price changes", async () => {
+  const C = require("../services/telecomAbodeDataCatalog.service"), Pricing = require("../services/businessNetwork.pricing");
+  const original = C.getCatalog;
+  C.getCatalog = async () => [{ code: "TEST-DATA-ID", pricingCode: "canonical-plan", name: "Sandbox 1GB", price: 80 }];
+  try {
+    const row = await Pricing.Prices.create({ networkCode: "01", planCode: "canonical-plan", providerPrice: 80, sellingPrice: 100, active: true });
+    const request = { network: "01", reason: "Explicit sandbox category prices", changes: [
+      { code: "TEST-DATA-ID", category: "AGENT", revision: 0, rule: { enabled: true, sellingPrice: 90, maximumProviderCost: 85 } },
+      { code: "TEST-DATA-ID", category: "MERCHANT", revision: 0, rule: { enabled: true, sellingPrice: 95, maximumProviderCost: 90 } },
+    ] };
+    assert.equal((await call("PUT", "/admin/pricing", request, users.admin)).status, 403);
+    assert.equal((await call("PUT", "/admin/pricing", request, users.finance)).status, 200);
+    const saved = await Pricing.Prices.findById(row._id).lean();
+    assert.equal(saved.sellingPrice, 100); assert.equal(Pricing.dataPrice(saved, "CUSTOMER", 80), 100);
+    assert.equal(Pricing.dataPrice(saved, "AGENT", 80), 90);
+    assert.equal(Pricing.dataPrice(saved, "MERCHANT", 80), 95);
+    assert.equal(Pricing.dataPrice(saved, "AGENT", 86), null, "cost increases must fail closed");
+    assert.equal((await call("PUT", "/admin/pricing", request, users.finance)).status, 409);
+    const page = await call("GET", "/admin/pricing?network=01", null, users.admin);
+    assert.equal(page.data.items[0].categories.AGENT.effectivePrice, 90);
+    assert.equal(await M.Audit.countDocuments({ action: "BUSINESS_DATA_PRICE_CHANGED" }), 1);
+    request.changes[0].revision = 1; request.changes[0].rule.sellingPrice = 79;
+    assert.equal((await call("PUT", "/admin/pricing", request, users.finance)).status, 400);
+    assert.equal((await Pricing.Prices.findById(row._id)).businessPrices.AGENT.sellingPrice, 90);
+  } finally { C.getCatalog = original; }
+});
+test("business price context requires the authenticated owner's active approved and KYC-verified profile", async () => {
+  const Pricing = require("../services/businessNetwork.pricing");
+  assert.equal((await Pricing.category(users.customer)).category, "CUSTOMER");
+  await assert.rejects(Pricing.category(users.customer, "AGENT"), { code: "NETWORK_NOT_FOUND" });
+  const profile = await approved("AGENT");
+  assert.equal((await Pricing.category(users.customer, "AGENT")).category, "AGENT");
+  await assert.rejects(Pricing.category(users.other, "AGENT"), { code: "NETWORK_NOT_FOUND" });
+  await call("POST", `/admin/profiles/${profile._id}/review`, { status: "SUSPENDED", revision: profile.revision }, users.admin);
+  await assert.rejects(Pricing.category(users.customer, "AGENT"), { code: "NETWORK_APPROVAL_REQUIRED" });
+});
+test("Airtime pricing requires explicit finance authority and preserves Customer pricing and provider routing", async () => {
+  const provider = require("../services/telecomAbodeBillsProvider.service"), manager = require("../services/providerManagement.service");
+  const oldProvider = provider.createTelecomAbodeBillsProvider, oldConfig = manager.getServiceConfig;
+  provider.createTelecomAbodeBillsProvider = () => ({ getAirtimeNetworks: async () => [{ providerId: 7, displayName: "Sandbox MTN" }] });
+  manager.getServiceConfig = async () => ({ airtimeMarkupBps: 300, primaryProvider: "TELECOM_ABODE" });
+  try {
+    const body = { revision: 0, reason: "Sandbox category rates", changes: [
+      { network: "7", category: "AGENT", enabled: true, markupBps: 400 },
+      { network: "7", category: "MERCHANT", enabled: true, markupBps: 500 },
+    ] };
+    assert.equal((await call("PUT", "/admin/airtime-pricing", body, users.admin)).status, 403);
+    assert.equal((await call("PUT", "/admin/airtime-pricing", { ...body, changes: [{ ...body.changes[0], markupBps: -1 }] }, users.finance)).status, 400);
+    assert.equal((await call("PUT", "/admin/airtime-pricing", { ...body, changes: [{ ...body.changes[0], markupBps: 100 }] }, users.finance)).status, 400);
+    assert.equal((await call("PUT", "/admin/airtime-pricing", { ...body, changes: [{ ...body.changes[0], category: "CUSTOMER" }] }, users.finance)).status, 400);
+    assert.equal((await call("PUT", "/admin/airtime-pricing", body, users.finance)).status, 200);
+    const page = await call("GET", "/admin/airtime-pricing", null, users.admin);
+    assert.equal(page.data.customerMarkupBps, 300); assert.equal(page.data.providerCost, null);
+    assert.equal(page.data.items[0].categories.AGENT.markupBps, 400);
+    assert.equal(page.data.items[0].categories.MERCHANT.markupBps, 500);
+    assert.equal((await call("PUT", "/admin/airtime-pricing", body, users.finance)).status, 409);
+    assert.equal(await M.Audit.countDocuments({ action: "BUSINESS_AIRTIME_PRICE_CHANGED" }), 1);
+  } finally { provider.createTelecomAbodeBillsProvider = oldProvider; manager.getServiceConfig = oldConfig; }
 });
 test("suspension blocks access; reactivation does not authorize purchases in the suspension gap", async () => {
   const p = await approved();

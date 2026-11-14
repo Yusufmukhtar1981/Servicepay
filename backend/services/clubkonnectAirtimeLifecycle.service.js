@@ -190,6 +190,7 @@ const createClubKonnectAirtimeLifecycleService = ({
     phone,
     amount,
     idempotencyKey,
+    businessKind,
   }) => {
     if (!mongoose.Types.ObjectId.isValid(customerId)) {
       throw buildError("A valid customer account is required.", 401);
@@ -215,8 +216,10 @@ const createClubKonnectAirtimeLifecycleService = ({
       throw buildError("Airtime amount must be at least ₦50 with at most two decimal places.");
     }
     const requestKey = digest(idempotencyKey);
+    const context = businessKind == null || businessKind === "" ? null : String(businessKind).trim().toUpperCase();
+    if (context && !["AGENT", "MERCHANT"].includes(context)) throw buildError("Invalid business purchase context.");
     const requestFingerprint = digest(
-      JSON.stringify([networkCode, phoneNumber, amountCents]),
+      JSON.stringify([networkCode, phoneNumber, amountCents, ...(context ? [context] : [])]),
     );
     return {
       customerId: new mongoose.Types.ObjectId(customerId),
@@ -330,6 +333,7 @@ const createClubKonnectAirtimeLifecycleService = ({
               dispatchClaimedAt: null,
               dispatchStartedAt: null,
               providerResponse: {
+                ...(purchase.pricingSnapshot ? { businessPricingSnapshot: purchase.pricingSnapshot } : {}),
                 ...(purchase.providerIntent ? { telecomAbodePurchaseIntent: purchase.providerIntent } : {}),
                 ...(providerName === "TELECOM_ABODE" ? { financialAccounting: {
                   customerAmount: debitAmount,

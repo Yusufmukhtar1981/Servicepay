@@ -2,6 +2,8 @@
 const express = require("express");
 const c = require("../controllers/businessNetwork.controller");
 const premium = require("../controllers/businessNetwork.premium.controller");
+const controls = require("../controllers/businessNetwork.controls.controller");
+const access = require("../services/businessNetwork.controls");
 const S = require("../services/businessNetwork.service");
 const { protect } = require("../middleware/auth.middleware");
 const { loadStaffRole, requirePermission, requireExplicitPermission } = require("../middleware/staffPermission.middleware");
@@ -14,6 +16,15 @@ function createRouter({ authenticate = protect, loadRole = loadStaffRole, ready 
   router.use(authenticate);
   router.use(async (_req, _res, next) => { try { await ready(); next(); } catch (error) { next(error); } });
   const customer = c.userIsCustomer;
+  const businessFeature = key => async (req, _res, next) => {
+    try {
+      const { profile } = req.params.kind
+        ? await S.profileFor(req.user, S.P.kind(req.params.kind))
+        : { profile: await S.ownerProfile(req.user, req.params.id) };
+      await access.requireFeature(profile.kind, key);
+      next();
+    } catch (error) { next(error); }
+  };
   const ho = (req, _res, next) => {
     try { if (!S.isHO(req.user)) S.P.fail("Only Head Office may administer the network.", "NETWORK_FORBIDDEN", 403); next(); } catch (error) { next(error); }
   };
@@ -21,11 +32,11 @@ function createRouter({ authenticate = protect, loadRole = loadStaffRole, ready 
   router.get("/catalogue", customer, premium.catalogue);
   router.get("/tools/:kind", customer, premium.tools);
   router.get("/directory/:kind", customer, premium.directory);
-  router.post("/directory/:kind", customer, premium.saveCustomer);
+  router.post("/directory/:kind", customer, businessFeature("customerDirectory"), premium.saveCustomer);
   router.delete("/directory/:kind/:contactId", customer, premium.deleteCustomer);
   router.get("/expenses/:kind", customer, premium.expenses);
-  router.post("/expenses/:kind", customer, premium.recordExpense);
-  router.post("/public-profile/:kind", customer, premium.publish);
+  router.post("/expenses/:kind", customer, businessFeature("expenses"), premium.recordExpense);
+  router.post("/public-profile/:kind", customer, businessFeature("promotions"), premium.publish);
   router.get("/vouchers/:kind", customer, premium.vouchers);
   router.post("/vouchers/:kind/purchase", customer, (req, res, next) => {
     req.params.capability = req.body?.type === "data" ? "dataVouchers" : "rechargeVouchers";
@@ -41,10 +52,10 @@ function createRouter({ authenticate = protect, loadRole = loadStaffRole, ready 
   router.get("/reports/:kind", customer, c.report);
   router.get("/commissions/:kind", customer, c.commissions);
   router.get("/profiles/:id/branches", c.branches);
-  router.post("/profiles/:id/branches", c.createBranch);
+  router.post("/profiles/:id/branches", businessFeature("merchantStaff"), c.createBranch);
   router.patch("/profiles/:id/branches/:branchId", c.updateBranch);
   router.get("/profiles/:id/staff", c.staff);
-  router.post("/profiles/:id/staff", c.inviteStaff);
+  router.post("/profiles/:id/staff", businessFeature("merchantStaff"), c.inviteStaff);
   router.patch("/staff/:id", c.staffStatus);
   router.post("/staff/:id/accept", customer, c.acceptStaff);
   router.post("/support", customer, c.support);
@@ -62,6 +73,13 @@ function createRouter({ authenticate = protect, loadRole = loadStaffRole, ready 
   router.get("/admin/reports", requirePermission(P.BUSINESS_NETWORK_EXPORT), c.adminReport);
   router.get("/admin/audit", c.audit);
   router.get("/admin/settings", c.settings);
+  router.get("/admin/controls", controls.controls);
+  router.put("/admin/controls", ho, requirePermission(P.BUSINESS_NETWORK_MANAGE), controls.saveControls);
+  router.get("/admin/pricing", controls.pricing);
+  router.put("/admin/pricing", ho, requireExplicitPermission(P.FINANCE_APPROVE), controls.savePricing);
+  router.get("/admin/airtime-pricing", controls.airtimePricing);
+  router.put("/admin/airtime-pricing", ho, requireExplicitPermission(P.FINANCE_APPROVE), controls.saveAirtimePricing);
+  router.get("/admin/configuration-history", controls.history);
   router.get("/admin/premium", premium.settings);
   router.put("/admin/premium", ho, requirePermission(P.BUSINESS_NETWORK_MANAGE), (req, res, next) => {
     const financial = req.body?.configuration &&

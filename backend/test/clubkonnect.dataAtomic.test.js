@@ -60,7 +60,7 @@ const invoke = async (user, body, { idempotencyKey, headers = {} } = {}) => {
   if (idempotencyKey) requestHeaders["x-idempotency-key"] = idempotencyKey;
   await controller.buyData(
     {
-      user: { _id: user._id },
+      user: { _id: user._id, role: user.role },
       body: { transactionPin: "2468", ...body },
       headers: requestHeaders,
       get(name) { return requestHeaders[String(name).toLowerCase()]; },
@@ -438,6 +438,64 @@ test("customer receives a product-bound Telecom Abode quote and can buy the same
   assert.equal(retry.status, 200);
   assert.equal(dataRequestCount, 1);
   assert.equal(await LedgerEntry.countDocuments({ user: user._id, service: "DATA", direction: "DEBIT" }), 1);
+});
+test("approved business DATA uses one category price for signed quote, debit, ledger and immutable transaction snapshot", async () => {
+  const N = require("../models/businessNetwork.models");
+  const user = await makeUser();
+  await User.updateOne({ _id: user._id }, { $set: { kycVerified: true } });
+  const planRow = await DataPriceOverride.findOne({});
+  planRow.sellingPrice = 150;
+  planRow.businessPrices = { AGENT: { enabled: true, sellingPrice: 110, maximumProviderCost: 110 } };
+  await planRow.save();
+  await N.Profile.createCollection(); await N.Settings.createCollection();
+  const profile = await N.Profile.create({ owner: user._id, kind: "AGENT", status: "APPROVED", revision: 1 });
+  try {
+    const catalog = await invokeHandler(controller.getDataPlans, {
+      user: { _id: user._id, role: "CUSTOMER" }, params: { network: "MTN" }, query: { businessKind: "AGENT" },
+    });
+    assert.equal(catalog.status, 200);
+    assert.equal(catalog.body.plans[0].price, 110);
+    const businessQuote = catalog.body.plans[0].productQuote;
+    const body = { ...purchaseBody(user), businessKind: "AGENT", amount: 110, productQuote: businessQuote };
+    const manipulated = await invoke(user, { ...body, amount: 1 }, { idempotencyKey: "business-price-manipulated" });
+    assert.equal(manipulated.status, 409); assert.equal(dataRequestCount, 0);
+    const wrongContext = await invoke(user, { ...body, businessKind: undefined }, { idempotencyKey: "business-price-wrong-context" });
+    assert.equal(wrongContext.status, 409); assert.equal(dataRequestCount, 0);
+    const first = await invoke(user, body, { idempotencyKey: "business-data-once" });
+    assert.equal(first.status, 200, JSON.stringify(first.body));
+    const again = await invoke(user, body, { idempotencyKey: "business-data-once" });
+    assert.equal(again.status, 200); assert.equal(dataRequestCount, 1);
+    const tx = await Transaction.findOne({ customerId: user._id });
+    assert.equal(tx.amount, 110); assert.equal(tx.providerResponse.pricingSnapshot.sellingPrice, 110);
+    assert.equal(tx.providerResponse.pricingSnapshot.category, "AGENT");
+    const debits = await LedgerEntry.find({ transactionId: tx._id, direction: "DEBIT" });
+    assert.equal(debits.length, 1); assert.equal(debits[0].amount, 110);
+    assert.equal((await User.findById(user._id)).walletBalance, 390);
+    assert.equal(tx.providerResponse.quotedPrice, 110);
+    assert.equal((await DataPriceOverride.findById(planRow._id)).sellingPrice, 150);
+  } finally { await N.Profile.deleteOne({ _id: profile._id }); await N.Settings.deleteMany({}); }
+});
+test("business DATA inherits Customer pricing only without an override and disabled category does not debit or dispatch", async () => {
+  const N = require("../models/businessNetwork.models");
+  const user = await makeUser();
+  await User.updateOne({ _id: user._id }, { $set: { kycVerified: true } });
+  await N.Profile.createCollection(); await N.Settings.createCollection();
+  const profile = await N.Profile.create({ owner: user._id, kind: "MERCHANT", status: "APPROVED", revision: 1 });
+  try {
+    const catalog = await invokeHandler(controller.getDataPlans, {
+      user: { _id: user._id, role: "CUSTOMER" }, params: { network: "MTN" }, query: { businessKind: "MERCHANT" },
+    });
+    assert.equal(catalog.body.plans[0].price, 100);
+    const body = { ...purchaseBody(user), businessKind: "MERCHANT", amount: 100, productQuote: catalog.body.plans[0].productQuote };
+    const first = await invoke(user, body, { idempotencyKey: "business-inherited-once" });
+    assert.equal(first.status, 200, JSON.stringify(first.body));
+    assert.equal(dataRequestCount, 1);
+    await DataPriceOverride.updateOne({}, { $set: { "businessPrices.MERCHANT": { enabled: false, sellingPrice: 100, maximumProviderCost: 100 } } });
+    assert.equal((await invoke(user, body, { idempotencyKey: "business-now-disabled" })).status, 409);
+    assert.equal(dataRequestCount, 1); assert.equal((await User.findById(user._id)).walletBalance, 400);
+    // Recovery of an already admitted identity must not be blocked by a new pause.
+    assert.equal((await invoke(user, body, { idempotencyKey: "business-inherited-once" })).status, 200);
+  } finally { await N.Profile.deleteOne({ _id: profile._id }); await N.Settings.deleteMany({}); }
 });
 
 test("a disabled DATA plan is hidden and even its previously valid quote cannot debit", async () => {

@@ -52,6 +52,7 @@ exports.me = wrap(async (req, res) => {
   const memberships = await M.Staff.find({ user: req.user._id, status: { $in: ["INVITED", "ACTIVE"] } }).populate("profile", "networkId kind services details.businessName status").lean();
   const settings = await M.Settings.findById("network");
   output(res, { customer: user, applications, memberships, features: P.features,
+    featureAccess: require("../services/businessNetwork.controls").matrix(settings),
     categories: settings?.categories || new M.Settings().categories,
     supportedServices: P.billServices, serviceCatalogue: await catalogue.catalogue(settings) });
 });
@@ -110,7 +111,9 @@ exports.dashboard = wrap(async (req, res) => {
   const commissions = membership ? P.totals([]) : (await S.commissionRows({ profile: profile._id })).totals;
   const safeProfile = profile.toObject();
   if (membership) delete safeProfile.directory;
-  output(res, { profile: safeProfile, summary, commissions, features: P.features });
+  output(res, { profile: safeProfile, summary, commissions, features: P.features,
+    featureAccess: require("../services/businessNetwork.controls").matrix(await M.Settings.findById("network")),
+    pricingContext: { businessKind: profile.kind, walletAuthority: "AUTHENTICATED_CUSTOMER_ONLY" } });
 });
 exports.transactions = wrap(async (req, res) => {
   const { profile, membership } = await S.profileFor(req.user, kindFrom(req), { profileId: req.query.profileId, approved: false });
@@ -184,10 +187,22 @@ exports.adminProfiles = wrap(async (req, res) => {
 });
 exports.adminDetail = wrap(async (req, res) => output(res, { profile: await adminProfile(req) }));
 exports.review = wrap(async (req, res) => {
-  const reason = why(req);
+  // Review decisions are not financial configuration. An optional explanation
+  // and the existing STANDARD group must not prevent a simple approval.
+  const reason = P.text(req.body.reason, "reason", 500);
   const result = await S.atomic(async session => {
     const profile = await adminProfile(req, session);
-    if (revision(req.body.revision) !== profile.revision) P.fail("Application changed. Refresh before review.", "NETWORK_CONFLICT", 409);
+    const expectedRevision = revision(req.body.revision);
+    if (profile.status === req.body.status && expectedRevision <= profile.revision) {
+      // A retry acknowledges only the same decision, never additional grants.
+      const sameServices = req.body.services === undefined ||
+        JSON.stringify(P.services(req.body.services).sort()) === JSON.stringify([...profile.services].sort());
+      const sameGroup = req.body.group === undefined || P.text(req.body.group, "commission group", 80) === profile.group;
+      if (!sameServices || !sameGroup || (reason && reason !== profile.feedback))
+        P.fail("Application changed. Refresh before changing access.", "NETWORK_CONFLICT", 409);
+      return { profile, replay: true };
+    }
+    if (expectedRevision !== profile.revision) P.fail("Application changed. Refresh before review.", "NETWORK_CONFLICT", 409);
     P.transition(profile, req.body.status);
     if (req.body.status === "APPROVED") {
       const owner = await User.findOne({ _id: profile.owner, role: "CUSTOMER", status: "ACTIVE", kycVerified: true }).session(session);
@@ -197,7 +212,7 @@ exports.review = wrap(async (req, res) => {
       if (profile.services.some(v => !profile.details.preferredServices.includes(v))) P.fail("Approve only services requested by the applicant.");
       // An approved product/logistics business need not receive bill-payment
       // authority. Empty services grants NO purchase attribution or commission.
-      profile.group = P.text(req.body.group || profile.group, "commission group", 80, true);
+      profile.group = P.text(req.body.group || profile.group || "STANDARD", "commission group", 80, true);
       const now = new Date(); profile.approvedAt ||= now; profile.approvalWindows.push({ start: now, services: profile.services, group: profile.group });
     }
     if (req.body.status === "SUSPENDED") {
@@ -205,9 +220,28 @@ exports.review = wrap(async (req, res) => {
       await M.Staff.updateMany({ profile: profile._id, status: "ACTIVE" }, { $set: { status: "SUSPENDED" } }, { session });
     }
     profile.status = req.body.status; profile.feedback = reason; profile.revision += 1;
-    await profile.save({ session }); await S.audit(req.user, "APPLICATION_" + profile.status, profile, reason, {}, session); return profile;
+    await profile.save({ session });
+    await S.audit(req.user, "APPLICATION_" + profile.status, profile, reason,
+      { revision: profile.revision, services: [...profile.services], group: profile.group }, session);
+    return { profile, replay: false };
   });
-  output(res, { profile: result });
+  result.notification = "NOT_SENT_REPLAY";
+  if (!result.replay) {
+    try {
+      await require("../services/inAppNotification.service").createInAppNotification({
+        userId: result.profile.owner, title: `${result.profile.kind === "AGENT" ? "Agent" : "Merchant"} application update`,
+        message: `Your Business Network application is ${result.profile.status.toLowerCase().replaceAll("_", " ")}. Open Business Hub to view the decision.`,
+        type: "ACCOUNT", referenceType: "BUSINESS_NETWORK_APPLICATION", referenceId: result.profile._id,
+        relatedStatus: result.profile.status, dedupeKey: `network-review:${result.profile._id}:${result.profile.revision}`,
+      });
+      result.notification = "SENT";
+    } catch (_) {
+      // Approval is already durably committed. Notification availability must
+      // never turn a successful decision into an apparent failed approval.
+      result.notification = "UNAVAILABLE";
+    }
+  }
+  output(res, result);
 });
 exports.adminTransactions = wrap(async (req, res) => output(res, await S.transactions({ profile: { $in: await profileIds(req) } }, { ...req.query, page: page(req) })));
 exports.overview = wrap(async (req, res) => {
@@ -376,6 +410,7 @@ exports.staffStatus = wrap(async (req, res) => {
   const profile = await S.ownerProfile(req.user, String(row.profile));
   const fields = { status: req.body.status };
   if (fields.status === "INVITED") {
+    await require("../services/businessNetwork.controls").requireFeature("MERCHANT", "merchantStaff");
     const permissions = req.body.permissions;
     if (!Array.isArray(permissions) || !permissions.length || permissions.some(v => !["reports", "payments"].includes(v))) P.fail("Select only restricted branch permissions.");
     const branch = S.id(req.body.branchId);
@@ -391,6 +426,7 @@ exports.staffStatus = wrap(async (req, res) => {
 });
 exports.acceptStaff = wrap(async (req, res) => {
   const staff = await S.atomic(async session => {
+    await require("../services/businessNetwork.controls").requireFeature("MERCHANT", "merchantStaff", session, { lock: true });
     const row = await M.Staff.findOne({ _id: S.id(req.params.id), user: req.user._id, status: "INVITED" }).session(session);
     if (!row || !await M.Profile.findOneAndUpdate({ _id: row.profile, status: "APPROVED" }, { $inc: { revision: 1 } }, { session }) ||
       !await M.Branch.findOneAndUpdate({ _id: row.branch, profile: row.profile, status: "ACTIVE" }, { $inc: { accessVersion: 1 } }, { session }))

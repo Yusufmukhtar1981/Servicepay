@@ -11,6 +11,7 @@ const profileSchema = new Schema({
   networkId: { type: String, required: true, default: () => `SPN-${randomBytes(8).toString("hex").toUpperCase()}` },
   status: { type: String, enum: ["DRAFT", "SUBMITTED", "UNDER_REVIEW", "APPROVED", "REJECTED", "SUSPENDED"], default: "DRAFT" },
   revision: { type: Number, default: 0 },
+  admissionFence: { type: Number, default: 0 },
   details: {
     businessName: String, businessCategory: String, ownerName: String,
     phone: String, email: String, state: String, lga: String, address: String,

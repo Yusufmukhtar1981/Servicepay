@@ -27,7 +27,7 @@ const privateBinding = (provider, network, plan) =>
     .update(JSON.stringify({ provider, network, ...planIdentity(plan) }))
     .digest("base64url");
 
-const issueDataPlanQuote = ({ customerId, provider, network, plan, price, now = Date.now() }) => {
+const issueDataPlanQuote = ({ customerId, provider, network, plan, price, pricingCategory = "CUSTOMER", now = Date.now() }) => {
   if (!customerId || !Number.isFinite(price) || price <= 0 || !plan?.code) {
     throw new Error("Cannot quote an incomplete DATA product.");
   }
@@ -39,6 +39,7 @@ const issueDataPlanQuote = ({ customerId, provider, network, plan, price, now = 
     ...publicIdentity,
     binding: privateBinding(provider, network, plan),
     price,
+    pricingCategory,
     issuedAt: now,
     expiresAt: now + QUOTE_LIFETIME_MS,
   };
@@ -47,7 +48,7 @@ const issueDataPlanQuote = ({ customerId, provider, network, plan, price, now = 
   return `${body}.${signature}`;
 };
 
-const verifyDataPlanQuote = (token, { customerId, provider, network, plan, price, now = Date.now() }) => {
+const verifyDataPlanQuote = (token, { customerId, provider, network, plan, price, pricingCategory = "CUSTOMER", now = Date.now() }) => {
   if (typeof token !== "string" || token.length > 2048 || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(token)) {
     return false;
   }
@@ -66,6 +67,7 @@ const verifyDataPlanQuote = (token, { customerId, provider, network, plan, price
     return false;
   }
   const identity = planIdentity(plan);
+  if ((payload?.pricingCategory || "CUSTOMER") !== pricingCategory) return false;
   const versionMatches = payload?.version === 2
     ? payload.binding === privateBinding(provider, network, plan) &&
       Object.entries(identity).filter(([field]) => !["networkId", "providerPlanId"].includes(field))

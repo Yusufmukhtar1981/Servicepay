@@ -65,4 +65,27 @@ function transition(status, next) {
     P.fail("Invalid voucher inventory transition.", "NETWORK_CONFLICT", 409);
   return next;
 }
-module.exports = { contract, airtimeRequest, seal, open, validateIssued, transition };
+function thermalLayout(issued, { paperMm, ownerId, allocationReference, reprint = false } = {}) {
+  // Pure preparation only: callers must load an actually paid/allocated record
+  // from a verified inventory source and durably audit reveal/print/reprint
+  // before exposing these bytes. There is deliberately no public print route.
+  if (![58, 80].includes(paperMm)) P.fail("Choose 58mm or 80mm paper.");
+  if (!issued || !["ALLOCATED", "SOLD"].includes(issued.status) ||
+      String(issued.ownerId) !== P.text(ownerId, "voucher owner", 100, true) ||
+      issued.allocationReference !== P.text(allocationReference, "allocation reference", 100, true) ||
+      !issued.paidReference || !issued.providerVerified ||
+      !/^\d{10,30}$/.test(issued.pin || "") || /^0+$/.test(issued.pin) ||
+      !/^[A-Za-z0-9-]{6,64}$/.test(issued.serial || "") || /^0+$/.test(issued.serial))
+    P.fail("Only a verified, paid voucher allocated to this owner can be printed.", "NETWORK_VOUCHER_NOT_ALLOCATED", 403);
+  if (issued.printedAt && !reprint) P.fail("This voucher was printed already; an audited reprint is required.", "NETWORK_CONFLICT", 409);
+  const width = paperMm === 58 ? 32 : 48;
+  const safe = value => String(value || "").replace(/[^\x20-\x7e]/g, "").slice(0, 150);
+  const wrap = value => safe(value).match(new RegExp(`.{1,${width}}`, "g")) || [""];
+  const lines = ["SERVICEPAY", reprint ? "VOUCHER REPRINT" : "ISSUED VOUCHER", "-".repeat(width),
+    ...wrap(issued.network), ...wrap(issued.description), ...wrap("PIN: " + issued.pin),
+    ...wrap("Serial: " + issued.serial), ...wrap("Allocation: " + allocationReference),
+    "-".repeat(width), "Keep your voucher private."];
+  const text = lines.join("\n") + "\n\n\n";
+  return { paperMm, columns: width, text, bytes: Buffer.concat([Buffer.from([0x1b, 0x40]), Buffer.from(text, "ascii")]) };
+}
+module.exports = { contract, airtimeRequest, seal, open, validateIssued, transition, thermalLayout };

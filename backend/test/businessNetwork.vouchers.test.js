@@ -37,3 +37,21 @@ test("sold inventory cannot be sold or returned to printable stock a second time
   assert.equal(V.transition("PRINTED", "SOLD"), "SOLD");
   assert.throws(() => V.transition("SOLD", "PRINTED")); assert.throws(() => V.transition("SOLD", "SOLD"));
 });
+test("58mm and 80mm print preparation accepts only verified paid owner allocations and explicit reprints", () => {
+  const issued = { status: "ALLOCATED", ownerId: "sandbox-owner", allocationReference: "sandbox-allocation",
+    paidReference: "sandbox-payment", providerVerified: true, pin: "1234567890123456", serial: "TEST-123456",
+    network: "Test network", description: "TEST FIXTURE ONLY" };
+  const scope = { paperMm: 58, ownerId: issued.ownerId, allocationReference: issued.allocationReference };
+  for (const paperMm of [58, 80]) {
+    const rendered = V.thermalLayout(issued, { ...scope, paperMm });
+    assert.equal(rendered.columns, paperMm === 58 ? 32 : 48);
+    assert.match(rendered.text, /SERVICEPAY/);
+    assert.deepEqual([...rendered.bytes.subarray(0, 2)], [0x1b, 0x40]);
+    assert(rendered.text.trimEnd().split("\n").every(line => line.length <= rendered.columns));
+  }
+  for (const patch of [{ status: "PURCHASED" }, { ownerId: "another-owner" },
+    { paidReference: "" }, { providerVerified: false }, { printedAt: new Date() }])
+    assert.throws(() => V.thermalLayout({ ...issued, ...patch }, scope));
+  assert.match(V.thermalLayout({ ...issued, printedAt: new Date() }, { ...scope, reprint: true }).text, /REPRINT/);
+  assert.throws(() => V.thermalLayout(issued, { ...scope, paperMm: 57 }));
+});

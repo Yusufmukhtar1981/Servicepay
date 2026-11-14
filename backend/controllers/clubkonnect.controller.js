@@ -11,6 +11,7 @@ const crypto = require("crypto");
 const User = require("../models/user.model");
 const Transaction = require("../models/transaction.model");
 const DataPriceOverride = require("../models/dataPriceOverride.model");
+const BusinessPricing = require("../services/businessNetwork.pricing");
 const {
   getCatalog,
   getPricedCatalog,
@@ -659,7 +660,8 @@ exports.getDataPlans = async (req, res) => {
       });
     }
 
-    const plans = await getPricedCatalog(networkCode);
+    const pricingContext = await BusinessPricing.context(req.user, req.query?.businessKind, "data");
+    const plans = await getPricedCatalog(networkCode, undefined, pricingContext.category);
 
     return res.status(200).json({
       success: true,
@@ -680,6 +682,7 @@ exports.getDataPlans = async (req, res) => {
         price: plan.sellingPrice,
         sellingPrice: plan.sellingPrice,
         planProvider: "TELECOM_ABODE",
+        pricingCategory: pricingContext.category,
         ...(process.env.JWT_SECRET
           ? {
               productQuote: issueDataPlanQuote({
@@ -693,6 +696,7 @@ exports.getDataPlans = async (req, res) => {
                   providerPlanId: plan.providerPlanId,
                 },
                 price: plan.sellingPrice,
+                pricingCategory: pricingContext.category,
               }),
             }
           : {}),
@@ -703,9 +707,9 @@ exports.getDataPlans = async (req, res) => {
       code: safeDataErrorCode(error, "DATA_CATALOG_ERROR"),
     });
 
-    return res.status(503).json({
+    return res.status(String(error.code || "").startsWith("NETWORK_") ? error.status : 503).json({
       success: false,
-      message: "Data plans are currently unavailable.",
+      message: String(error.code || "").startsWith("NETWORK_") ? error.message : "Data plans are currently unavailable.",
     });
   }
 };
@@ -1132,12 +1136,13 @@ exports.buyData = async (req, res) => {
       networkId: catalogPlan.providerNetworkId,
     };
     const providerPrice = Number(catalogPlan.price);
+    const pricingContext = await BusinessPricing.context(req.user, req.body.businessKind, "data");
     const override = await DataPriceOverride.findOne({
       networkCode,
       planCode: catalogPlan.pricingCode || selectedPlan,
       active: true,
     }).lean();
-    const dataAmount = Number(override?.sellingPrice);
+    const dataAmount = BusinessPricing.dataPrice(override, pricingContext.category, providerPrice);
     if (!Number.isFinite(dataAmount) || dataAmount <= 0) {
       return res.status(409).json({
         success: false,
@@ -1150,6 +1155,7 @@ exports.buyData = async (req, res) => {
       network: networkCode,
       plan: providerPlan,
       price: dataAmount,
+      pricingCategory: pricingContext.category,
     })) {
       return res.status(409).json({
         success: false,
@@ -1195,11 +1201,17 @@ exports.buyData = async (req, res) => {
     try {
       await session.withTransaction(async () => {
         admissionPriceChanged = false;
+        const currentContext = await BusinessPricing.context(req.user, req.body.businessKind, "data", session, { lock: true });
+        if (currentContext.category !== pricingContext.category) throw Object.assign(new Error("Business access changed."),
+          { status: 409, code: "NETWORK_CONFLICT" });
         const currentPrice = await DataPriceOverride.findOneAndUpdate({
           networkCode,
           planCode: catalogPlan.pricingCode || selectedPlan,
           active: true,
-          sellingPrice: dataAmount,
+          sellingPrice: override.sellingPrice,
+          ...(pricingContext.category !== "CUSTOMER" ? {
+            ["businessPrices." + pricingContext.category]: override.businessPrices?.[pricingContext.category] || { $exists: false },
+          } : {}),
         }, {
           $inc: { pricingVersion: 1 },
         }, {
@@ -1265,6 +1277,8 @@ exports.buyData = async (req, res) => {
               planName: providerPlan.name,
               providerPrice,
               quotedPrice: dataAmount,
+              pricingSnapshot: { category: pricingContext.category, sellingPrice: dataAmount, providerCost: providerPrice,
+                priceRecordId: override._id, priceVersion: currentPrice.pricingVersion, capturedAt: new Date() },
             },
           }],
           { session },
@@ -1792,6 +1806,9 @@ exports.buyData = async (req, res) => {
       code: safeDataErrorCode(error, "DATA_PURCHASE_ERROR"),
       statusCode: Number.isInteger(error?.statusCode) ? error.statusCode : undefined,
     });
+    if (!transaction && String(error.code || "").startsWith("NETWORK_")) {
+      return res.status(error.status || 409).json({ success: false, code: error.code, message: error.message });
+    }
     if (transaction && dispatchClaimed) {
       await Transaction.updateOne(
         {

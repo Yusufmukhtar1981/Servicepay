@@ -102,6 +102,33 @@ test("parallel duplicate requests have one debit and one provider send", async (
   assert.equal(f.calls.filter(c => c.method === "POST").length, 1);
   assert.equal((await User.findById(f.customer._id)).walletBalance, 950);
 });
+test("Agent and Merchant Airtime markups are independently quoted, debited and snapshotted without inventing invoice margin", async () => {
+  const N = require("../models/businessNetwork.models");
+  for (const [kind, markupBps, expected] of [["AGENT", 100, 50.5], ["MERCHANT", 200, 51]]) {
+    const f = await fixture({ markupBps: 0 });
+    await User.updateOne({ _id: f.customer._id }, { $set: { kycVerified: true } });
+    const profile = await N.Profile.create({ owner: f.customer._id, kind, status: "APPROVED", revision: 1 });
+    await N.Settings.findOneAndUpdate({ _id: "network" }, { $set: { premium: { airtimePricing: {
+      "7": { [kind]: { enabled: true, markupBps } },
+    } } } }, { upsert: true });
+    try {
+      const quote = await f.lifecycle.quote({ ...f.input, customerId: f.customer._id, businessKind: kind });
+      assert.equal(quote.customerSellingPrice, expected); assert.equal(quote.providerCost, null);
+      const input = { ...f.input, businessKind: kind, customerSellingPrice: expected };
+      await assert.rejects(f.lifecycle.executePurchase({ ...input, customerSellingPrice: 1 }), { code: "AIRTIME_QUOTE_CHANGED" });
+      const result = await f.lifecycle.executePurchase(input);
+      await f.lifecycle.executePurchase(input);
+      assert.equal(result.transaction.amount, expected);
+      assert.equal(result.transaction.providerResponse.businessPricingSnapshot.category, kind);
+      assert.equal(result.transaction.providerResponse.businessPricingSnapshot.sellingPrice, expected);
+      assert.equal((await User.findById(f.customer._id)).walletBalance, 1000 - expected);
+      assert.equal(f.calls.filter(c => c.method === "POST").length, 1);
+      assert.equal(f.calls.find(c => c.method === "POST").data.amount, 50);
+      assert.equal(result.transaction.providerResponse.financialAccounting.providerCost, null);
+      assert.equal(await LedgerEntry.countDocuments({ transactionId: result.transaction._id, direction: "DEBIT", amount: expected }), 1);
+    } finally { await N.Profile.deleteOne({ _id: profile._id }); await N.Settings.deleteOne({ _id: "network" }); }
+  }
+});
 for (const mode of ["timeout", "wrong-ref", "failure"]) test(`${mode} stays pending, no resend/refund/commission`, async () => {
   const f = await fixture({ mode });
   const result = await f.lifecycle.executePurchase(f.input);

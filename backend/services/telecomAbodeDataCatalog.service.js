@@ -116,7 +116,7 @@ const getCatalog = async (network, provider = telecomAbode) => {
   );
 };
 
-const getPricedCatalog = async (network, provider = telecomAbode) => {
+const getPricedCatalog = async (network, provider = telecomAbode, category = "CUSTOMER") => {
   const plans = await getCatalog(network, provider);
   const networkCode = normalizeNetwork(network);
   const overrides = await DataPriceOverride.find({
@@ -124,9 +124,9 @@ const getPricedCatalog = async (network, provider = telecomAbode) => {
     planCode: { $in: plans.map((plan) => plan.pricingCode) },
     active: true,
   }).lean();
-  const prices = new Map(overrides.map((row) => [row.planCode, Number(row.sellingPrice)]));
+  const prices = new Map(overrides.map((row) => [row.planCode, row]));
   return plans.flatMap((plan) => {
-    const sellingPrice = prices.get(plan.pricingCode);
+    const sellingPrice = require("./businessNetwork.pricing").dataPrice(prices.get(plan.pricingCode), category, Number(plan.price));
     return Number.isFinite(sellingPrice) && sellingPrice > 0
       ? [{ ...plan, sellingPrice }]
       : [];

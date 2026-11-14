@@ -38,7 +38,8 @@ exports.getAirtimeNetworks = async (_req, res) => {
 };
 exports.quoteAirtime = async (req, res) => {
   try { return res.json({ success: true, data: await telecomLifecycle.quote({
-    network: await providerNetwork(req.body), amount: req.body.amount, phone: req.body.phone }) }); }
+    network: await providerNetwork(req.body), amount: req.body.amount, phone: req.body.phone,
+    customerId: req.user._id, businessKind: req.body.businessKind }) }); }
   catch (e) { return res.status(e.status || 503).json({ success: false, code: e.code || "AIRTIME_QUOTE_UNAVAILABLE",
     message: e.status < 500 ? e.message : "Airtime pricing could not be confirmed." }); }
 };
@@ -126,6 +127,7 @@ exports.buyAirtime = async (req, res) => {
       phone: req.body.phone,
       amount: req.body.amount,
       customerSellingPrice: req.body.customerSellingPrice,
+      businessKind: req.body.businessKind,
       idempotencyKey: req.get?.("Idempotency-Key") || req.get?.("X-Idempotency-Key") ||
         req.headers?.["idempotency-key"] || req.headers?.["x-idempotency-key"] ||
         req.body.idempotencyKey,
