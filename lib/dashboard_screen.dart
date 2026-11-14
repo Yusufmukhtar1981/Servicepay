@@ -59,6 +59,7 @@ import 'services/session_store.dart';
 import 'widgets/announcement_widgets.dart';
 import 'edupay/edupay_screen.dart';
 import 'school_portal_handoff_client.dart';
+import 'business_network/business_hub_screen.dart';
 
 List<ServicePayAnnouncement> mergeAnnouncementSessionState({
   required List<ServicePayAnnouncement> loaded,
@@ -5525,6 +5526,48 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
+  Widget _buildBusinessHubEntry() {
+    return InkWell(
+      key: const Key('customer-business-hub-entry'),
+      borderRadius: BorderRadius.circular(20),
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => const BusinessHubScreen(),
+        ),
+      ),
+      child: Ink(
+        padding: const EdgeInsets.all(17),
+        decoration: BoxDecoration(
+          color: const Color(0xFFE8F3EC),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: const Color(0xFFC9E2D2)),
+        ),
+        child: const Row(
+          children: [
+            Icon(Icons.hub_outlined, color: primaryGreen, size: 30),
+            SizedBox(width: 13),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Business Hub',
+                      style:
+                          TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                  SizedBox(height: 3),
+                  Text(
+                    'Become an Agent or register your business',
+                    style: TextStyle(color: Color(0xFF53645B), fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.arrow_forward_ios_rounded, size: 16, color: primaryGreen),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(
     BuildContext context,
@@ -5561,6 +5604,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                   if (fundingAccountNumber.isNotEmpty)
                     const SizedBox(height: 15),
                   buildCustomerQuickServices(),
+                  const SizedBox(height: 14),
+                  _buildBusinessHubEntry(),
                   if (isLoadingServiceStatuses ||
                       activeServiceStatuses.isNotEmpty) ...[
                     const SizedBox(height: 16),
