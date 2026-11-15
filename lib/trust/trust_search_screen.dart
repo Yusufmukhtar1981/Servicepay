@@ -4,6 +4,7 @@ import 'trust_api_service.dart';
 import 'trust_models.dart';
 import 'trust_profile_screen.dart';
 import 'trust_deals_screen.dart';
+import '../servicepay_theme.dart';
 
 typedef TrustProfileSearch = Future<List<TrustProfile>> Function({
   required String query,
@@ -78,7 +79,7 @@ class _TrustSearchScreenState extends State<TrustSearchScreen> {
         backgroundColor: const Color(0xFFF5F7FA),
         appBar: AppBar(
           title: const Text('ServicePay Trust'),
-          backgroundColor: const Color(0xFF08783E),
+          backgroundColor: ServicePayColors.brand,
           foregroundColor: Colors.white,
           actions: <Widget>[
             IconButton(
@@ -118,7 +119,7 @@ class _TrustSearchScreenState extends State<TrustSearchScreen> {
                                   Text(
                                     'Verify Before You Pay',
                                     style: TextStyle(
-                                      color: Color(0xFF08783E),
+                                      color: ServicePayColors.brand,
                                       fontWeight: FontWeight.w800,
                                       fontSize: 18,
                                     ),
@@ -275,7 +276,7 @@ class _TrustSearchScreenState extends State<TrustSearchScreen> {
         child: Text(
           level.replaceAll('_', ' '),
           style: const TextStyle(
-            color: Color(0xFF08783E),
+            color: ServicePayColors.brand,
             fontSize: 11,
             fontWeight: FontWeight.w700,
           ),
@@ -291,7 +292,7 @@ class _TrustSearchScreenState extends State<TrustSearchScreen> {
         child: Text(
           '✓ $label',
           style: const TextStyle(
-            color: Color(0xFF08783E),
+            color: ServicePayColors.brand,
             fontSize: 11,
             fontWeight: FontWeight.w700,
           ),

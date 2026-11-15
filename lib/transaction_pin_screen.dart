@@ -8,6 +8,7 @@ import 'security_utils.dart';
 import 'services/session_store.dart';
 import 'services/pin_session_client.dart';
 import 'login_screen.dart';
+import 'servicepay_theme.dart';
 
 class TransactionPinScreen extends StatefulWidget {
   const TransactionPinScreen({
@@ -217,7 +218,7 @@ class _TransactionPinScreenState extends State<TransactionPinScreen> {
                 child: const Icon(
                   Icons.lock_outline_rounded,
                   size: 42,
-                  color: Color(0xFF2E7D32),
+                  color: ServicePayColors.brand,
                 ),
               ),
               const SizedBox(
@@ -326,9 +327,7 @@ class _TransactionPinScreenState extends State<TransactionPinScreen> {
                 child: ElevatedButton(
                   onPressed: isLoading ? null : createTransactionPin,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(
-                      0xFF2E7D32,
-                    ),
+                    backgroundColor: ServicePayColors.brand,
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(

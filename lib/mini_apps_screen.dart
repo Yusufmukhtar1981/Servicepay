@@ -10,6 +10,7 @@ import 'keke_order_screen.dart';
 import 'logistics_screen.dart';
 import 'marketplace/marketplace_screen.dart';
 import 'services/customer_service_visibility.dart';
+import 'servicepay_theme.dart';
 
 Widget? miniAppScreenForRouteKey(String routeKey) {
   switch (routeKey.trim()) {
@@ -299,9 +300,7 @@ class _MiniAppsScreenState extends State<MiniAppsScreen> {
                           20,
                         ),
                         decoration: BoxDecoration(
-                          color: const Color(
-                            0xFF08783E,
-                          ),
+                          color: ServicePayColors.brand,
                           borderRadius: BorderRadius.circular(
                             24,
                           ),
@@ -480,9 +479,7 @@ class _MiniAppsScreenState extends State<MiniAppsScreen> {
                                     width: 52,
                                     height: 52,
                                     decoration: BoxDecoration(
-                                      color: const Color(
-                                        0xFFEAF7F0,
-                                      ),
+                                      color: ServicePayColors.brandSoft,
                                       borderRadius: BorderRadius.circular(
                                         16,
                                       ),
@@ -491,9 +488,7 @@ class _MiniAppsScreenState extends State<MiniAppsScreen> {
                                       iconFor(
                                         app['icon']?.toString(),
                                       ),
-                                      color: const Color(
-                                        0xFF08783E,
-                                      ),
+                                      color: ServicePayColors.brand,
                                     ),
                                   ),
                                   const Spacer(),
@@ -531,9 +526,7 @@ class _MiniAppsScreenState extends State<MiniAppsScreen> {
                                       fontWeight: FontWeight.w700,
                                        color: isUnavailable
                                           ? Colors.orange.shade800
-                                          : const Color(
-                                              0xFF08783E,
-                                            ),
+                                          : ServicePayColors.brand,
                                     ),
                                   ),
                                 ],

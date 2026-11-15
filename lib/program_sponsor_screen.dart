@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'services/empowerment_api_service.dart';
+import 'servicepay_theme.dart';
 
 class ProgramSponsorScreen extends StatefulWidget {
   const ProgramSponsorScreen({super.key});
@@ -413,7 +414,7 @@ class _ProgramSponsorScreenState extends State<ProgramSponsorScreen> {
   Widget _statusChip(String value) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
         decoration: BoxDecoration(
-          color: const Color(0xFFEAF7F0),
+          color: ServicePayColors.brandSoft,
           borderRadius: BorderRadius.circular(20),
         ),
         child: Text(value.replaceAll('_', ' '),
@@ -453,8 +454,11 @@ class _ProgramSponsorScreenState extends State<ProgramSponsorScreen> {
       elevation: 0,
       child: ListTile(
         leading: const CircleAvatar(
-          backgroundColor: Color(0xFFEAF7F0),
-          child: Icon(Icons.account_balance_outlined, color: Color(0xFF08783E)),
+          backgroundColor: ServicePayColors.brandSoft,
+          child: Icon(
+            Icons.account_balance_outlined,
+            color: ServicePayColors.brand,
+          ),
         ),
         title: Text(_text(organization['name'])),
         subtitle: Text(
@@ -484,9 +488,11 @@ class _ProgramSponsorScreenState extends State<ProgramSponsorScreen> {
             Row(
               children: <Widget>[
                 const CircleAvatar(
-                  backgroundColor: Color(0xFFEAF7F0),
-                  child: Icon(Icons.workspace_premium_outlined,
-                      color: Color(0xFF08783E)),
+                  backgroundColor: ServicePayColors.brandSoft,
+                  child: Icon(
+                    Icons.workspace_premium_outlined,
+                    color: ServicePayColors.brand,
+                  ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -501,7 +507,8 @@ class _ProgramSponsorScreenState extends State<ProgramSponsorScreen> {
             Text(
               '${_money(program['amountPerBeneficiary'])} benefit · ${_text(program['state'], 'Nationwide')}',
               style: const TextStyle(
-                  color: Color(0xFF08783E), fontWeight: FontWeight.w800),
+                  color: ServicePayColors.brand,
+                  fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 12),
             Row(
@@ -593,8 +600,8 @@ class _ProgramSponsorScreenState extends State<ProgramSponsorScreen> {
                           borderRadius: BorderRadius.circular(24),
                           gradient: const LinearGradient(
                             colors: <Color>[
-                              Color(0xFF003F26),
-                              Color(0xFF08783E),
+                              ServicePayColors.brandDeep,
+                              ServicePayColors.brand,
                             ],
                           ),
                         ),

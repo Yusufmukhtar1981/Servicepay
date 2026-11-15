@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import '../servicepay_theme.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../services/receipt_download.dart';
@@ -126,7 +127,7 @@ class _BusinessTransactionRecordScreenState
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: const Color(0xFFE8F3EC),
+              color: ServicePayColors.brandSoft,
               borderRadius: BorderRadius.circular(16),
             ),
             child: const Text(

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'services/ai_support_api_service.dart';
 import 'services/voice_capture.dart';
 import 'support_tickets_screen.dart';
+import 'servicepay_theme.dart';
 
 class AiSupportScreen extends StatefulWidget {
   const AiSupportScreen({super.key});
@@ -15,9 +16,9 @@ class AiSupportScreen extends StatefulWidget {
 }
 
 class _AiSupportScreenState extends State<AiSupportScreen> {
-  static const Color primaryGreen = Color(0xFF08783E);
-  static const Color darkGreen = Color(0xFF075B30);
-  static const Color background = Color(0xFFF5FAF7);
+  static const Color primaryGreen = ServicePayColors.brand;
+  static const Color darkGreen = ServicePayColors.brandDeep;
+  static const Color background = ServicePayColors.canvas;
   static const String welcomeMessage =
       'Hello. I am ServicePay AI Support. I can help with transfers, wallet funding, airtime, data, electricity, cable TV, delivery, KYC and other ServicePay services.';
   static const String unavailableMessage =
@@ -981,7 +982,7 @@ class _ChatBubble extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
         decoration: BoxDecoration(
-          color: isUser ? const Color(0xFF08783E) : Colors.white,
+          color: isUser ? ServicePayColors.brand : Colors.white,
           borderRadius: BorderRadius.only(
             topLeft: const Radius.circular(18),
             topRight: const Radius.circular(18),
@@ -1164,8 +1165,10 @@ class _RecordPickerState extends State<_RecordPicker> {
                                   overflow: TextOverflow.ellipsis,
                                 ),
                                 trailing: widget.selectedId == record.id
-                                    ? const Icon(Icons.check_circle,
-                                        color: Color(0xFF08783E))
+                                    ? const Icon(
+                                        Icons.check_circle,
+                                        color: ServicePayColors.brand,
+                                      )
                                     : const Icon(Icons.chevron_right),
                                 onTap: () => widget.onSelect(record),
                               );
@@ -1303,7 +1306,7 @@ class _TypingDot extends StatelessWidget {
       width: 7,
       height: 7,
       decoration: const BoxDecoration(
-        color: Color(0xFF08783E),
+        color: ServicePayColors.brand,
         shape: BoxShape.circle,
       ),
     );

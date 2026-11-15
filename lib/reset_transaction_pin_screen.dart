@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'security_utils.dart';
 import 'services/session_store.dart';
+import 'servicepay_theme.dart';
 
 class ResetTransactionPinScreen extends StatefulWidget {
   const ResetTransactionPinScreen({super.key, this.client});
@@ -18,7 +19,7 @@ class ResetTransactionPinScreen extends StatefulWidget {
 
 class _ResetTransactionPinScreenState extends State<ResetTransactionPinScreen> {
   static const String baseUrl = 'https://api.servicepay.ng/api';
-  static const Color primaryGreen = Color(0xFF2E7D32);
+  static const Color primaryGreen = ServicePayColors.brand;
 
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _newPinController = TextEditingController();

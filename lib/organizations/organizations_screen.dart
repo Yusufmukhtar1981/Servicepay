@@ -257,7 +257,11 @@ class _EmptyOrganization extends StatelessWidget {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Icon(Icons.groups_2_outlined, color: Color(0xFF08783E), size: 32),
+        const Icon(
+          Icons.groups_2_outlined,
+          color: ServicePayColors.brand,
+          size: 32,
+        ),
         const SizedBox(height: 12),
         const Text(
           'Create or join an organization',
@@ -346,7 +350,7 @@ class _Action extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(icon, color: const Color(0xFF08783E), size: 21),
+          Icon(icon, color: ServicePayColors.brand, size: 21),
           const SizedBox(width: 9),
           Expanded(
             child: Text(
@@ -693,7 +697,7 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
             width: double.infinity,
             padding: const EdgeInsets.all(15),
             decoration: BoxDecoration(
-              color: const Color(0xFFEAF7F0),
+              color: ServicePayColors.brandSoft,
               borderRadius: BorderRadius.circular(14),
             ),
             child: const Text(
@@ -722,14 +726,14 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
           Text(
             'Step ${step + 1} of 5',
             style: const TextStyle(
-              color: Color(0xFF08783E),
+              color: ServicePayColors.brand,
               fontWeight: FontWeight.w800,
             ),
           ),
           const SizedBox(height: 8),
           LinearProgressIndicator(
             value: (step + 1) / 5,
-            color: const Color(0xFF08783E),
+            color: ServicePayColors.brand,
           ),
           const SizedBox(height: 26),
           Text(
@@ -1133,7 +1137,7 @@ class _OrganizationProfileScreenState extends State<OrganizationProfileScreen> {
         else
           FilledButton.icon(
             style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF08783E),
+              backgroundColor: ServicePayColors.brand,
               minimumSize: const Size.fromHeight(52),
             ),
             onPressed: joining ? null : _join,
@@ -1255,7 +1259,7 @@ class _OrganizationMemberScreenState extends State<OrganizationMemberScreen> {
           padding: const EdgeInsets.all(20),
           children: [
             Card(
-              color: const Color(0xFF08783E),
+              color: ServicePayColors.brand,
               child: Padding(
                 padding: const EdgeInsets.all(22),
                 child: Column(
@@ -1678,7 +1682,7 @@ class _OrganizationTile extends StatelessWidget {
       onTap: onTap,
       contentPadding: const EdgeInsets.all(12),
       leading: CircleAvatar(
-        backgroundColor: const Color(0xFFEAF7F0),
+        backgroundColor: ServicePayColors.brandSoft,
         backgroundImage:
             org.logoUrl != null && org.logoUrl!.startsWith('https://')
             ? NetworkImage(org.logoUrl!)
@@ -1686,7 +1690,7 @@ class _OrganizationTile extends StatelessWidget {
         child: Text(
           org.name.isEmpty ? '?' : org.name[0].toUpperCase(),
           style: const TextStyle(
-            color: Color(0xFF08783E),
+            color: ServicePayColors.brand,
             fontWeight: FontWeight.bold,
           ),
         ),
@@ -1728,7 +1732,7 @@ class _InfoRow extends StatelessWidget {
   @override
   Widget build(BuildContext c) => Row(
     children: [
-      Icon(icon, color: const Color(0xFF08783E)),
+      Icon(icon, color: ServicePayColors.brand),
       const SizedBox(width: 12),
       Expanded(
         child: Column(

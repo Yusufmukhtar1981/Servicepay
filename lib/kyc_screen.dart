@@ -7,6 +7,7 @@ import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
+import 'servicepay_theme.dart';
 
 bool isSupportedKycImageFilename(String filename) {
   final String extension = filename.split('.').last.toLowerCase();
@@ -583,7 +584,7 @@ class _KycScreenState extends State<KycScreen> {
               children: <Widget>[
                 CircleAvatar(
                   radius: 15,
-                  backgroundColor: const Color(0xFF08783E),
+                  backgroundColor: ServicePayColors.brand,
                   child: Text('$number',
                       style: const TextStyle(
                           color: Colors.white, fontWeight: FontWeight.bold)),
@@ -721,7 +722,10 @@ class _KycScreenState extends State<KycScreen> {
         children: <Widget>[
           Row(
             children: <Widget>[
-              const Icon(Icons.image_outlined, color: Color(0xFF08783E)),
+              const Icon(
+                Icons.image_outlined,
+                color: ServicePayColors.brand,
+              ),
               const SizedBox(width: 8),
               Expanded(
                   child: Text(title,
@@ -810,7 +814,7 @@ class _KycScreenState extends State<KycScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('KYC Verification'),
-        backgroundColor: const Color(0xFF08783E),
+        backgroundColor: ServicePayColors.brand,
         foregroundColor: Colors.white,
       ),
       body: _loading
@@ -856,8 +860,8 @@ class _KycScreenState extends State<KycScreen> {
                         : _isLocked
                             ? .9
                             : .45,
-                    color: const Color(0xFF08783E),
-                    backgroundColor: Colors.green.shade50,
+                    color: ServicePayColors.brand,
+                    backgroundColor: ServicePayColors.brandSoft,
                   ),
                   const SizedBox(height: 16),
                   if (_isLocked)
@@ -1042,7 +1046,7 @@ class _KycScreenState extends State<KycScreen> {
                                       ? 'Submitting...'
                                       : 'Submit KYC application'),
                                   style: FilledButton.styleFrom(
-                                    backgroundColor: const Color(0xFF08783E),
+                                    backgroundColor: ServicePayColors.brand,
                                     padding: const EdgeInsets.symmetric(
                                         vertical: 14),
                                   ),

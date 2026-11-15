@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 
 import 'services/empowerment_api_service.dart';
+import 'servicepay_theme.dart';
 
 class EmpowermentScreen extends StatefulWidget {
   const EmpowermentScreen({super.key});
@@ -808,7 +809,7 @@ class _EmpowermentScreenState extends State<EmpowermentScreen>
   Widget _metric(String label, dynamic value) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
-          color: const Color(0xFFEAF7F0),
+          color: ServicePayColors.brandSoft,
           borderRadius: BorderRadius.circular(14),
         ),
         child: Column(
@@ -858,9 +859,11 @@ class _EmpowermentScreenState extends State<EmpowermentScreen>
             Row(
               children: <Widget>[
                 const CircleAvatar(
-                  backgroundColor: Color(0xFFEAF7F0),
-                  child: Icon(Icons.volunteer_activism_outlined,
-                      color: Color(0xFF08783E)),
+                  backgroundColor: ServicePayColors.brandSoft,
+                  child: Icon(
+                    Icons.volunteer_activism_outlined,
+                    color: ServicePayColors.brand,
+                  ),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -880,7 +883,10 @@ class _EmpowermentScreenState extends State<EmpowermentScreen>
             const SizedBox(height: 12),
             Text(
               '${_currency(program['amountPerBeneficiary'])} per beneficiary',
-              style: const TextStyle(color: Color(0xFF08783E), fontWeight: FontWeight.w800),
+              style: const TextStyle(
+                color: ServicePayColors.brand,
+                fontWeight: FontWeight.w800,
+              ),
             ),
             const SizedBox(height: 10),
             Row(
@@ -909,8 +915,11 @@ class _EmpowermentScreenState extends State<EmpowermentScreen>
       elevation: 0,
       child: ListTile(
         leading: const CircleAvatar(
-          backgroundColor: Color(0xFFEAF7F0),
-          child: Icon(Icons.account_balance_outlined, color: Color(0xFF08783E)),
+          backgroundColor: ServicePayColors.brandSoft,
+          child: Icon(
+            Icons.account_balance_outlined,
+            color: ServicePayColors.brand,
+          ),
         ),
         title: Text(_text(organization['name'])),
         subtitle: Text(_text(organization['organizationType']).replaceAll('_', ' ')),
@@ -928,9 +937,11 @@ class _EmpowermentScreenState extends State<EmpowermentScreen>
       elevation: 0,
       child: ListTile(
         leading: const CircleAvatar(
-          backgroundColor: Color(0xFFEAF7F0),
-          child: Icon(Icons.assignment_turned_in_outlined,
-              color: Color(0xFF08783E)),
+          backgroundColor: ServicePayColors.brandSoft,
+          child: Icon(
+            Icons.assignment_turned_in_outlined,
+            color: ServicePayColors.brand,
+          ),
         ),
         title: Text(_text(program['name'], 'Empowerment application')),
         subtitle: Text(
@@ -993,9 +1004,9 @@ class _EmpowermentScreenState extends State<EmpowermentScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F9F8),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF08783E),
+        backgroundColor: ServicePayColors.brand,
         foregroundColor: Colors.white,
         title: const Text('ServicePay Empowerment'),
         actions: <Widget>[
@@ -1091,7 +1102,10 @@ class _EmpowermentScreenState extends State<EmpowermentScreen>
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           gradient: const LinearGradient(
-            colors: <Color>[Color(0xFF003F26), Color(0xFF08783E)],
+            colors: <Color>[
+              ServicePayColors.brandDeep,
+              ServicePayColors.brand,
+            ],
           ),
           borderRadius: BorderRadius.circular(24),
         ),

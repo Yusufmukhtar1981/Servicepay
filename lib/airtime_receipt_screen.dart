@@ -4,6 +4,7 @@ import 'package:share_plus/share_plus.dart';
 
 import 'services/api_service.dart';
 import 'services/receipt_download.dart';
+import 'servicepay_theme.dart';
 
 typedef AirtimeReceiptDownloader = Future<String> Function(
   Uint8List,
@@ -162,7 +163,7 @@ class _AirtimeReceiptScreenState extends State<AirtimeReceiptScreen> {
       backgroundColor: const Color(0xFFF2F7F4),
       appBar: AppBar(
         title: const Text('Airtime receipt'),
-        backgroundColor: const Color(0xFF08783E),
+        backgroundColor: ServicePayColors.brand,
         foregroundColor: Colors.white,
       ),
       body: _loading
@@ -189,7 +190,7 @@ class _AirtimeReceiptScreenState extends State<AirtimeReceiptScreen> {
                                     ? 'Preparing PDF…'
                                     : 'Download PDF'),
                                 style: FilledButton.styleFrom(
-                                    backgroundColor: const Color(0xFF08783E)),
+                                    backgroundColor: ServicePayColors.brand),
                               ),
                             ),
                             const SizedBox(height: 10),
@@ -201,9 +202,9 @@ class _AirtimeReceiptScreenState extends State<AirtimeReceiptScreen> {
                                 icon: const Icon(Icons.share_rounded),
                                 label: const Text('Share PDF'),
                                 style: OutlinedButton.styleFrom(
-                                  foregroundColor: const Color(0xFF08783E),
+                                  foregroundColor: ServicePayColors.brand,
                                   side: const BorderSide(
-                                      color: Color(0xFF08783E)),
+                                      color: ServicePayColors.brand),
                                 ),
                               ),
                             ),
@@ -273,7 +274,7 @@ class _AirtimeReceiptScreenState extends State<AirtimeReceiptScreen> {
             const SizedBox(height: 10),
             const Text('SERVICEPAY',
                 style: TextStyle(
-                    color: Color(0xFF08783E),
+                    color: ServicePayColors.brand,
                     fontSize: 19,
                     fontWeight: FontWeight.w900,
                     letterSpacing: 1.2)),

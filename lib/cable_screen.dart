@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'servicepay_theme.dart';
 
 class CableScreen extends StatefulWidget {
   const CableScreen({super.key});
@@ -66,9 +67,9 @@ class _CableScreenState extends State<CableScreen> {
     final packages = cablePackages[selectedProvider]!;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
-        backgroundColor: Colors.green,
+        backgroundColor: ServicePayColors.brand,
         foregroundColor: Colors.white,
         title: const Text(
           'Cable TV',
@@ -164,7 +165,7 @@ class _CableScreenState extends State<CableScreen> {
               child: ElevatedButton(
                 onPressed: buyCable,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
+                  backgroundColor: ServicePayColors.brand,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),

@@ -9,6 +9,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 import 'services/session_store.dart';
+import 'servicepay_theme.dart';
 import 'services/pin_session_client.dart';
 import 'services/keke_session_api.dart';
 
@@ -28,7 +29,7 @@ class _KekeOrderScreenState
       'https://api.servicepay.ng/api';
 
   static const Color primaryGreen =
-      Color(0xFF0F766E);
+      ServicePayColors.brand;
 
   final MapController _mapController =
       MapController();
@@ -1547,7 +1548,7 @@ class _KekeOrderScreenState
               key: const Key('transport-fare-estimate'),
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: const Color(0xFFEAF7F0),
+                color: ServicePayColors.brandSoft,
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(color: const Color(0xFFCFE7D8)),
               ),
@@ -1868,10 +1869,7 @@ class _KekeOrderScreenState
               ),
               decoration:
                   BoxDecoration(
-                color:
-                    const Color(
-                  0xFFEAF7F0,
-                ),
+                color: ServicePayColors.brandSoft,
                 borderRadius:
                     BorderRadius.circular(
                   20,
@@ -2001,10 +1999,7 @@ class _KekeOrderScreenState
               ),
               decoration:
                   BoxDecoration(
-                color:
-                    const Color(
-                  0xFFEAF7F0,
-                ),
+                color: ServicePayColors.brandSoft,
                 borderRadius:
                     BorderRadius.circular(
                   18,

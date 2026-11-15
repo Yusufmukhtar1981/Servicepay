@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../servicepay_theme.dart';
 
 class MarketplaceMyOrdersScreen extends StatefulWidget {
   const MarketplaceMyOrdersScreen({super.key});
@@ -15,7 +16,7 @@ class MarketplaceMyOrdersScreen extends StatefulWidget {
 
 class _MarketplaceMyOrdersScreenState extends State<MarketplaceMyOrdersScreen> {
   static const String baseUrl = 'https://api.servicepay.ng/api';
-  static const Color primary = Color(0xFF08783E);
+  static const Color primary = ServicePayColors.brand;
 
   bool loading = true;
   String errorMessage = '';

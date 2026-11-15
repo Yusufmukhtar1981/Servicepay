@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'feature_transaction_pin_dialog.dart';
+import 'servicepay_theme.dart';
 
 class RequestMoneyScreen extends StatefulWidget {
   const RequestMoneyScreen({super.key});
@@ -16,7 +17,7 @@ class RequestMoneyScreen extends StatefulWidget {
 class _RequestMoneyScreenState extends State<RequestMoneyScreen> {
   static const String baseUrl = 'https://api.servicepay.ng/api';
 
-  static const Color primaryGreen = Color(0xFF08783E);
+  static const Color primaryGreen = ServicePayColors.brand;
 
   final phoneController = TextEditingController();
 

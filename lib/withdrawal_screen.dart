@@ -14,6 +14,7 @@ import 'services/customer_feature_config_service.dart';
 import 'services/session_store.dart';
 import 'services/biometric_auth_service.dart';
 import 'services/transaction_authorization_service.dart';
+import 'servicepay_theme.dart';
 
 class WithdrawalScreen extends StatefulWidget {
   const WithdrawalScreen({
@@ -32,7 +33,7 @@ class WithdrawalScreen extends StatefulWidget {
 class _WithdrawalScreenState extends State<WithdrawalScreen> {
   static const String baseUrl = 'https://api.servicepay.ng/api';
 
-  static const Color primaryGreen = Color(0xFF08783E);
+  static const Color primaryGreen = ServicePayColors.brand;
 
   final bankController = TextEditingController();
   final accountNumberController = TextEditingController();

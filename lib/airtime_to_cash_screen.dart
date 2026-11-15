@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'servicepay_theme.dart';
 
 class AirtimeToCashScreen extends StatefulWidget {
   const AirtimeToCashScreen({super.key});
@@ -14,7 +15,7 @@ class AirtimeToCashScreen extends StatefulWidget {
 class _AirtimeToCashScreenState extends State<AirtimeToCashScreen> {
   static const String baseUrl = 'https://api.servicepay.ng/api';
 
-  static const Color primaryGreen = Color(0xFF08783E);
+  static const Color primaryGreen = ServicePayColors.brand;
 
   final TextEditingController phoneController = TextEditingController();
 
@@ -287,7 +288,7 @@ class _AirtimeToCashScreenState extends State<AirtimeToCashScreen> {
           Container(
             padding: const EdgeInsets.all(22),
             decoration: BoxDecoration(
-              color: const Color(0xFFEAF7F0),
+              color: ServicePayColors.brandSoft,
               borderRadius: BorderRadius.circular(22),
             ),
             child: const Column(

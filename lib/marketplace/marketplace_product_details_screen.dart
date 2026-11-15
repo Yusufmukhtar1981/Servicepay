@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'marketplace_cart_screen.dart';
 import 'marketplace_cart_store.dart';
+import '../servicepay_theme.dart';
 
 class MarketplaceProductDetailsScreen extends StatelessWidget {
   const MarketplaceProductDetailsScreen({
@@ -11,8 +12,8 @@ class MarketplaceProductDetailsScreen extends StatelessWidget {
 
   final Map<String, dynamic> product;
 
-  static const Color primary = Color(0xFF08783E);
-  static const Color softGreen = Color(0xFFEAF7F0);
+  static const Color primary = ServicePayColors.brand;
+  static const Color softGreen = ServicePayColors.brandSoft;
 
   String money(dynamic value) {
     final double amount =

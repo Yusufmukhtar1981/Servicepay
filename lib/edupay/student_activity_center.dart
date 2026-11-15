@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'edupay_api.dart';
+import '../servicepay_theme.dart';
 
 /// Read-only parent view. Student ids only enter this widget from the
 /// authenticated parent's /parent/children response.
@@ -131,7 +132,7 @@ class _StudentActivityCenterState extends State<StudentActivityCenter> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Student Activity Center')),
-      backgroundColor: const Color(0xfff5f8f6),
+      backgroundColor: ServicePayColors.canvas,
       body: RefreshIndicator(
         onRefresh: _load,
         child: linkedChildren.isEmpty
@@ -308,7 +309,7 @@ class _StudentActivityCenterState extends State<StudentActivityCenter> {
   Widget _profile(Map<String, dynamic> p) {
     final school = _map(p['school']);
     return Card(
-      color: const Color(0xff0c6b51),
+      color: ServicePayColors.brand,
       child: Padding(
         padding: const EdgeInsets.all(18),
         child: Row(
@@ -441,7 +442,7 @@ class _StudentActivityCenterState extends State<StudentActivityCenter> {
                     leading: const Icon(
                       Icons.circle,
                       size: 10,
-                      color: Color(0xff0c6b51),
+                      color: ServicePayColors.brand,
                     ),
                     title: Text('${m['title'] ?? m['type'] ?? 'Update'}'),
                     subtitle: Text(
@@ -462,7 +463,7 @@ class _StudentActivityCenterState extends State<StudentActivityCenter> {
             children: [
               Row(
                 children: [
-                  Icon(icon, color: const Color(0xff0c6b51)),
+                  Icon(icon, color: ServicePayColors.brand),
                   const SizedBox(width: 8),
                   Text(
                     title,
@@ -538,14 +539,18 @@ class _StudentActivityCenterState extends State<StudentActivityCenter> {
 
   Widget _stat(String label, dynamic value) => Chip(
         label: Text('$label: $value'),
-        backgroundColor: const Color(0xffe8f4ef),
+        backgroundColor: ServicePayColors.brandSoft,
       );
 
   Widget _error() => Padding(
         padding: const EdgeInsets.symmetric(vertical: 70),
         child: Column(
           children: [
-            const Icon(Icons.lock_outline, size: 44, color: Color(0xff0c6b51)),
+            const Icon(
+              Icons.lock_outline,
+              size: 44,
+              color: ServicePayColors.brand,
+            ),
             const SizedBox(height: 12),
             Text(error!, textAlign: TextAlign.center),
             const SizedBox(height: 14),
@@ -565,7 +570,11 @@ class _StudentActivityCenterState extends State<StudentActivityCenter> {
         padding: const EdgeInsets.all(28),
         children: [
           const SizedBox(height: 80),
-          const Icon(Icons.link_outlined, size: 48, color: Color(0xff0c6b51)),
+          const Icon(
+            Icons.link_outlined,
+            size: 48,
+            color: ServicePayColors.brand,
+          ),
           const SizedBox(height: 14),
           const Text(
             'No linked students are available yet.',

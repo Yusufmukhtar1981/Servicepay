@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import '../servicepay_theme.dart';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
@@ -488,7 +489,7 @@ class _MarketplaceSellerScreenState extends State<MarketplaceSellerScreen> {
                   Container(
                     padding: const EdgeInsets.all(18),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF08783E),
+                      color: ServicePayColors.brand,
                       borderRadius: BorderRadius.circular(22),
                     ),
                     child: Column(

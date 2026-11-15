@@ -13,6 +13,7 @@ import 'transactions_screen.dart';
 import 'servicepay_transfer_helper.dart';
 import 'services/biometric_auth_service.dart';
 import 'services/transaction_authorization_service.dart';
+import 'servicepay_theme.dart';
 
 class QrPayScreen extends StatefulWidget {
   const QrPayScreen({super.key, this.client});
@@ -187,8 +188,8 @@ class _QrPayScreenState extends State<QrPayScreen> {
 
   @override
   Widget build(BuildContext context) {
-    const green = Color(0xFF08783E);
-    const softGreen = Color(0xFFEAF7F0);
+    const green = ServicePayColors.brand;
+    const softGreen = ServicePayColors.brandSoft;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF7F9F8),
@@ -214,7 +215,7 @@ class _QrPayScreenState extends State<QrPayScreen> {
               decoration: const BoxDecoration(
                 gradient: LinearGradient(
                   colors: [
-                    Color(0xFF08783E),
+                    ServicePayColors.brand,
                     Color(0xFF3DA968),
                   ],
                 ),
@@ -1195,7 +1196,7 @@ class _QrPaymentSheetState extends State<QrPaymentSheet> {
 
   @override
   Widget build(BuildContext context) {
-    const Color green = Color(0xFF08783E);
+    const Color green = ServicePayColors.brand;
     final bool isFormVisible =
         status == QrPaymentStatus.idle || status == QrPaymentStatus.submitting;
 

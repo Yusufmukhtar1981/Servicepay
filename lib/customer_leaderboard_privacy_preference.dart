@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'services/customer_leaderboard_api.dart';
+import 'servicepay_theme.dart';
 
 /// Signals mounted Champions surfaces to re-read the consent-aware report.
 /// It carries no preference value and is never persisted locally.
@@ -108,7 +109,7 @@ class _CustomerLeaderboardPrivacyPreferenceState
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               const Icon(Icons.visibility_outlined,
-                  color: Color(0xFF08783E), size: 21),
+                  color: ServicePayColors.brand, size: 21),
               const SizedBox(width: 10),
               const Expanded(
                 child: Text(
@@ -124,14 +125,14 @@ class _CustomerLeaderboardPrivacyPreferenceState
                   width: 20,
                   height: 20,
                   child: CircularProgressIndicator(
-                      strokeWidth: 2, color: Color(0xFF08783E)),
+                      strokeWidth: 2, color: ServicePayColors.brand),
                 )
               else
                 Switch.adaptive(
                   key: const Key('champions-full-name-switch'),
                   value: _showFullName ?? false,
                   onChanged: ready ? _save : null,
-                  activeTrackColor: const Color(0xFF08783E),
+                  activeTrackColor: ServicePayColors.brand,
                 ),
             ],
           ),
@@ -169,7 +170,7 @@ class _CustomerLeaderboardPrivacyPreferenceState
               _confirmation!,
               key: const Key('champions-privacy-confirmation'),
               style: const TextStyle(
-                  color: Color(0xFF08783E),
+                  color: ServicePayColors.brand,
                   fontSize: 11,
                   fontWeight: FontWeight.w700),
             ),

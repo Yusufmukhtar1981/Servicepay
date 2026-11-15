@@ -118,9 +118,9 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   static const String baseUrl = 'https://api.servicepay.ng/api';
 
-  static const Color primaryGreen = Color(0xFF08783E);
+  static const Color primaryGreen = ServicePayColors.brand;
 
-  static const Color softGreen = Color(0xFFEAF7F0);
+  static const Color softGreen = ServicePayColors.brandSoft;
 
   final TextEditingController searchController = TextEditingController();
 
@@ -460,7 +460,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           gradient: const LinearGradient(
             colors: [
               CustomerDashboardPalette.navy,
-              Color(0xFF173F78),
+              ServicePayColors.brand,
             ],
           ),
           borderRadius: BorderRadius.circular(20),
@@ -1457,8 +1457,8 @@ class _DashboardScreenState extends State<DashboardScreen>
       _DashboardService(
         title: 'Keke Napep',
         icon: Icons.electric_rickshaw_rounded,
-        iconColor: const Color(0xFFF59E0B),
-        backgroundColor: const Color(0xFFFFF7DF),
+        iconColor: primaryGreen,
+        backgroundColor: softGreen,
         keywords:
             'keke napep ride transport tricycle taxi driver trip movement',
         onTap: () {
@@ -1471,8 +1471,8 @@ class _DashboardScreenState extends State<DashboardScreen>
       _DashboardService(
         title: 'ServicePay Amana',
         icon: Icons.volunteer_activism_rounded,
-        iconColor: const Color(0xFF08783E),
-        backgroundColor: const Color(0xFFEAF7F0),
+        iconColor: primaryGreen,
+        backgroundColor: softGreen,
         keywords: 'amana family support food school fees medical assistance',
         onTap: () {
           openScreen(
@@ -1483,8 +1483,8 @@ class _DashboardScreenState extends State<DashboardScreen>
       _DashboardService(
         title: 'Airtime',
         icon: Icons.phone_android_rounded,
-        iconColor: const Color(0xFF08783E),
-        backgroundColor: const Color(0xFFEAF7F0),
+        iconColor: primaryGreen,
+        backgroundColor: softGreen,
         keywords: 'airtime recharge phone',
         onTap: () {
           openScreen(
@@ -1495,8 +1495,8 @@ class _DashboardScreenState extends State<DashboardScreen>
       _DashboardService(
         title: 'Data',
         icon: Icons.signal_cellular_alt_rounded,
-        iconColor: const Color(0xFF08783E),
-        backgroundColor: const Color(0xFFF0F7FF),
+        iconColor: primaryGreen,
+        backgroundColor: softGreen,
         keywords: 'data internet bundle',
         onTap: () {
           openScreen(
@@ -1507,8 +1507,8 @@ class _DashboardScreenState extends State<DashboardScreen>
       _DashboardService(
         title: 'Electricity',
         icon: Icons.lightbulb_rounded,
-        iconColor: const Color(0xFFF59E0B),
-        backgroundColor: const Color(0xFFFFF7DF),
+        iconColor: primaryGreen,
+        backgroundColor: softGreen,
         keywords: 'electricity power light bill',
         onTap: () {
           openScreen(
@@ -1526,8 +1526,8 @@ class _DashboardScreenState extends State<DashboardScreen>
         title: 'ServicePay Solar',
         subtitle: 'Solar power & finance',
         icon: Icons.solar_power_rounded,
-        iconColor: const Color(0xFFF59E0B),
-        backgroundColor: const Color(0xFFFFF7DF),
+        iconColor: primaryGreen,
+        backgroundColor: softGreen,
         keywords:
             'solar power energy inverter battery panel electricity finance installment',
         onTap: () {
@@ -1541,8 +1541,8 @@ class _DashboardScreenState extends State<DashboardScreen>
         title: 'Phone Financing',
         subtitle: 'Own an Android phone weekly',
         icon: Icons.phone_android_rounded,
-        iconColor: const Color(0xFF08783E),
-        backgroundColor: const Color(0xFFEAF7F0),
+        iconColor: primaryGreen,
+        backgroundColor: softGreen,
         keywords: 'phone financing android smartphone weekly payment device',
         onTap: () {
           openScreen(
@@ -1555,8 +1555,8 @@ class _DashboardScreenState extends State<DashboardScreen>
         title: 'AI Support',
         subtitle: 'AI Smart Support and secure human replies',
         icon: Icons.support_agent_rounded,
-        iconColor: const Color(0xFF08783E),
-        backgroundColor: const Color(0xFFE5F5EA),
+        iconColor: primaryGreen,
+        backgroundColor: softGreen,
         keywords:
             'ai support ask servicepay help customer care chat transaction issue',
         onTap: () {
@@ -1568,8 +1568,8 @@ class _DashboardScreenState extends State<DashboardScreen>
       _DashboardService(
         title: 'Cards',
         icon: Icons.credit_card_rounded,
-        iconColor: const Color(0xFF08783E),
-        backgroundColor: const Color(0xFFEAF7F0),
+        iconColor: primaryGreen,
+        backgroundColor: softGreen,
         keywords:
             'card cards atm physical virtual debit payment servicepay card',
         onTap: () {
@@ -1581,8 +1581,8 @@ class _DashboardScreenState extends State<DashboardScreen>
       _DashboardService(
         title: 'Mini Apps',
         icon: Icons.credit_card_rounded,
-        iconColor: const Color(0xFF08783E),
-        backgroundColor: const Color(0xFFEAF7F0),
+        iconColor: primaryGreen,
+        backgroundColor: softGreen,
         keywords:
             'card cards atm physical virtual debit payment servicepay card',
         onTap: () {
@@ -1594,8 +1594,8 @@ class _DashboardScreenState extends State<DashboardScreen>
       _DashboardService(
         title: 'Empowerment',
         icon: Icons.volunteer_activism_rounded,
-        iconColor: const Color(0xFF08783E),
-        backgroundColor: const Color(0xFFEAF7F0),
+        iconColor: primaryGreen,
+        backgroundColor: softGreen,
         keywords: 'empowerment program grant support beneficiary',
         onTap: () {
           openScreen(
@@ -1606,8 +1606,8 @@ class _DashboardScreenState extends State<DashboardScreen>
       _DashboardService(
         title: 'Program Sponsor',
         icon: Icons.corporate_fare_rounded,
-        iconColor: const Color(0xFF003F26),
-        backgroundColor: const Color(0xFFE6F3EC),
+        iconColor: primaryGreen,
+        backgroundColor: softGreen,
         keywords:
             'program sponsor organization ngo cooperative foundation government grant initiative',
         onTap: () {
@@ -1619,8 +1619,8 @@ class _DashboardScreenState extends State<DashboardScreen>
       _DashboardService(
         title: 'NIN Verification',
         icon: Icons.fingerprint_rounded,
-        iconColor: const Color(0xFF08783E),
-        backgroundColor: const Color(0xFFEAF7F0),
+        iconColor: primaryGreen,
+        backgroundColor: softGreen,
         keywords: 'nin verification identity',
         onTap: () {
           openScreen(
@@ -1631,8 +1631,8 @@ class _DashboardScreenState extends State<DashboardScreen>
       _DashboardService(
         title: 'Delivery',
         icon: Icons.local_shipping_rounded,
-        iconColor: const Color(0xFF08783E),
-        backgroundColor: const Color(0xFFEAF7F0),
+        iconColor: primaryGreen,
+        backgroundColor: softGreen,
         keywords: 'delivery logistics courier',
         onTap: () {
           openScreen(
@@ -1643,8 +1643,8 @@ class _DashboardScreenState extends State<DashboardScreen>
       _DashboardService(
         title: 'Partner API',
         icon: Icons.api_rounded,
-        iconColor: const Color(0xFF08783E),
-        backgroundColor: const Color(0xFFEAF7F0),
+        iconColor: primaryGreen,
+        backgroundColor: softGreen,
         keywords: 'partner api developer integration merchant business',
         onTap: () {
           openScreen(
@@ -1655,8 +1655,8 @@ class _DashboardScreenState extends State<DashboardScreen>
       _DashboardService(
         title: 'Agent Locator',
         icon: Icons.location_on_rounded,
-        iconColor: const Color(0xFFEA580C),
-        backgroundColor: const Color(0xFFFFF7ED),
+        iconColor: primaryGreen,
+        backgroundColor: softGreen,
         keywords: 'agent locator aggregator nearby',
         onTap: () {
           openScreen(
@@ -1667,8 +1667,8 @@ class _DashboardScreenState extends State<DashboardScreen>
       _DashboardService(
         title: 'Flight Booking',
         icon: Icons.flight_takeoff_rounded,
-        iconColor: const Color(0xFF08783E),
-        backgroundColor: const Color(0xFFEAF7F0),
+        iconColor: primaryGreen,
+        backgroundColor: softGreen,
         keywords: 'flight booking airline travel',
         onTap: () {
           openScreen(
@@ -1680,8 +1680,8 @@ class _DashboardScreenState extends State<DashboardScreen>
       _DashboardService(
         title: 'Marketplace',
         icon: Icons.storefront_rounded,
-        iconColor: const Color(0xFF08783E),
-        backgroundColor: const Color(0xFFEAF7F0),
+        iconColor: primaryGreen,
+        backgroundColor: softGreen,
         keywords: 'marketplace shopping merchant store shop mini apps',
         onTap: () {
           openScreen(
@@ -1692,8 +1692,8 @@ class _DashboardScreenState extends State<DashboardScreen>
       _DashboardService(
         title: 'Organizations',
         icon: Icons.groups_rounded,
-        iconColor: const Color(0xFF0F766E),
-        backgroundColor: const Color(0xFFF0FDFA),
+        iconColor: ServicePayColors.brand,
+        backgroundColor: ServicePayColors.brandSoft,
         keywords: 'organizations communities membership dues',
         onTap: () {
           openScreen(const OrganizationsScreen());
@@ -1702,8 +1702,8 @@ class _DashboardScreenState extends State<DashboardScreen>
       _DashboardService(
         title: 'Transport',
         icon: Icons.directions_car_rounded,
-        iconColor: const Color(0xFF08783E),
-        backgroundColor: const Color(0xFFEAF7F0),
+        iconColor: primaryGreen,
+        backgroundColor: softGreen,
         keywords: 'transport mobility car ride travel mini apps',
         onTap: () {
           openScreen(
@@ -1859,11 +1859,11 @@ class _DashboardScreenState extends State<DashboardScreen>
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: const Color(0xFFEAF7F0),
+                    color: ServicePayColors.brandSoft,
                     border: Border.all(color: Colors.white, width: 2),
                     boxShadow: const <BoxShadow>[
                       BoxShadow(
-                        color: Color(0x1A08783E),
+                        color: Color(0x1A087A45),
                         blurRadius: 12,
                         offset: Offset(0, 5),
                       ),
@@ -2104,18 +2104,11 @@ class _DashboardScreenState extends State<DashboardScreen>
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 15),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: <Color>[
-            CustomerDashboardPalette.navy,
-            Color(0xFF173F78),
-          ],
-        ),
+        color: ServicePayColors.brand,
         borderRadius: BorderRadius.circular(24),
         boxShadow: const <BoxShadow>[
           BoxShadow(
-            color: Color(0x24102B55),
+            color: Color(0x24087A45),
             blurRadius: 23,
             offset: Offset(0, 9),
           ),
@@ -2130,7 +2123,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 child: Text(
                   'Available Balance',
                   style: TextStyle(
-                    color: Color(0xFFDCE8F8),
+                    color: Colors.white,
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
                   ),
@@ -2143,7 +2136,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 visualDensity: VisualDensity.compact,
                 icon: const Icon(
                   Icons.support_agent_rounded,
-                  color: Color(0xFFDCE8F8),
+                  color: Colors.white,
                   size: 21,
                 ),
               ),
@@ -2173,9 +2166,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: walletBalanceAvailable || hideBalance
-                  ? Colors.white
-                  : const Color(0xFFFFD8B1),
+              color: Colors.white,
               fontSize: walletBalanceAvailable || hideBalance ? 34 : 20,
               height: 1.08,
               letterSpacing: -1,
@@ -2189,7 +2180,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                   ? 'Showing your last saved balance'
                   : 'Unable to load your balance right now',
               style: const TextStyle(
-                color: Color(0xFFFFE5C7),
+                color: Colors.white,
                 fontSize: 10,
                 fontWeight: FontWeight.w600,
               ),
@@ -2236,7 +2227,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   }) {
     return Material(
       key: key,
-      color: filled ? Colors.white : Colors.white.withValues(alpha: 0.10),
+      color: filled ? ServicePayColors.brandDeep : ServicePayColors.brand,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
         side: BorderSide(
@@ -2254,7 +2245,7 @@ class _DashboardScreenState extends State<DashboardScreen>
               Icon(
                 icon,
                 size: 18,
-                color: filled ? CustomerDashboardPalette.navy : Colors.white,
+                color: Colors.white,
               ),
               const SizedBox(height: 3),
               FittedBox(
@@ -2263,8 +2254,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                   label,
                   maxLines: 1,
                   style: TextStyle(
-                    color:
-                        filled ? CustomerDashboardPalette.navy : Colors.white,
+                    color: Colors.white,
                     fontSize: 10,
                     fontWeight: FontWeight.w800,
                   ),
@@ -2743,28 +2733,12 @@ class _DashboardScreenState extends State<DashboardScreen>
     _DashboardService service, {
     required int index,
   }) {
-    final Color accent = switch (service.title) {
-      'Data' => CustomerDashboardPalette.royalBlue,
-      'Airtime' => CustomerDashboardPalette.teal,
-      'Delivery' => CustomerDashboardPalette.navy,
-      'EduPay' => CustomerDashboardPalette.teal,
-      'Marketplace' => const Color(0xFFB7791F),
-      'Electricity' => CustomerDashboardPalette.warning,
-      'NIN Verification' => CustomerDashboardPalette.teal,
-      'Keke Napep' => CustomerDashboardPalette.royalBlue,
-      'Flight Booking' => CustomerDashboardPalette.navy,
-      _ => service.iconColor,
-    };
-    final Color accentSurface = accent == CustomerDashboardPalette.teal
-        ? const Color(0xFFE4F6F4)
-        : accent == CustomerDashboardPalette.warning ||
-                service.title == 'Marketplace'
-            ? const Color(0xFFFFF4E1)
-            : CustomerDashboardPalette.paleBlue;
+    const Color accent = ServicePayColors.brand;
+    const Color accentSurface = ServicePayColors.brandSoft;
     return _floating(
       index: index + 3,
       child: Material(
-        color: const Color(0xFFFBFCFF),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(15),
         child: InkWell(
           key: Key('customer-quick-service-${service.title.toLowerCase()}'),
@@ -2775,6 +2749,13 @@ class _DashboardScreenState extends State<DashboardScreen>
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(15),
               border: Border.all(color: CustomerDashboardPalette.border),
+            boxShadow: const <BoxShadow>[
+              BoxShadow(
+                color: Color(0x0D123B25),
+                blurRadius: 14,
+                offset: Offset(0, 5),
+              ),
+            ],
             ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -2820,8 +2801,8 @@ class _DashboardScreenState extends State<DashboardScreen>
         _DashboardService(
           title: 'EduPay',
           icon: Icons.school_rounded,
-          iconColor: const Color(0xFF0F766E),
-          backgroundColor: const Color(0xFFE6F5F2),
+          iconColor: ServicePayColors.brand,
+          backgroundColor: ServicePayColors.brandSoft,
           keywords: 'edupay school fees education',
           onTap: _guardFeatureTap(
             'EduPay',
@@ -3015,7 +2996,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       key: const Key('customer-funding-account'),
       padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
       decoration: BoxDecoration(
-        color: const Color(0xFFEAF1FC),
+        color: ServicePayColors.brandSoft,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: CustomerDashboardPalette.border),
       ),
@@ -3101,7 +3082,10 @@ class _DashboardScreenState extends State<DashboardScreen>
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: <Color>[Color(0xFF003F26), Color(0xFF08783E)],
+          colors: <Color>[
+            ServicePayColors.brandDeep,
+            ServicePayColors.brand,
+          ],
         ),
         borderRadius: BorderRadius.circular(25),
         boxShadow: const <BoxShadow>[
@@ -3219,14 +3203,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 width: double.infinity,
                 padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: <Color>[
-                      Color(0xFF079A55),
-                      Color(0xFF08783E),
-                    ],
-                  ),
+                  color: ServicePayColors.brand,
                   borderRadius: BorderRadius.circular(22),
                   boxShadow: const <BoxShadow>[
                     BoxShadow(
@@ -3803,7 +3780,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 ListTile(
                   leading: const Icon(
                     Icons.photo_library_rounded,
-                    color: Color(0xFF08783E),
+                    color: ServicePayColors.brand,
                   ),
                   title: const Text(
                     'Choose from gallery',
@@ -3821,7 +3798,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 ListTile(
                   leading: const Icon(
                     Icons.camera_alt_rounded,
-                    color: Color(0xFF08783E),
+                    color: ServicePayColors.brand,
                   ),
                   title: const Text(
                     'Take a photo',
@@ -4288,13 +4265,13 @@ class _DashboardScreenState extends State<DashboardScreen>
               begin: Alignment.centerLeft,
               end: Alignment.centerRight,
               colors: <Color>[
-                Color(0xFF075C3A),
-                Color(0xFF159653),
+                ServicePayColors.brandDeep,
+                ServicePayColors.brand,
               ],
             ),
             boxShadow: const <BoxShadow>[
               BoxShadow(
-                color: Color(0x1C08783E),
+                color: Color(0x1C087A45),
                 blurRadius: 18,
                 offset: Offset(0, 8),
               ),
@@ -5865,7 +5842,7 @@ class _DashboardEmptyState extends StatelessWidget {
             height: 42,
             alignment: Alignment.center,
             decoration: const BoxDecoration(
-              color: Color(0xFFEAF7F0),
+              color: ServicePayColors.brandSoft,
               shape: BoxShape.circle,
             ),
             child: Icon(
@@ -6049,7 +6026,7 @@ class _WalletAction extends StatelessWidget {
               Icon(
                 icon,
                 size: 27,
-                color: const Color(0xFF08783E),
+                color: ServicePayColors.brand,
               ),
               const SizedBox(height: 8),
               Text(
@@ -6280,8 +6257,8 @@ class _ServicePayAllServicesScreenState
   final TextEditingController _controller = TextEditingController();
   String query = '';
 
-  static const Color _green = Color(0xFF08783E);
-  static const Color _softGreen = Color(0xFFEAF7F0);
+  static const Color _green = ServicePayColors.brand;
+  static const Color _softGreen = ServicePayColors.brandSoft;
 
   @override
   void dispose() {

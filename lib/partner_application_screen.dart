@@ -1,4 +1,5 @@
 import 'services/session_store.dart';
+import 'servicepay_theme.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -16,7 +17,7 @@ class PartnerApplicationScreen extends StatefulWidget {
 
 class _PartnerApplicationScreenState extends State<PartnerApplicationScreen> {
   static const String baseUrl = 'https://api.servicepay.ng/api';
-  static const Color _green = Color(0xFF08783E);
+  static const Color _green = ServicePayColors.brand;
 
   final businessNameController = TextEditingController();
   final contactNameController = TextEditingController();

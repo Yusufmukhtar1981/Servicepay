@@ -5,6 +5,7 @@ import 'student_activity_center.dart';
 import 'academic_child_profile_screen.dart';
 import '../feature_transaction_pin_dialog.dart';
 import '../services/session_store.dart';
+import '../servicepay_theme.dart';
 
 bool _isPublishedEduPayAcademicRecord(dynamic value) {
   if (value is! Map) return false;
@@ -251,7 +252,7 @@ class _EduPayScreenState extends State<EduPayScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xfff5f8f6),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         title: const Text('EduPay'),
         actions: [
@@ -386,7 +387,7 @@ class _EduPayScreenState extends State<EduPayScreen> {
   Widget _heroCard(Map<String, dynamic> s) => Container(
         padding: const EdgeInsets.all(22),
         decoration: BoxDecoration(
-          color: const Color(0xff0c6b51),
+          color: ServicePayColors.brand,
           borderRadius: BorderRadius.circular(24),
         ),
         child: Column(
@@ -447,11 +448,11 @@ class _EduPayScreenState extends State<EduPayScreen> {
               ],
             ),
             Card(
-              color: const Color(0xffe8f4ef),
+              color: ServicePayColors.brandSoft,
               child: ListTile(
                 leading: const Icon(
                   Icons.insights_outlined,
-                  color: Color(0xff0c6b51),
+                  color: ServicePayColors.brand,
                 ),
                 title: const Text('School updates for your children'),
                 subtitle: Text(
@@ -480,15 +481,21 @@ class _EduPayScreenState extends State<EduPayScreen> {
               _sectionTitle('My children'),
               IconButton(
                 onPressed: () => _initiationGuard(_newChild),
-                icon: const Icon(Icons.add_circle, color: Color(0xff0c6b51)),
+                icon: const Icon(
+                  Icons.add_circle,
+                  color: ServicePayColors.brand,
+                ),
               ),
             ],
           ),
           Card(
-            color: const Color(0xffeaf6f0),
+            color: ServicePayColors.brandSoft,
             child: ListTile(
               leading:
-                  const Icon(Icons.search_outlined, color: Color(0xff0c6b51)),
+                  const Icon(
+                    Icons.search_outlined,
+                    color: ServicePayColors.brand,
+                  ),
               title: const Text("Can't find your school?"),
               subtitle: const Text(
                 'Tell Head Office which school you need. This does not start a plan.',
@@ -569,7 +576,10 @@ class _EduPayScreenState extends State<EduPayScreen> {
   Widget _upcomingFee(Map fee) => Card(
         margin: const EdgeInsets.only(top: 16),
         child: ListTile(
-          leading: const Icon(Icons.event_available, color: Color(0xff0c6b51)),
+          leading: const Icon(
+            Icons.event_available,
+            color: ServicePayColors.brand,
+          ),
           title: const Text('Upcoming school fee'),
           subtitle:
               Text('Settlement target · ${fee['targetDate'] ?? 'Not set'}'),
@@ -630,8 +640,8 @@ class _EduPayScreenState extends State<EduPayScreen> {
               Row(
                 children: [
                   const CircleAvatar(
-                    backgroundColor: Color(0xffdcefe8),
-                    child: Icon(Icons.school, color: Color(0xff0c6b51)),
+                    backgroundColor: ServicePayColors.brandSoft,
+                    child: Icon(Icons.school, color: ServicePayColors.brand),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -1319,7 +1329,7 @@ class _EduPayScreenState extends State<EduPayScreen> {
   Widget _action(String a, String b, IconData i, VoidCallback tap) => Card(
         child: ListTile(
           onTap: tap,
-          leading: Icon(i, color: const Color(0xff0c6b51)),
+          leading: Icon(i, color: ServicePayColors.brand),
           title: Text(a, style: const TextStyle(fontWeight: FontWeight.w700)),
           subtitle: Text(b),
           trailing: const Icon(Icons.chevron_right),
@@ -1413,7 +1423,7 @@ class _EduPayPlanDetailState extends State<EduPayPlanDetail> {
                     style: const TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.w800,
-                      color: Color(0xff0c6b51),
+                      color: ServicePayColors.brand,
                     ),
                   ),
                   const Divider(height: 28),
@@ -1670,7 +1680,7 @@ class _EduPayPlanDetailState extends State<EduPayPlanDetail> {
               child: ListTile(
                 leading: const Icon(
                   Icons.receipt_long_outlined,
-                  color: Color(0xff0c6b51),
+                  color: ServicePayColors.brand,
                 ),
                 title: const Text('Repayment status'),
                 subtitle: Text(
@@ -1773,7 +1783,7 @@ class _Error extends StatelessWidget {
               const Icon(
                 Icons.cloud_off_outlined,
                 size: 48,
-                color: Color(0xff0c6b51),
+                color: ServicePayColors.brand,
               ),
               const SizedBox(height: 12),
               Text(message, textAlign: TextAlign.center),
@@ -1814,14 +1824,15 @@ class _Notice extends StatelessWidget {
   Widget build(BuildContext c) => Container(
         padding: const EdgeInsets.all(15),
         decoration: BoxDecoration(
-          color: warning ? const Color(0xfffff5df) : const Color(0xffe8f4ef),
+          color:
+              warning ? const Color(0xfffff5df) : ServicePayColors.brandSoft,
           borderRadius: BorderRadius.circular(16),
         ),
         child: Row(
           children: [
             Icon(
               warning ? Icons.info_outline : Icons.verified_outlined,
-              color: const Color(0xff0c6b51),
+              color: ServicePayColors.brand,
             ),
             const SizedBox(width: 10),
             Expanded(child: Text(text)),
@@ -1837,7 +1848,7 @@ Widget _metric(String label, String value, IconData icon) => Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(icon, size: 20, color: const Color(0xff0c6b51)),
+              Icon(icon, size: 20, color: ServicePayColors.brand),
               const SizedBox(height: 7),
               Text(value, style: const TextStyle(fontWeight: FontWeight.w800)),
               Text(

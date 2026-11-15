@@ -5,6 +5,7 @@ import 'package:share_plus/share_plus.dart';
 import 'services/session_store.dart';
 
 import 'referral_service.dart';
+import 'servicepay_theme.dart';
 
 class ReferralScreen extends StatefulWidget {
   const ReferralScreen({
@@ -22,7 +23,7 @@ class ReferralScreen extends StatefulWidget {
 
 class _ReferralScreenState extends State<ReferralScreen> {
   static const String baseUrl = 'https://api.servicepay.ng/api';
-  static const Color primaryGreen = Color(0xFF08783E);
+  static const Color primaryGreen = ServicePayColors.brand;
 
   late final http.Client _client;
   late final bool _ownsClient;
@@ -218,7 +219,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
                 decoration: BoxDecoration(
                   color: configured
-                      ? const Color(0xFFEAF7F0)
+                      ? ServicePayColors.brandSoft
                       : const Color(0xFFF1F3F2),
                   borderRadius: BorderRadius.circular(20),
                 ),
@@ -315,7 +316,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
         children: [
           CircleAvatar(
             radius: 22,
-            backgroundColor: const Color(0xFFEAF7F0),
+            backgroundColor: ServicePayColors.brandSoft,
             child: Text(
               initial,
               style: const TextStyle(
@@ -382,9 +383,9 @@ class _ReferralScreenState extends State<ReferralScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAF9),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
-        backgroundColor: const Color(0xFFF8FAF9),
+        backgroundColor: ServicePayColors.canvas,
         elevation: 0,
         title: const Text('My Referral'),
       ),
@@ -436,7 +437,10 @@ class _ReferralScreenState extends State<ReferralScreen> {
                           gradient: const LinearGradient(
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
-                            colors: [Color(0xFF08783E), Color(0xFF16A34A)],
+                    colors: [
+                      ServicePayColors.brandDeep,
+                      ServicePayColors.brand,
+                    ],
                           ),
                           borderRadius: BorderRadius.circular(24),
                         ),

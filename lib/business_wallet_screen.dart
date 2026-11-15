@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'business_wallet_transaction_receipt_screen.dart';
+import 'servicepay_theme.dart';
 
 class BusinessWalletScreen extends StatefulWidget {
   const BusinessWalletScreen({super.key});
@@ -17,7 +18,7 @@ class BusinessWalletScreen extends StatefulWidget {
 class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
   static const String baseUrl = 'https://api.servicepay.ng/api';
 
-  static const Color primaryGreen = Color(0xFF08783E);
+  static const Color primaryGreen = ServicePayColors.brand;
 
   bool isLoading = true;
   bool isSubmitting = false;
@@ -1267,7 +1268,7 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
             width: 46,
             height: 46,
             decoration: BoxDecoration(
-              color: const Color(0xFFEAF7F0),
+              color: ServicePayColors.brandSoft,
               borderRadius: BorderRadius.circular(
                 14,
               ),
@@ -1374,7 +1375,7 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: const Color(0xFFEAF7F0),
+              color: ServicePayColors.brandSoft,
               shape: BoxShape.circle,
             ),
             child: Icon(
@@ -1475,15 +1476,13 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                         colors: <Color>[
-                          Color(0xFF075C3A),
-                          Color(0xFF13A257),
+                          ServicePayColors.brandDeep,
+                          ServicePayColors.brand,
                         ],
                       ),
                       boxShadow: const <BoxShadow>[
                         BoxShadow(
-                          color: Color(
-                            0x1C08783E,
-                          ),
+                          color: Color(0x1C087A45),
                           blurRadius: 18,
                           offset: Offset(0, 8),
                         ),
@@ -1689,18 +1688,14 @@ class _ActionCard extends StatelessWidget {
                 width: 43,
                 height: 43,
                 decoration: BoxDecoration(
-                  color: const Color(
-                    0xFFEAF7F0,
-                  ),
+                  color: ServicePayColors.brandSoft,
                   borderRadius: BorderRadius.circular(
                     14,
                   ),
                 ),
                 child: Icon(
                   icon,
-                  color: const Color(
-                    0xFF08783E,
-                  ),
+                  color: ServicePayColors.brand,
                   size: 22,
                 ),
               ),
@@ -1754,12 +1749,12 @@ class _WideActionCard extends StatelessWidget {
                 width: 43,
                 height: 43,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFEAF7F0),
+                  color: ServicePayColors.brandSoft,
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Icon(
                   icon,
-                  color: const Color(0xFF08783E),
+                  color: ServicePayColors.brand,
                   size: 22,
                 ),
               ),
@@ -1788,7 +1783,7 @@ class _WideActionCard extends StatelessWidget {
               const Icon(
                 Icons.arrow_forward_ios_rounded,
                 size: 16,
-                color: Color(0xFF08783E),
+                color: ServicePayColors.brand,
               ),
             ],
           ),

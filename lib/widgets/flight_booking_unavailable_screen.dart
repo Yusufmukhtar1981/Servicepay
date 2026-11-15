@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../servicepay_theme.dart';
 
 /// An honest entry point until a real airline integration is available.
 /// This screen deliberately has no booking or payment actions.
@@ -7,7 +8,7 @@ class FlightBookingUnavailableScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const Color green = Color(0xFF08783E);
+    const Color green = ServicePayColors.brand;
     return Scaffold(
       backgroundColor: const Color(0xFFF7FBF8),
       appBar: AppBar(

@@ -297,7 +297,7 @@ class HelpSupportScreen extends StatelessWidget {
                   icon: Icons.confirmation_number_outlined,
                   title: 'My Support Tickets',
                   subtitle: 'Track problem reports and reply to support.',
-                  iconColor: const Color(0xFF0F766E),
+                  iconColor: ServicePayColors.brand,
                   iconBackground: const Color(0xFFCCFBF1),
                   onTap: () => Navigator.push(
                       context,
@@ -346,7 +346,7 @@ class HelpSupportScreen extends StatelessWidget {
                   icon: Icons.privacy_tip_outlined,
                   title: 'Privacy Policy',
                   subtitle: 'Learn how ServicePay handles your information.',
-                  iconColor: const Color(0xFF0F766E),
+                  iconColor: ServicePayColors.brand,
                   iconBackground: const Color(0xFFCCFBF1),
                   onTap: () {
                     _openPrivacy(context);
@@ -388,8 +388,8 @@ class SupportHeader extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           colors: [
-            Color(0xFF2E7D32),
-            Color(0xFF43A047),
+            ServicePayColors.brandDeep,
+            ServicePayColors.brand,
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,

@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'services/electricity_request_store.dart';
 
 import 'package:flutter/material.dart';
+import 'servicepay_theme.dart';
 import 'services/electricity_payment_result.dart';
 import 'widgets/purchase_processing.dart';
 import 'package:flutter/services.dart';
@@ -23,7 +24,7 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
   bool _processingPurchase = false;
   static const String baseUrl = 'https://api.servicepay.ng/api';
 
-  static const Color primaryGreen = Color(0xFF2E7D32);
+  static const Color primaryGreen = ServicePayColors.brand;
 
   final GlobalKey<FormState> formKey = GlobalKey<FormState>();
 
@@ -1227,7 +1228,7 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
     BuildContext context,
   ) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         backgroundColor: primaryGreen,
         foregroundColor: Colors.white,
@@ -1264,8 +1265,8 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
                   decoration: BoxDecoration(
                     gradient: const LinearGradient(
                       colors: [
-                        Color(0xFF2E7D32),
-                        Color(0xFF43A047),
+                        ServicePayColors.brand,
+                        Color(0xFF14945A),
                       ],
                     ),
                     borderRadius: BorderRadius.circular(20),

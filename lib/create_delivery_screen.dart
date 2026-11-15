@@ -1359,7 +1359,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
                 Card(
                   margin: const EdgeInsets.only(top: 4, bottom: 16),
                   elevation: 0,
-                  color: const Color(0xFFEAF7F0),
+                  color: ServicePayColors.brandSoft,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
                   ),

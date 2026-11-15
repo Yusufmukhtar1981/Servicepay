@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'servicepay_theme.dart';
 
 class CommunityAgentLocatorScreen extends StatefulWidget {
   const CommunityAgentLocatorScreen({
@@ -18,7 +19,7 @@ class _CommunityAgentLocatorScreenState
     extends State<CommunityAgentLocatorScreen> {
   static const String baseUrl = 'https://api.servicepay.ng/api';
 
-  static const Color primaryGreen = Color(0xFF08783E);
+  static const Color primaryGreen = ServicePayColors.brand;
 
   final stateController = TextEditingController();
 

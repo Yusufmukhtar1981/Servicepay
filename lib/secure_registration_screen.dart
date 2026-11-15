@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'referral_attribution_service.dart';
 import 'security_utils.dart';
+import 'servicepay_theme.dart';
 
 Map<String, dynamic> buildRegistrationPayload({
   required String fullName,
@@ -946,7 +947,7 @@ class _SecureRegistrationScreenState extends State<SecureRegistrationScreen> {
     ],
   };
 
-  final Color servicePayGreen = const Color(0xFF08783E);
+  final Color servicePayGreen = ServicePayColors.brand;
 
   @override
   void initState() {

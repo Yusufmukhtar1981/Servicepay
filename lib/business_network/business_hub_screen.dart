@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import '../servicepay_theme.dart';
 import '../airtime_screen.dart';
 import '../cable_screen.dart';
 import '../data_screen.dart';
@@ -119,9 +120,9 @@ class _BusinessHubScreenState extends State<BusinessHubScreen> {
                         ? 'My applications'
                         : 'Business';
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F8F5),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
-        backgroundColor: const Color(0xFFF4F8F5),
+        backgroundColor: ServicePayColors.canvas,
         foregroundColor: const Color(0xFF18372A),
         titleTextStyle: const TextStyle(
           color: Color(0xFF18372A),
@@ -451,7 +452,7 @@ class _BusinessHubScreenState extends State<BusinessHubScreen> {
           Container(
             padding: const EdgeInsets.all(22),
             decoration: BoxDecoration(
-                color: const Color(0xFF0B6741),
+                color: ServicePayColors.brand,
                 borderRadius: BorderRadius.circular(24)),
             child:
                 Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -2008,7 +2009,10 @@ class _StaffInvitationState extends State<_StaffInvitation> {
   Widget build(BuildContext context) => Card(
         color: Colors.white,
         child: ListTile(
-          leading: const Icon(Icons.mail_outline, color: Color(0xFF08783E)),
+          leading: const Icon(
+            Icons.mail_outline,
+            color: ServicePayColors.brand,
+          ),
           title: Text(widget.invitation['businessName']?.toString() ??
               widget.invitation['profileName']?.toString() ??
               'Business staff invitation'),
@@ -2231,7 +2235,7 @@ class _HubAction extends StatelessWidget {
               decoration: BoxDecoration(
                   color: const Color(0xFFE8F3EC),
                   borderRadius: BorderRadius.circular(13)),
-              child: Icon(icon, color: const Color(0xFF08783E))),
+              child: Icon(icon, color: ServicePayColors.brand)),
           title:
               Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
           subtitle: Text(detail),

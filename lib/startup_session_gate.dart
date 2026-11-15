@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'login_routing.dart';
 import 'login_screen.dart';
 import 'rider/rider_auth_session.dart';
+import 'servicepay_theme.dart';
 
 enum StartupSessionState {
   checking,
@@ -346,7 +347,7 @@ class _StartupSessionLoadingScreen extends StatelessWidget {
           height: 32,
           child: CircularProgressIndicator(
             strokeWidth: 3,
-            color: Color(0xFF0F766E),
+            color: ServicePayColors.brand,
             semanticsLabel: 'Checking your saved ServicePay session',
           ),
         ),
@@ -380,7 +381,7 @@ class _StartupRecoveryScreen extends StatelessWidget {
                   const Icon(
                     Icons.cloud_off_outlined,
                     size: 48,
-                    color: Color(0xFF0F766E),
+                    color: ServicePayColors.brand,
                   ),
                   const SizedBox(height: 20),
                   const Text(

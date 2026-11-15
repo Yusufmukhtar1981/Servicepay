@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import '../servicepay_theme.dart';
 import 'package:http/http.dart' as http;
 
 import 'marketplace_seller_screen.dart';
@@ -191,7 +192,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: const Color(0xFF08783E),
+                color: ServicePayColors.brand,
                 borderRadius: BorderRadius.circular(24),
               ),
               child: const Column(
@@ -401,7 +402,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                                     product['price'],
                                   ),
                                   style: const TextStyle(
-                                    color: Color(0xFF08783E),
+                                    color: ServicePayColors.brand,
                                     fontWeight: FontWeight.w800,
                                     fontSize: 16,
                                   ),
@@ -428,12 +429,12 @@ class _ProductPlaceholder extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: const Color(0xFFEAF7F0),
+      color: ServicePayColors.brandSoft,
       alignment: Alignment.center,
       child: const Icon(
         Icons.shopping_bag_outlined,
         size: 44,
-        color: Color(0xFF08783E),
+        color: ServicePayColors.brand,
       ),
     );
   }

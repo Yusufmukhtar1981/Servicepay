@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'services/customer_leaderboard_api.dart';
+import 'servicepay_theme.dart';
 
 String formatLeaderboardNaira(num amount) {
   final parts = amount.toStringAsFixed(2).split('.');
@@ -38,7 +39,7 @@ class _CustomerLeaderboardReportPanelState
     with SingleTickerProviderStateMixin {
   late final TabController _tabs;
   static const _ink = Color(0xFF18382F);
-  static const _green = Color(0xFF08783E);
+  static const _green = ServicePayColors.brand;
 
   @override
   void initState() {

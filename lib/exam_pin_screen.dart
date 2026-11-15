@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'servicepay_theme.dart';
 
 class ExamPinScreen extends StatefulWidget {
   const ExamPinScreen({super.key});
@@ -17,7 +18,7 @@ class ExamPinScreen extends StatefulWidget {
 
 class _ExamPinScreenState extends State<ExamPinScreen> {
   static const String baseUrl = 'https://api.servicepay.ng/api';
-  static const Color primaryGreen = Color(0xFF149B8F);
+  static const Color primaryGreen = ServicePayColors.brand;
 
   final GlobalKey<FormState> formKey = GlobalKey<FormState>();
 
@@ -1477,8 +1478,8 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      Color(0xFF149B8F),
-                      Color(0xFF0D756C),
+                      ServicePayColors.brand,
+                      ServicePayColors.brandDeep,
                     ],
                   ),
                   borderRadius: BorderRadius.circular(24),

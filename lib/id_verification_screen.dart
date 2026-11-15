@@ -9,6 +9,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:screenshot/screenshot.dart';
 import 'package:gal/gal.dart';
 import 'services/session_store.dart';
+import 'servicepay_theme.dart';
 
 class IdVerificationScreen extends StatefulWidget {
   final String initialIdType;
@@ -25,7 +26,7 @@ class IdVerificationScreen extends StatefulWidget {
 class _IdVerificationScreenState extends State<IdVerificationScreen> {
   static const String baseUrl = 'https://api.servicepay.ng/api';
 
-  static const Color primaryGreen = Color(0xFF149B8F);
+  static const Color primaryGreen = ServicePayColors.brand;
 
   final GlobalKey<FormState> formKey = GlobalKey<FormState>();
 
@@ -1163,7 +1164,7 @@ class VerificationResultScreen extends StatefulWidget {
 }
 
 class _VerificationResultScreenState extends State<VerificationResultScreen> {
-  static const Color primaryGreen = Color(0xFF149B8F);
+  static const Color primaryGreen = ServicePayColors.brand;
 
   final ScreenshotController screenshotController = ScreenshotController();
 

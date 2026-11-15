@@ -4,8 +4,9 @@ import 'phone_financing_models.dart';
 import '../services/transaction_authorization_service.dart';
 import '../services/biometric_auth_service.dart';
 import '../services/session_store.dart';
+import '../servicepay_theme.dart';
 
-const _green = Color(0xFF08783E);
+const _green = ServicePayColors.brand;
 const _ink = Color(0xFF173126);
 String _money(num n) => '₦${n.toStringAsFixed(2).replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+\.)'), (m) => '${m[1]},')}';
 List<Map<String, dynamic>> _rows(Map<String, dynamic>? data, String key) => data?[key] is List ? (data![key] as List).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList() : const [];

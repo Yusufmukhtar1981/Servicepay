@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'airtime_receipt_screen.dart';
 import 'services/api_service.dart';
 import 'widgets/purchase_processing.dart' show PurchasePhase, purchaseOutcome;
+import 'servicepay_theme.dart';
 
 typedef AirtimeDetailsLoader = Future<Map<String, dynamic>> Function(String);
 typedef AirtimeRequery = Future<Map<String, dynamic>> Function(String);
@@ -307,7 +308,7 @@ class _AirtimeResultScreenState extends State<AirtimeResultScreen>
       backgroundColor: const Color(0xFFF2F7F4),
       appBar: AppBar(
         title: const Text('Airtime status'),
-        backgroundColor: const Color(0xFF08783E),
+        backgroundColor: ServicePayColors.brand,
         foregroundColor: Colors.white,
         elevation: 0,
       ),
@@ -402,7 +403,7 @@ class _AirtimeResultScreenState extends State<AirtimeResultScreen>
                         icon: const Icon(Icons.receipt_long_rounded),
                         label: const Text('View receipt'),
                         style: FilledButton.styleFrom(
-                            backgroundColor: const Color(0xFF08783E)),
+                            backgroundColor: ServicePayColors.brand),
                       ),
                     )
                   else if (!_isTerminal)
@@ -422,8 +423,8 @@ class _AirtimeResultScreenState extends State<AirtimeResultScreen>
                             ? 'Checking status…'
                             : 'Check status'),
                         style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFF08783E),
-                          side: const BorderSide(color: Color(0xFF08783E)),
+                          foregroundColor: ServicePayColors.brand,
+                          side: const BorderSide(color: ServicePayColors.brand),
                         ),
                       ),
                     ),

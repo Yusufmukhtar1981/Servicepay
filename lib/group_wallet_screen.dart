@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'feature_transaction_pin_dialog.dart';
+import 'servicepay_theme.dart';
 
 class GroupWalletScreen extends StatefulWidget {
   const GroupWalletScreen({super.key});
@@ -15,8 +16,8 @@ class GroupWalletScreen extends StatefulWidget {
 
 class _GroupWalletScreenState extends State<GroupWalletScreen> {
   static const _baseUrl = 'https://api.servicepay.ng/api';
-  static const _green = Color(0xFF08783E);
-  static const _surface = Color(0xFFF4F8F5);
+  static const _green = ServicePayColors.brand;
+  static const _surface = ServicePayColors.canvas;
 
   final _nameController = TextEditingController();
   final _amountController = TextEditingController();
@@ -589,7 +590,16 @@ class _GroupDetailSheet extends StatelessWidget {
             Expanded(child: _metric('Your total', _money(group['myTotalContribution']))),
           ]),
           const SizedBox(height: 18),
-          if (active) FilledButton.icon(onPressed: onContribute, style: FilledButton.styleFrom(backgroundColor: const Color(0xFF08783E), minimumSize: const Size.fromHeight(48)), icon: const Icon(Icons.payments_rounded), label: const Text('Contribute now')),
+          if (active)
+            FilledButton.icon(
+              onPressed: onContribute,
+              style: FilledButton.styleFrom(
+                backgroundColor: ServicePayColors.brand,
+                minimumSize: const Size.fromHeight(48),
+              ),
+              icon: const Icon(Icons.payments_rounded),
+              label: const Text('Contribute now'),
+            ),
           if (leader) ...[
             const SizedBox(height: 10),
             Wrap(spacing: 8, runSpacing: 8, children: [
@@ -611,7 +621,11 @@ class _GroupDetailSheet extends StatelessWidget {
             final memberName = member['fullName']?.toString() ?? member['phone']?.toString() ?? 'Member';
             return ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: CircleAvatar(backgroundColor: const Color(0xFFE0F2E7), foregroundColor: const Color(0xFF08783E), child: Text(memberName.substring(0, 1).toUpperCase())),
+              leading: CircleAvatar(
+                backgroundColor: ServicePayColors.brandSoft,
+                foregroundColor: ServicePayColors.brand,
+                child: Text(memberName.substring(0, 1).toUpperCase()),
+              ),
               title: Text(memberName, style: const TextStyle(fontWeight: FontWeight.w700)),
               subtitle: Text('${memberLeader ? 'Leader • ' : ''}${_money(member['totalContributed'])} contributed • $state'),
               trailing: leader && !memberLeader && state == 'ACTIVE' ? IconButton(icon: const Icon(Icons.person_remove_outlined), tooltip: 'Remove member', onPressed: () => onRemoveMember(member)) : null,
@@ -626,7 +640,13 @@ class _GroupDetailSheet extends StatelessWidget {
               final member = item['member'] is Map ? Map<String, dynamic>.from(item['member']) : <String, dynamic>{};
               return ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: const CircleAvatar(backgroundColor: Color(0xFFE0F2E7), child: Icon(Icons.payments_rounded, color: Color(0xFF08783E))),
+                leading: const CircleAvatar(
+                  backgroundColor: ServicePayColors.brandSoft,
+                  child: Icon(
+                    Icons.payments_rounded,
+                    color: ServicePayColors.brand,
+                  ),
+                ),
                 title: Text(_money(item['amount']), style: const TextStyle(fontWeight: FontWeight.w800)),
                 subtitle: Text('${member['fullName'] ?? member['phone'] ?? 'Member'} • ${item['reference'] ?? ''}'),
               );
@@ -638,7 +658,13 @@ class _GroupDetailSheet extends StatelessWidget {
           else
             ...ledger.map((item) => ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: const CircleAvatar(backgroundColor: Color(0xFFE0F2E7), child: Icon(Icons.account_balance_wallet_outlined, color: Color(0xFF08783E))),
+              leading: const CircleAvatar(
+                backgroundColor: ServicePayColors.brandSoft,
+                child: Icon(
+                  Icons.account_balance_wallet_outlined,
+                  color: ServicePayColors.brand,
+                ),
+              ),
               title: Text('${item['type'] ?? 'CREDIT'} • ${_money(item['amount'])}', style: const TextStyle(fontWeight: FontWeight.w800)),
               subtitle: Text('Balance after: ${_money(item['balanceAfter'])} • ${item['reference'] ?? ''}'),
             )),
@@ -647,7 +673,16 @@ class _GroupDetailSheet extends StatelessWidget {
           if (activity.isEmpty)
             const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Text('No activity yet.', style: TextStyle(color: Colors.black54)))
           else
-            ...activity.take(12).map((item) => ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.history_rounded, color: Color(0xFF08783E)), title: Text(item['message']?.toString() ?? 'Group activity'))),
+            ...activity.take(12).map(
+              (item) => ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(
+                  Icons.history_rounded,
+                  color: ServicePayColors.brand,
+                ),
+                title: Text(item['message']?.toString() ?? 'Group activity'),
+              ),
+            ),
         ]),
       ),
     );

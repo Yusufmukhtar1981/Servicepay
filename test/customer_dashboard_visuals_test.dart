@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:servicepay_app/dashboard_screen.dart';
 import 'package:servicepay_app/main_navigation.dart';
+import 'package:servicepay_app/servicepay_theme.dart';
 import 'package:servicepay_app/transactions_screen.dart';
 import 'package:servicepay_app/widgets/customer_dashboard_visuals.dart';
 
@@ -28,7 +29,7 @@ void main() {
     });
   });
 
-  testWidgets('customer wallet uses the navy surface and history action works',
+  testWidgets('customer wallet uses exact green surface and actions work',
       (WidgetTester tester) async {
     final _RouteObserver observer = _RouteObserver();
     tester.view.physicalSize = const Size(360, 800);
@@ -45,8 +46,42 @@ void main() {
     final Container wallet = tester
         .widget<Container>(find.byKey(const Key('servicepay-wallet-card')));
     final BoxDecoration decoration = wallet.decoration! as BoxDecoration;
-    final LinearGradient gradient = decoration.gradient! as LinearGradient;
-    expect(gradient.colors.first, CustomerDashboardPalette.navy);
+    expect(decoration.color, ServicePayColors.brand);
+    expect(decoration.gradient, isNull);
+    final Text balance =
+        tester.widget<Text>(find.byKey(const Key('dashboard-balance-value')));
+    expect(balance.style?.color, Colors.white);
+    expect(
+      tester.widget<Text>(find.text('Available Balance').first).style?.color,
+      Colors.white,
+    );
+    for (final Key actionKey in <Key>[
+      const Key('dashboard-add-money-action'),
+      const Key('dashboard-wallet-history-action'),
+    ]) {
+      final Finder action = find.byKey(actionKey);
+      expect(action, findsOneWidget);
+      final Color actionBackground = tester.widget<Material>(action).color!;
+      final double contrast =
+          (Colors.white.computeLuminance() + 0.05) /
+          (actionBackground.computeLuminance() + 0.05);
+      expect(contrast, greaterThanOrEqualTo(4.5),
+          reason: 'White wallet action labels must remain accessible');
+      expect(
+        tester.widget<Text>(find.descendant(
+          of: action,
+          matching: find.byType(Text),
+        )).style?.color,
+        Colors.white,
+      );
+      expect(
+        tester.widget<Icon>(find.descendant(
+          of: action,
+          matching: find.byType(Icon),
+        )).color,
+        Colors.white,
+      );
+    }
     expect(find.byKey(const Key('dashboard-add-money-action')), findsOneWidget);
     final Finder history =
         find.byKey(const Key('dashboard-wallet-history-action'));
@@ -65,7 +100,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('customer navigation selects the blue treatment and routes',
+  testWidgets('customer navigation selects the green treatment and routes',
       (WidgetTester tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;

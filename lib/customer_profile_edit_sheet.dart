@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import 'services/session_store.dart';
+import 'servicepay_theme.dart';
 
 class CustomerProfileEditSheet extends StatefulWidget {
   const CustomerProfileEditSheet({
@@ -49,7 +50,7 @@ class _CustomerProfileEditSheetState extends State<CustomerProfileEditSheet> {
   bool _saving = false;
   String? _error;
 
-  static const _green = Color(0xFF08783E);
+  static const _green = ServicePayColors.brand;
 
   @override
   void initState() {

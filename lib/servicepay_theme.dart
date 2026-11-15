@@ -6,10 +6,10 @@ import 'package:flutter/material.dart';
 /// spacing, contrast, focus states, and touch-friendly controls by using the
 /// app theme rather than defining local versions of every control.
 abstract final class ServicePayColors {
-  static const brand = Color(0xFF08783E);
-  static const brandDeep = Color(0xFF075E36);
-  static const brandSoft = Color(0xFFEAF7F0);
-  static const canvas = Color(0xFFF6FAF7);
+  static const brand = Color(0xFF087A45);
+  static const brandDeep = Color(0xFF075F38);
+  static const brandSoft = Color(0xFFE8F5EC);
+  static const canvas = Color(0xFFF5F9F6);
   static const ink = Color(0xFF15352A);
   static const muted = Color(0xFF4B6257);
   static const border = Color(0xFFB9CEC1);
@@ -29,11 +29,11 @@ abstract final class ServicePayTheme {
     ).copyWith(
       primary: ServicePayColors.brand,
       onPrimary: Colors.white,
-      secondary: const Color(0xFF0F766E),
+      secondary: ServicePayColors.brandDeep,
       onSecondary: Colors.white,
       surface: Colors.white,
       onSurface: ServicePayColors.ink,
-      surfaceContainerHighest: const Color(0xFFE7F0EA),
+      surfaceContainerHighest: ServicePayColors.brandSoft,
       onSurfaceVariant: ServicePayColors.muted,
       error: ServicePayColors.danger,
       onError: Colors.white,
@@ -106,12 +106,13 @@ abstract final class ServicePayTheme {
       ),
       cardTheme: CardThemeData(
         color: Colors.white,
-        elevation: 0,
+        elevation: 1,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(18),
-          side: const BorderSide(color: ServicePayColors.border),
+          side: const BorderSide(color: Color(0xFFDCE9E0)),
         ),
+        shadowColor: const Color(0x160B3924),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,

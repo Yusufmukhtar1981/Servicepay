@@ -179,7 +179,7 @@ class ServicePayStartupScreen extends StatelessWidget {
             Text(
               'ServicePay',
               style: TextStyle(
-                color: Color(0xFF0F766E),
+                color: ServicePayColors.brand,
                 fontSize: 30,
                 fontWeight: FontWeight.w800,
               ),
@@ -190,7 +190,7 @@ class ServicePayStartupScreen extends StatelessWidget {
               height: 32,
               child: CircularProgressIndicator(
                 strokeWidth: 3,
-                color: Color(0xFF0F766E),
+                color: ServicePayColors.brand,
               ),
             ),
             SizedBox(height: 16),

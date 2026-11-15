@@ -5,6 +5,7 @@ import 'package:screenshot/screenshot.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'services/receipt_download.dart';
+import 'servicepay_theme.dart';
 import 'customer_receipt_privacy.dart';
 
 class BusinessWalletTransactionReceiptScreen extends StatefulWidget {
@@ -26,7 +27,7 @@ class BusinessWalletTransactionReceiptScreen extends StatefulWidget {
 
 class _BusinessWalletTransactionReceiptScreenState
     extends State<BusinessWalletTransactionReceiptScreen> {
-  static const Color primaryGreen = Color(0xFF08783E);
+  static const Color primaryGreen = ServicePayColors.brand;
 
   final ScreenshotController screenshotController = ScreenshotController();
 
@@ -497,9 +498,7 @@ class _BusinessWalletTransactionReceiptScreenState
               width: 58,
               height: 58,
               decoration: const BoxDecoration(
-                color: Color(
-                  0xFFEAF7F0,
-                ),
+                color: ServicePayColors.brandSoft,
                 shape: BoxShape.circle,
               ),
               child: Icon(
@@ -545,9 +544,7 @@ class _BusinessWalletTransactionReceiptScreenState
                 vertical: 7,
               ),
               decoration: BoxDecoration(
-                color: const Color(
-                  0xFFEAF7F0,
-                ),
+                color: ServicePayColors.brandSoft,
                 borderRadius: BorderRadius.circular(
                   100,
                 ),

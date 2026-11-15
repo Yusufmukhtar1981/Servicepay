@@ -4,6 +4,7 @@ import 'customer_leaderboard_screen.dart';
 import 'customer_leaderboard_report_panel.dart';
 import 'customer_leaderboard_privacy_preference.dart';
 import 'services/customer_leaderboard_api.dart';
+import 'servicepay_theme.dart';
 
 class CustomerChampionsDashboardEntry extends StatefulWidget {
   const CustomerChampionsDashboardEntry({
@@ -105,7 +106,7 @@ class CustomerChampionsDashboardEntryState
           label: 'Checking monthly Champions availability',
           child: LinearProgressIndicator(
             semanticsLabel: 'Checking monthly Champions availability',
-            color: const Color(0xFF08783E),
+            color: ServicePayColors.brand,
           ),
         ),
       );

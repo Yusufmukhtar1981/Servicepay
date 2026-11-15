@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'customer_leaderboard_report_panel.dart';
 import 'customer_leaderboard_privacy_preference.dart';
 import 'services/customer_leaderboard_api.dart';
+import 'servicepay_theme.dart';
 
 class CustomerLeaderboardScreen extends StatefulWidget {
   const CustomerLeaderboardScreen({super.key, this.api});
@@ -20,7 +21,7 @@ class _CustomerLeaderboardScreenState extends State<CustomerLeaderboardScreen> {
   int _requestVersion = 0;
   DateTime _month = DateTime.now().toUtc().add(const Duration(hours: 1));
   static const ink = Color(0xFF18382F);
-  static const green = Color(0xFF08783E);
+  static const green = ServicePayColors.brand;
 
   String get _monthKey =>
       '${_month.year}-${_month.month.toString().padLeft(2, '0')}';

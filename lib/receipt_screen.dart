@@ -7,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 
 import 'services/receipt_download.dart';
 import 'customer_receipt_privacy.dart';
+import 'servicepay_theme.dart';
 
 /// A receipt is rendered only from the values supplied by the completed
 /// transaction flow. Do not add account credentials or authentication values
@@ -34,8 +35,8 @@ class ReceiptScreen extends StatefulWidget {
 }
 
 class _ReceiptScreenState extends State<ReceiptScreen> {
-  static const Color primaryGreen = Color(0xFF08783E);
-  static const Color softGreen = Color(0xFFEAF7F0);
+  static const Color primaryGreen = ServicePayColors.brand;
+  static const Color softGreen = ServicePayColors.brandSoft;
   final GlobalKey _receiptKey = GlobalKey();
   bool _isDownloading = false;
 

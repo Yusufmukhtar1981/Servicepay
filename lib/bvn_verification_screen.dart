@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:screenshot/screenshot.dart';
+import 'servicepay_theme.dart';
 
 class BvnVerificationScreen extends StatefulWidget {
   const BvnVerificationScreen({super.key});
@@ -20,7 +21,7 @@ class BvnVerificationScreen extends StatefulWidget {
 class _BvnVerificationScreenState extends State<BvnVerificationScreen> {
   static const String baseUrl = 'https://api.servicepay.ng/api';
 
-  static const Color primaryGreen = Color(0xFF149B8F);
+  static const Color primaryGreen = ServicePayColors.brand;
 
   static const double bvnFee = 200;
 
@@ -649,8 +650,8 @@ class _BvnVerificationScreenState extends State<BvnVerificationScreen> {
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
                     colors: [
-                      Color(0xFF149B8F),
-                      Color(0xFF0F766E),
+                      ServicePayColors.brand,
+                      ServicePayColors.brand,
                     ],
                   ),
                   borderRadius: BorderRadius.circular(24),
@@ -893,7 +894,7 @@ class _BvnVerificationScreenState extends State<BvnVerificationScreen> {
 }
 
 class BvnVerificationResultScreen extends StatelessWidget {
-  static const Color primaryGreen = Color(0xFF149B8F);
+  static const Color primaryGreen = ServicePayColors.brand;
 
   final Map<String, dynamic> verification;
 
@@ -1403,7 +1404,7 @@ class BvnVerificationResultScreen extends StatelessWidget {
 }
 
 class BvnVerifiedCard extends StatelessWidget {
-  static const Color primaryGreen = Color(0xFF149B8F);
+  static const Color primaryGreen = ServicePayColors.brand;
 
   final String fullName;
   final String dateOfBirth;

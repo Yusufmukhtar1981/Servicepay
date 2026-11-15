@@ -511,13 +511,14 @@ class _ApplicationFormState extends State<_ApplicationForm> {
                 widget.onKindChanged(kind);
               },
         style: OutlinedButton.styleFrom(
-          backgroundColor: selected ? const Color(0xFFE1F0E6) : Colors.white,
+          backgroundColor: selected ? ServicePayColors.brandSoft : Colors.white,
           foregroundColor: const Color(0xFF18372A),
           disabledForegroundColor: const Color(0xFF18372A),
           disabledBackgroundColor:
-              selected ? const Color(0xFFE1F0E6) : Colors.white,
+              selected ? ServicePayColors.brandSoft : Colors.white,
           side: BorderSide(
-            color: selected ? const Color(0xFF08783E) : const Color(0xFFD5E1D9),
+            color:
+                selected ? ServicePayColors.brand : const Color(0xFFD5E1D9),
             width: selected ? 1.6 : 1,
           ),
           padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 8),

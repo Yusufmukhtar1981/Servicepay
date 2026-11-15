@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'servicepay_theme.dart';
 
 class PrivacyPolicyScreen extends StatelessWidget {
   const PrivacyPolicyScreen({super.key});
 
-  static const Color primaryGreen = Color(0xFF08783E);
-  static const Color darkGreen = Color(0xFF055C30);
+  static const Color primaryGreen = ServicePayColors.brand;
+  static const Color darkGreen = ServicePayColors.brandDeep;
   static const Color pageBackground = Color(0xFFF8FAF9);
 
   @override

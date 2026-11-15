@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'servicepay_theme.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -32,7 +33,7 @@ class TransferScreen extends StatefulWidget {
 class _TransferScreenState extends State<TransferScreen> {
   static const String baseUrl = 'https://api.servicepay.ng/api';
 
-  static const Color primaryGreen = Color(0xFF2E7D32);
+  static const Color primaryGreen = ServicePayColors.brand;
 
   final GlobalKey<FormState> formKey = GlobalKey<FormState>();
 
@@ -1054,7 +1055,7 @@ class _TransferScreenState extends State<TransferScreen> {
       featureKey: 'SERVICEPAY_TRANSFER',
       client: widget.client,
       child: Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         title: const Text(
           'ServicePay Transfer',
@@ -1078,10 +1079,10 @@ class _TransferScreenState extends State<TransferScreen> {
                   gradient: const LinearGradient(
                     colors: [
                       Color(
-                        0xFF2E7D32,
+                        0xFF087A45,
                       ),
                       Color(
-                        0xFF43A047,
+                        0xFF14945A,
                       ),
                     ],
                   ),

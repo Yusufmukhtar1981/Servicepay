@@ -734,7 +734,7 @@ class _BusinessPremiumToolsState extends State<_BusinessPremiumTools> {
                         goal['completed'] == true
                             ? Icons.check_circle_outline
                             : Icons.trending_up,
-                        color: const Color(0xFF08783E),
+                        color: ServicePayColors.brand,
                       ),
                     );
                   }).toList(),

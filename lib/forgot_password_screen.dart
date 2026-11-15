@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 
 import 'services/customer_account_recovery.dart';
+import 'servicepay_theme.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({
@@ -24,7 +25,7 @@ class ForgotPasswordScreen extends StatefulWidget {
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   static const String baseUrl = 'https://api.servicepay.ng/api';
 
-  static const Color primaryColor = Color(0xFF0F766E);
+  static const Color primaryColor = ServicePayColors.brand;
 
   final GlobalKey<FormState> formKey = GlobalKey<FormState>();
 

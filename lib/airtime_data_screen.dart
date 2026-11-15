@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'servicepay_theme.dart';
 
 import 'airtime_screen.dart';
 import 'data_screen.dart';
@@ -9,7 +10,7 @@ class AirtimeDataScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F8F7),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         title: const Text('Airtime & Data'),
         backgroundColor: Colors.white,
@@ -22,7 +23,7 @@ class AirtimeDataScreen extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(22),
             decoration: BoxDecoration(
-              color: const Color(0xFF08783E),
+              color: ServicePayColors.brand,
               borderRadius: BorderRadius.circular(24),
             ),
             child: const Column(
@@ -123,10 +124,10 @@ class _ServiceChoice extends StatelessWidget {
                 width: 52,
                 height: 52,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFEAF7F0),
+                  color: ServicePayColors.brandSoft,
                   borderRadius: BorderRadius.circular(16),
                 ),
-                child: Icon(icon, color: const Color(0xFF08783E)),
+                child: Icon(icon, color: ServicePayColors.brand),
               ),
               const SizedBox(width: 14),
               Expanded(

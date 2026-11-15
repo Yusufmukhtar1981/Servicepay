@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'servicepay_theme.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -19,7 +20,7 @@ class BankTransferScreen extends StatefulWidget {
 
 class _BankTransferScreenState extends State<BankTransferScreen> {
   static const String baseUrl = 'https://api.servicepay.ng/api';
-  static const Color primaryGreen = Color(0xFF149B8F);
+  static const Color primaryGreen = ServicePayColors.brand;
 
   final GlobalKey<FormState> formKey = GlobalKey<FormState>();
 
@@ -1031,8 +1032,8 @@ class _BankTransferScreenState extends State<BankTransferScreen> {
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      Color(0xFF149B8F),
-                      Color(0xFF0D756C),
+                      ServicePayColors.brand,
+                      ServicePayColors.brandDeep,
                     ],
                   ),
                   borderRadius: BorderRadius.circular(24),

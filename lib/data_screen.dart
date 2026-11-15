@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'widgets/pending_purchase_warning.dart';
+import 'servicepay_theme.dart';
 
 import 'services/api_service.dart';
 import 'services/data_purchase_intent.dart';
@@ -38,9 +39,9 @@ class DataScreen extends StatefulWidget {
 }
 
 class _DataScreenState extends State<DataScreen> {
-  static const Color primaryGreen = Color(0xFF08783E);
+  static const Color primaryGreen = ServicePayColors.brand;
 
-  static const Color softGreen = Color(0xFFEAF7F0);
+  static const Color softGreen = ServicePayColors.brandSoft;
 
   final TextEditingController phoneController = TextEditingController();
   final FocusNode _phoneFocus = FocusNode();
@@ -1000,7 +1001,7 @@ class _DataScreenState extends State<DataScreen> {
     final List<Map<String, dynamic>> displayed = visiblePlans;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F8FA),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         backgroundColor: primaryGreen,
         foregroundColor: Colors.white,

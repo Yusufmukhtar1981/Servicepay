@@ -3,17 +3,17 @@ import 'package:flutter/material.dart';
 /// Customer-home colors are intentionally scoped here so staff dashboards keep
 /// the palette defined by the shared application theme.
 abstract final class CustomerDashboardPalette {
-  static const navy = Color(0xFF102B55);
-  static const royalBlue = Color(0xFF2878E8);
-  static const teal = Color(0xFF12A6A0);
-  static const canvas = Color(0xFFF4F7FC);
+  static const navy = Color(0xFF075F38);
+  static const royalBlue = Color(0xFF087A45);
+  static const teal = Color(0xFF178652);
+  static const canvas = Color(0xFFF5F9F6);
   static const card = Color(0xFFFFFFFF);
   static const success = Color(0xFF159B70);
   static const warning = Color(0xFFE6A52B);
   static const error = Color(0xFFDC4545);
-  static const muted = Color(0xFF64748B);
-  static const border = Color(0xFFE2EAF4);
-  static const paleBlue = Color(0xFFEAF1FC);
+  static const muted = Color(0xFF53675B);
+  static const border = Color(0xFFDCE9E0);
+  static const paleBlue = Color(0xFFE8F5EC);
 }
 
 class CustomerServiceGlyph extends StatelessWidget {
@@ -68,8 +68,8 @@ class CustomerCampaignFrame extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: <Color>[
-            CustomerDashboardPalette.royalBlue,
-            CustomerDashboardPalette.teal,
+            CustomerDashboardPalette.navy,
+            Color(0xFF14945A),
           ],
         ),
         borderRadius: BorderRadius.circular(22),

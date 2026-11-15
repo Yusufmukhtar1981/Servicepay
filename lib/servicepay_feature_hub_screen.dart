@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'servicepay_theme.dart';
 
 import 'community_agent_locator_screen.dart';
 
@@ -30,7 +31,7 @@ class ServicePayFeatureHubScreen extends StatelessWidget {
             child: ListTile(
               leading: Icon(
                 item.$2,
-                color: const Color(0xFF08783E),
+                color: ServicePayColors.brand,
               ),
               title: Text(item.$1),
               trailing: const Icon(

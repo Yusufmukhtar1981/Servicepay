@@ -190,7 +190,7 @@ class _DeliveryHistoryScreenState
         return AlertDialog(
           icon: const Icon(
             Icons.account_balance_wallet_rounded,
-            color: Color(0xFF1565C0),
+            color: ServicePayColors.brand,
             size: 48,
           ),
           title: const Text(
@@ -218,8 +218,7 @@ class _DeliveryHistoryScreenState
                 );
               },
               style: FilledButton.styleFrom(
-                backgroundColor:
-                    const Color(0xFF1565C0),
+                backgroundColor: ServicePayColors.brand,
               ),
               child: const Text(
                 'Pay Now',
@@ -772,7 +771,7 @@ class _DeliveryHistoryScreenState
                   Icons
                       .account_balance_wallet_outlined,
                   size: 19,
-                  color: Color(0xFF1565C0),
+                  color: ServicePayColors.brand,
                 ),
                 const SizedBox(width: 10),
                 const SizedBox(
@@ -897,8 +896,7 @@ class _DeliveryHistoryScreenState
                 ),
                 style:
                     FilledButton.styleFrom(
-                  backgroundColor:
-                      const Color(0xFF1565C0),
+                  backgroundColor: ServicePayColors.brand,
                   foregroundColor:
                       Colors.white,
                   padding:
@@ -1000,8 +998,7 @@ class _DeliveryHistoryScreenState
           Icon(
             icon,
             size: 19,
-            color:
-                const Color(0xFF1565C0),
+            color: ServicePayColors.brand,
           ),
           const SizedBox(width: 10),
           SizedBox(
@@ -1048,15 +1045,13 @@ class _DeliveryHistoryScreenState
               height: 92,
               decoration:
                   const BoxDecoration(
-                color:
-                    Color(0xFFEAF3FF),
+                color: ServicePayColors.brandSoft,
                 shape: BoxShape.circle,
               ),
               child: const Icon(
                 Icons.local_shipping_outlined,
                 size: 46,
-                color:
-                    Color(0xFF1565C0),
+                color: ServicePayColors.brand,
               ),
             ),
             const SizedBox(height: 20),
@@ -1129,8 +1124,7 @@ class _DeliveryHistoryScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor:
-          const Color(0xFFF5F7FB),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         title: const Text(
           'Delivery History',

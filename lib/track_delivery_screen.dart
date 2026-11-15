@@ -177,12 +177,12 @@ class _TrackDeliveryScreenState
             width: 42,
             height: 42,
             decoration: BoxDecoration(
-              color: const Color(0xFFEAF3FF),
+              color: ServicePayColors.brandSoft,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
               icon,
-              color: const Color(0xFF1565C0),
+              color: ServicePayColors.brand,
               size: 21,
             ),
           ),
@@ -348,7 +348,7 @@ class _TrackDeliveryScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FB),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         title: const Text(
           'Track Delivery',
@@ -377,8 +377,8 @@ class _TrackDeliveryScreenState
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
                     colors: [
-                      Color(0xFF1565C0),
-                      Color(0xFF0D47A1),
+                      ServicePayColors.brand,
+                      ServicePayColors.brandDeep,
                     ],
                   ),
                   borderRadius: BorderRadius.circular(20),
@@ -432,14 +432,14 @@ class _TrackDeliveryScreenState
                     borderRadius:
                         BorderRadius.circular(14),
                     borderSide: const BorderSide(
-                      color: Color(0xFFE5E7EB),
+                      color: ServicePayColors.border,
                     ),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius:
                         BorderRadius.circular(14),
                     borderSide: const BorderSide(
-                      color: Color(0xFF1565C0),
+                      color: ServicePayColors.brand,
                       width: 1.5,
                     ),
                   ),
@@ -475,7 +475,7 @@ class _TrackDeliveryScreenState
                   ),
                   style: FilledButton.styleFrom(
                     backgroundColor:
-                        const Color(0xFF1565C0),
+                        ServicePayColors.brand,
                     shape: RoundedRectangleBorder(
                       borderRadius:
                           BorderRadius.circular(14),

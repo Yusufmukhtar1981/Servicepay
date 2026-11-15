@@ -5,6 +5,7 @@ import 'login_screen.dart';
 import 'register_screen.dart';
 
 import 'privacy_policy_screen.dart';
+import 'servicepay_theme.dart';
 
 class PublicWebsiteScreen extends StatefulWidget {
   const PublicWebsiteScreen({super.key});
@@ -37,9 +38,9 @@ class _PublicWebsiteScreenState extends State<PublicWebsiteScreen> {
     ));
   }
 
-  static const Color primaryGreen = Color(0xFF08783E);
+  static const Color primaryGreen = ServicePayColors.brand;
   static const Color darkGreen = Color(0xFF055C30);
-  static const Color softGreen = Color(0xFFEAF7F0);
+  static const Color softGreen = ServicePayColors.brandSoft;
   static const Color pageBackground = Color(0xFFF8FAF9);
 
   final GlobalKey _homeKey = GlobalKey();
@@ -369,7 +370,7 @@ class _PublicWebsiteScreenState extends State<PublicWebsiteScreen> {
           end: Alignment.bottomRight,
           colors: [
             Color(0xFFF8FCF9),
-            Color(0xFFEAF7F0),
+            ServicePayColors.brandSoft,
           ],
         ),
       ),

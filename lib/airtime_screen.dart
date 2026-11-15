@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'servicepay_theme.dart';
 import 'widgets/pending_purchase_warning.dart';
 import 'widgets/purchase_processing.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -253,7 +254,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                   );
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
+                  backgroundColor: ServicePayColors.brand,
                   foregroundColor: Colors.white,
                 ),
                 child: const Text('Confirm'),
@@ -444,9 +445,9 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
-        backgroundColor: Colors.green,
+        backgroundColor: ServicePayColors.brand,
         foregroundColor: Colors.white,
         title: const Text(
           'Buy Airtime',
@@ -595,7 +596,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                               ? null
                               : buyAirtime,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
+                        backgroundColor: ServicePayColors.brand,
                         foregroundColor: Colors.white,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),

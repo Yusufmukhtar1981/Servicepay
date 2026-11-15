@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
 import 'services/receipt_download.dart';
+import 'servicepay_theme.dart';
 
 /// A transaction supplied by an authoritative account history response.
 ///
@@ -107,7 +108,7 @@ class AccountStatementScreen extends StatefulWidget {
 }
 
 class _AccountStatementScreenState extends State<AccountStatementScreen> {
-  static const Color _green = Color(0xFF08783E);
+  static const Color _green = ServicePayColors.brand;
   static const int _maximumRasterExportEntries = 100;
   final GlobalKey _statementKey = GlobalKey();
   late StatementPeriod _period;

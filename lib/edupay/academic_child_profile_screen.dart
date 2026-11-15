@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'edupay_api.dart';
+import '../servicepay_theme.dart';
 
 class AcademicChildProfileScreen extends StatefulWidget {
   const AcademicChildProfileScreen({
@@ -104,7 +105,7 @@ class _AcademicChildProfileScreenState extends State<AcademicChildProfileScreen>
   Widget build(BuildContext context) {
     final name = '${widget.child['fullName'] ?? 'Child'}';
     return Scaffold(
-      backgroundColor: const Color(0xfff5f8f6),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         title: Text(name),
         actions: [IconButton(onPressed: load, icon: const Icon(Icons.refresh))],
@@ -171,13 +172,13 @@ class _AcademicChildProfileScreenState extends State<AcademicChildProfileScreen>
         children: [
           CircleAvatar(
             radius: 34,
-            backgroundColor: const Color(0xffdcefe8),
+            backgroundColor: ServicePayColors.brandSoft,
             child: Text(
               name.isEmpty ? '?' : name[0].toUpperCase(),
               style: const TextStyle(
                 fontSize: 28,
                 fontWeight: FontWeight.w800,
-                color: Color(0xff0c6b51),
+                color: ServicePayColors.brand,
               ),
             ),
           ),
@@ -218,7 +219,7 @@ class _AcademicChildProfileScreenState extends State<AcademicChildProfileScreen>
 
   Widget _quick(String title, IconData icon, int index) => Card(
         child: ListTile(
-          leading: Icon(icon, color: const Color(0xff0c6b51)),
+          leading: Icon(icon, color: ServicePayColors.brand),
           title:
               Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
           trailing: const Icon(Icons.chevron_right),
@@ -227,13 +228,13 @@ class _AcademicChildProfileScreenState extends State<AcademicChildProfileScreen>
       );
 
   Widget _infoCard(String title, String body, IconData icon) => Card(
-        color: const Color(0xffe8f4ef),
+        color: ServicePayColors.brandSoft,
         child: Padding(
           padding: const EdgeInsets.all(18),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(icon, color: const Color(0xff0c6b51)),
+              Icon(icon, color: ServicePayColors.brand),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
@@ -467,7 +468,7 @@ class _AcademicChildProfileScreenState extends State<AcademicChildProfileScreen>
           child: ListTile(
             leading: const Icon(
               Icons.campaign_outlined,
-              color: Color(0xff0c6b51),
+              color: ServicePayColors.brand,
             ),
             title: Text(
               '${row['title'] ?? row['name'] ?? 'School update'}',
@@ -494,7 +495,7 @@ class _AcademicChildProfileScreenState extends State<AcademicChildProfileScreen>
       ...rows.map(
         (row) => Card(
           child: ListTile(
-            leading: const Icon(Icons.schedule, color: Color(0xff0c6b51)),
+            leading: const Icon(Icons.schedule, color: ServicePayColors.brand),
             title: Text(
               '${row['day'] ?? 'School day'}',
               style: const TextStyle(fontWeight: FontWeight.w700),
@@ -556,9 +557,9 @@ class _Notice extends StatelessWidget {
   final IconData icon;
   @override
   Widget build(BuildContext context) => Card(
-        color: const Color(0xffe8f4ef),
+        color: ServicePayColors.brandSoft,
         child: ListTile(
-          leading: Icon(icon, color: const Color(0xff0c6b51)),
+          leading: Icon(icon, color: ServicePayColors.brand),
           title: Text(text),
         ),
       );

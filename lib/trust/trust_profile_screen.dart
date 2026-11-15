@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'trust_api_service.dart';
 import 'trust_models.dart';
 import 'trust_deals_screen.dart';
+import '../servicepay_theme.dart';
 
 class TrustProfileScreen extends StatefulWidget {
   const TrustProfileScreen({
@@ -27,7 +28,7 @@ class _TrustProfileScreenState extends State<TrustProfileScreen> {
   String? _error;
   bool _loading = true;
   bool _savingDiscoverability = false;
-  static const Color _green = Color(0xFF08783E);
+  static const Color _green = ServicePayColors.brand;
 
   @override
   void initState() {

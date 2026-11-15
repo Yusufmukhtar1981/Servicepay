@@ -940,7 +940,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                   const SizedBox(height: 20),
                   CircleAvatar(
                     radius: 31,
-                    backgroundColor: const Color(0xFFE8F5E9),
+                    backgroundColor: ServicePayColors.brandSoft,
                     child: Icon(
                       _transactionIcon(title),
                       color: primaryGreen,
@@ -1205,7 +1205,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                                 _formatTitle(filter),
                               ),
                               selected: selected,
-                              selectedColor: const Color(0xFFE8F5E9),
+                              selectedColor: ServicePayColors.brandSoft,
                               labelStyle: TextStyle(
                                 color: selected
                                     ? primaryGreen
@@ -1439,7 +1439,7 @@ class _TransactionCard extends StatelessWidget {
                   ),
                   child: Icon(
                     icon,
-                    color: const Color(0xFF2E7D32),
+                    color: ServicePayColors.brand,
                   ),
                 ),
                 const SizedBox(width: 12),

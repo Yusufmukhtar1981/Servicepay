@@ -5,6 +5,7 @@ import '../feature_transaction_pin_dialog.dart';
 import '../services/session_store.dart';
 import '../services/transaction_authorization_service.dart';
 import 'trust_models.dart';
+import '../servicepay_theme.dart';
 
 class TrustDealsScreen extends StatefulWidget {
   const TrustDealsScreen({super.key});
@@ -40,10 +41,10 @@ class _TrustDealsScreenState extends State<TrustDealsScreen> {
         backgroundColor: const Color(0xFFF5F7FA),
         appBar: AppBar(
             title: const Text('Protected deals'),
-            backgroundColor: const Color(0xFF08783E),
+            backgroundColor: ServicePayColors.brand,
             foregroundColor: Colors.white),
         floatingActionButton: FloatingActionButton.extended(
-            backgroundColor: const Color(0xFF08783E),
+            backgroundColor: ServicePayColors.brand,
             foregroundColor: Colors.white,
             onPressed: () async {
               await Navigator.push(
@@ -75,7 +76,7 @@ class _TrustDealsScreenState extends State<TrustDealsScreen> {
                                 leading: const CircleAvatar(
                                     backgroundColor: Color(0xFFEAF7F0),
                                     child: Icon(Icons.shield_outlined,
-                                        color: Color(0xFF08783E))),
+                                        color: ServicePayColors.brand)),
                                 title: Text(deal.title),
                                 subtitle: Text(
                                     '${_money(deal)} • ${deal.status.replaceAll('_', ' ')}'),
@@ -138,7 +139,7 @@ class _CreateTrustDealScreenState extends State<CreateTrustDealScreen> {
   Widget build(BuildContext context) => Scaffold(
         appBar: AppBar(
             title: const Text('Create protected deal'),
-            backgroundColor: const Color(0xFF08783E),
+            backgroundColor: ServicePayColors.brand,
             foregroundColor: Colors.white),
         body: Form(
             key: _form,
@@ -156,7 +157,7 @@ class _CreateTrustDealScreenState extends State<CreateTrustDealScreen> {
               FilledButton(
                   onPressed: _saving ? null : _submit,
                   style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFF08783E),
+                      backgroundColor: ServicePayColors.brand,
                       padding: const EdgeInsets.all(15)),
                   child: Text(_saving ? 'Creating…' : 'Create protected deal')),
             ])),
@@ -279,7 +280,7 @@ class _TrustDealDetailScreenState extends State<TrustDealDetailScreen> {
         backgroundColor: const Color(0xFFF5F7FA),
         appBar: AppBar(
             title: const Text('Protected deal'),
-            backgroundColor: const Color(0xFF08783E),
+            backgroundColor: ServicePayColors.brand,
             foregroundColor: Colors.white),
         body: ListView(padding: const EdgeInsets.all(16), children: <Widget>[
           Card(
@@ -294,7 +295,7 @@ class _TrustDealDetailScreenState extends State<TrustDealDetailScreen> {
                         const SizedBox(height: 8),
                         Text(_money(_deal),
                             style: const TextStyle(
-                                color: Color(0xFF08783E),
+                                color: ServicePayColors.brand,
                                 fontSize: 24,
                                 fontWeight: FontWeight.bold)),
                         const SizedBox(height: 8),
@@ -317,7 +318,7 @@ class _TrustDealDetailScreenState extends State<TrustDealDetailScreen> {
             FilledButton(
                 onPressed: _working ? null : _fund,
                 style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF08783E)),
+                    backgroundColor: ServicePayColors.brand),
                 child: const Text('Fund with PIN')),
           if (_deal.canSellerStart)
             FilledButton.tonal(
@@ -396,7 +397,7 @@ class _TrustDisputeFormScreenState extends State<TrustDisputeFormScreen> {
   Widget build(BuildContext context) => Scaffold(
       appBar: AppBar(
           title: const Text('Raise a dispute'),
-          backgroundColor: const Color(0xFF08783E),
+          backgroundColor: ServicePayColors.brand,
           foregroundColor: Colors.white),
       body: ListView(padding: const EdgeInsets.all(20), children: <Widget>[
         const Text(
@@ -420,7 +421,7 @@ class _TrustDisputeFormScreenState extends State<TrustDisputeFormScreen> {
         FilledButton(
             onPressed: _saving ? null : _send,
             style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF08783E)),
+                backgroundColor: ServicePayColors.brand),
             child: const Text('Submit dispute'))
       ]));
 }

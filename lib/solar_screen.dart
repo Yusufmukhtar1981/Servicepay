@@ -5,8 +5,9 @@ import 'services/solar_api_service.dart';
 import 'services/transaction_authorization_service.dart';
 import 'services/biometric_auth_service.dart';
 import 'services/session_store.dart';
+import 'servicepay_theme.dart';
 
-const Color _solarGreen = Color(0xFF08783E);
+const Color _solarGreen = ServicePayColors.brand;
 
 class SolarScreen extends StatefulWidget {
   const SolarScreen({
@@ -387,7 +388,7 @@ class _PackageCard extends StatelessWidget {
           Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                  color: const Color(0xFFEAF7F0),
+                  color: ServicePayColors.brandSoft,
                   borderRadius: BorderRadius.circular(14)),
               child: const Icon(Icons.solar_power_rounded, color: _solarGreen)),
           const SizedBox(width: 13),

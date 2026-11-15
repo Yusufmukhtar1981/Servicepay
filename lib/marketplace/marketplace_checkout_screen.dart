@@ -10,6 +10,7 @@ import 'marketplace_cart_store.dart';
 import '../feature_transaction_pin_dialog.dart';
 import '../services/biometric_auth_service.dart';
 import '../services/transaction_authorization_service.dart';
+import '../servicepay_theme.dart';
 
 class MarketplaceCheckoutScreen extends StatefulWidget {
   const MarketplaceCheckoutScreen({super.key});
@@ -22,8 +23,8 @@ class MarketplaceCheckoutScreen extends StatefulWidget {
 class _MarketplaceCheckoutScreenState extends State<MarketplaceCheckoutScreen> {
   static const String baseUrl = 'https://api.servicepay.ng/api';
 
-  static const Color primary = Color(0xFF08783E);
-  static const Color softGreen = Color(0xFFEAF7F0);
+  static const Color primary = ServicePayColors.brand;
+  static const Color softGreen = ServicePayColors.brandSoft;
 
   final formKey = GlobalKey<FormState>();
 

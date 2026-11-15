@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 
 import 'trust_search_screen.dart';
+import '../servicepay_theme.dart';
 
 class TrustDashboardEntry extends StatelessWidget {
   const TrustDashboardEntry({super.key});
 
-  static const Color _green = Color(0xFF08783E);
-  static const Color _softGreen = Color(0xFFEAF7F0);
+  static const Color _green = ServicePayColors.brand;
+  static const Color _softGreen = ServicePayColors.brandSoft;
 
   @override
   Widget build(BuildContext context) {

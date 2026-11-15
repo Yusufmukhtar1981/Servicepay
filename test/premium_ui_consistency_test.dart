@@ -4,19 +4,48 @@ import 'package:servicepay_app/help_support_screen.dart';
 import 'package:servicepay_app/servicepay_theme.dart';
 import 'package:servicepay_app/servicepay_ui.dart';
 
+double _contrastRatio(Color foreground, Color background) {
+  final double foregroundLuminance = foreground.computeLuminance();
+  final double backgroundLuminance = background.computeLuminance();
+  final double lighter = foregroundLuminance > backgroundLuminance
+      ? foregroundLuminance
+      : backgroundLuminance;
+  final double darker = foregroundLuminance > backgroundLuminance
+      ? backgroundLuminance
+      : foregroundLuminance;
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   test('customer theme keeps controls touch-friendly and consistent', () {
     final ThemeData theme = ServicePayTheme.light();
 
+    expect(ServicePayColors.brand, const Color(0xFF087A45));
+    expect(ServicePayColors.brandSoft, const Color(0xFFE8F5EC));
     expect(theme.colorScheme.primary, ServicePayColors.brand);
+    expect(theme.colorScheme.onPrimary, Colors.white);
     expect(theme.scaffoldBackgroundColor, ServicePayColors.canvas);
+    expect(theme.cardTheme.elevation, greaterThan(0));
     expect(
       theme.filledButtonTheme.style?.minimumSize?.resolve({}),
       const Size(64, 48),
     );
     expect(theme.inputDecorationTheme.filled, isTrue);
+  });
+
+  test('green brand and readable text meet contrast targets', () {
+    expect(_contrastRatio(Colors.white, ServicePayColors.brand),
+        greaterThanOrEqualTo(4.5));
+    expect(_contrastRatio(ServicePayColors.ink, Colors.white),
+        greaterThanOrEqualTo(4.5));
+    expect(_contrastRatio(ServicePayColors.muted, Colors.white),
+        greaterThanOrEqualTo(4.5));
+    expect(
+      _contrastRatio(ServicePayColors.brand, ServicePayColors.brandSoft),
+      greaterThanOrEqualTo(4.5),
+    );
   });
 
   testWidgets('help and support forms fit required responsive widths',

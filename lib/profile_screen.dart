@@ -1180,7 +1180,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             icon: Icons.card_giftcard_rounded,
                             title: 'My Referral',
                             subtitle: 'View, copy and share your referral code',
-                            iconColor: const Color(0xFF08783E),
+                            iconColor: ServicePayColors.brand,
                             onTap: () {
                               Navigator.of(context).push(
                                 MaterialPageRoute(
@@ -1341,8 +1341,8 @@ class _ProfileHeader extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           colors: [
-            Color(0xFF2E7D32),
-            Color(0xFF43A047),
+            ServicePayColors.brand,
+            Color(0xFF14945A),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -1350,7 +1350,7 @@ class _ProfileHeader extends StatelessWidget {
         borderRadius: BorderRadius.circular(22),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF2E7D32).withValues(
+            color: ServicePayColors.brand.withValues(
               alpha: 0.22,
             ),
             blurRadius: 18,
@@ -1617,7 +1617,7 @@ class _KycTierCard extends StatelessWidget {
               height: 110,
               child: Center(
                 child: CircularProgressIndicator(
-                  color: Color(0xFF2E7D32),
+                  color: ServicePayColors.brand,
                   strokeWidth: 2,
                 ),
               ),
@@ -1631,12 +1631,12 @@ class _KycTierCard extends StatelessWidget {
                       width: 44,
                       height: 44,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFE8F5E9),
+                        color: ServicePayColors.brandSoft,
                         borderRadius: BorderRadius.circular(14),
                       ),
                       child: const Icon(
                         Icons.workspace_premium_rounded,
-                        color: Color(0xFF2E7D32),
+                        color: ServicePayColors.brand,
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -1694,7 +1694,7 @@ class _KycTierCard extends StatelessWidget {
                         margin: EdgeInsets.only(right: step == 3 ? 0 : 6),
                         decoration: BoxDecoration(
                           color: active
-                              ? const Color(0xFF2E7D32)
+                              ? ServicePayColors.brand
                               : const Color(0xFFE2E8F0),
                           borderRadius: BorderRadius.circular(20),
                         ),
@@ -1766,7 +1766,7 @@ class _KycTierCard extends StatelessWidget {
                       tierNumber < 3 ? 'Manage or upgrade KYC' : 'View KYC',
                     ),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: const Color(0xFF2E7D32),
+                      foregroundColor: ServicePayColors.brand,
                       side: const BorderSide(color: Color(0xFFB7D6BE)),
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
@@ -1836,14 +1836,14 @@ class _WalletSummaryCard extends StatelessWidget {
             width: 48,
             height: 48,
             decoration: BoxDecoration(
-              color: const Color(0xFFE8F5E9),
+              color: ServicePayColors.brandSoft,
               borderRadius: BorderRadius.circular(
                 15,
               ),
             ),
             child: const Icon(
               Icons.account_balance_wallet_rounded,
-              color: Color(0xFF2E7D32),
+              color: ServicePayColors.brand,
             ),
           ),
           const SizedBox(width: 13),
@@ -1872,7 +1872,7 @@ class _WalletSummaryCard extends StatelessWidget {
           ),
           const Icon(
             Icons.verified_user_rounded,
-            color: Color(0xFF2E7D32),
+            color: ServicePayColors.brand,
           ),
         ],
       ),
@@ -1971,14 +1971,14 @@ class _ProfileInfoRow extends StatelessWidget {
             width: 38,
             height: 38,
             decoration: BoxDecoration(
-              color: const Color(0xFFE8F5E9),
+              color: ServicePayColors.brandSoft,
               borderRadius: BorderRadius.circular(
                 12,
               ),
             ),
             child: Icon(
               icon,
-              color: const Color(0xFF2E7D32),
+              color: ServicePayColors.brand,
               size: 20,
             ),
           ),
@@ -2013,7 +2013,7 @@ class _ProfileInfoRow extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: const Color(0xFFE8F5E9),
+                color: ServicePayColors.brandSoft,
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Text(
@@ -2108,10 +2108,7 @@ class _ProfileActionTile extends StatelessWidget {
               width: 41,
               height: 41,
               decoration: BoxDecoration(
-                color: (iconColor ??
-                        const Color(
-                          0xFF2E7D32,
-                        ))
+                color: (iconColor ?? ServicePayColors.brand)
                     .withValues(
                   alpha: 0.10,
                 ),
@@ -2121,10 +2118,7 @@ class _ProfileActionTile extends StatelessWidget {
               ),
               child: Icon(
                 icon,
-                color: iconColor ??
-                    const Color(
-                      0xFF2E7D32,
-                    ),
+                color: iconColor ?? ServicePayColors.brand,
                 size: 21,
               ),
             ),
@@ -2182,7 +2176,7 @@ class _EditProfileSheet extends StatefulWidget {
 class _EditProfileSheetState extends State<_EditProfileSheet> {
   static const String baseUrl = 'https://api.servicepay.ng/api';
 
-  static const Color primaryGreen = Color(0xFF2E7D32);
+  static const Color primaryGreen = ServicePayColors.brand;
 
   final GlobalKey<FormState> formKey = GlobalKey<FormState>();
 
@@ -2542,7 +2536,7 @@ class _ChangePasswordSheet extends StatefulWidget {
 class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
   static const String baseUrl = 'https://api.servicepay.ng/api';
 
-  static const Color primaryGreen = Color(0xFF2E7D32);
+  static const Color primaryGreen = ServicePayColors.brand;
 
   final GlobalKey<FormState> formKey = GlobalKey<FormState>();
 
@@ -2879,7 +2873,7 @@ class _ProfileTextField extends StatelessWidget {
         labelText: label,
         prefixIcon: Icon(
           icon,
-          color: const Color(0xFF2E7D32),
+          color: ServicePayColors.brand,
         ),
         filled: true,
         fillColor: const Color(0xFFF8FAFC),
@@ -2892,7 +2886,7 @@ class _ProfileTextField extends StatelessWidget {
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: const BorderSide(
-            color: Color(0xFF2E7D32),
+            color: ServicePayColors.brand,
             width: 1.4,
           ),
         ),
@@ -2943,7 +2937,7 @@ class _PasswordField extends StatelessWidget {
         labelText: label,
         prefixIcon: const Icon(
           Icons.lock_outline_rounded,
-          color: Color(0xFF2E7D32),
+          color: ServicePayColors.brand,
         ),
         suffixIcon: IconButton(
           onPressed: onToggle,
@@ -2964,7 +2958,7 @@ class _PasswordField extends StatelessWidget {
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: const BorderSide(
-            color: Color(0xFF2E7D32),
+            color: ServicePayColors.brand,
             width: 1.4,
           ),
         ),

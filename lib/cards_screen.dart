@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'servicepay_theme.dart';
 
 class CardsScreen extends StatefulWidget {
   const CardsScreen({super.key});
@@ -15,8 +16,8 @@ class CardsScreen extends StatefulWidget {
 class _CardsScreenState extends State<CardsScreen> {
   static const String baseUrl = 'https://api.servicepay.ng/api';
 
-  static const Color primaryGreen = Color(0xFF08783E);
-  static const Color softGreen = Color(0xFFEAF7F0);
+  static const Color primaryGreen = ServicePayColors.brand;
+  static const Color softGreen = ServicePayColors.brandSoft;
   static const Color darkText = Color(0xFF172B22);
 
   bool isLoading = true;
@@ -860,17 +861,17 @@ class _CardsScreenState extends State<CardsScreen> {
                 colors: type.contains('VIRTUAL')
                     ? const <Color>[
                         Color(0xFF102C25),
-                        Color(0xFF08783E),
+                        ServicePayColors.brand,
                       ]
                     : const <Color>[
-                        Color(0xFF08783E),
-                        Color(0xFF18A35D),
+                        ServicePayColors.brand,
+                        Color(0xFF14945A),
                       ],
               ),
               borderRadius: BorderRadius.circular(28),
               boxShadow: const <BoxShadow>[
                 BoxShadow(
-                  color: Color(0x2208783E),
+                  color: Color(0x22087A45),
                   blurRadius: 20,
                   offset: Offset(0, 10),
                 ),
@@ -1028,8 +1029,7 @@ class _CardsScreenState extends State<CardsScreen> {
                       frozen ? 'Unfreeze' : 'Freeze',
                     ),
                     style: TextButton.styleFrom(
-                      foregroundColor:
-                          frozen ? primaryGreen : const Color(0xFF175CD3),
+                      foregroundColor: primaryGreen,
                     ),
                   ),
               ],

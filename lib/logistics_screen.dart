@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'servicepay_theme.dart';
 
 import 'create_delivery_screen.dart';
 import 'delivery_history_screen.dart';
@@ -11,7 +12,7 @@ class LogisticsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FB),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         title: const Text(
           'ServicePay Logistics',
@@ -146,8 +147,8 @@ class LogisticsScreen extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           colors: [
-            Color(0xFF1565C0),
-            Color(0xFF0D47A1),
+            ServicePayColors.brand,
+            Color(0xFF075F38),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -221,7 +222,7 @@ class LogisticsScreen extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
-              color: const Color(0xFFE5E7EB),
+              color: ServicePayColors.border,
             ),
           ),
           child: Row(
@@ -230,12 +231,12 @@ class LogisticsScreen extends StatelessWidget {
                 width: 52,
                 height: 52,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFEAF3FF),
+                  color: ServicePayColors.brandSoft,
                   borderRadius: BorderRadius.circular(15),
                 ),
                 child: Icon(
                   icon,
-                  color: const Color(0xFF1565C0),
+                  color: ServicePayColors.brand,
                   size: 27,
                 ),
               ),
