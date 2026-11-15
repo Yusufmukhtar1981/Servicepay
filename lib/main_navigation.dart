@@ -8,6 +8,7 @@ import 'transactions_screen.dart';
 import 'wallet_screen.dart';
 import 'servicepay_theme.dart';
 import 'edupay/edupay_screen.dart';
+import 'widgets/customer_dashboard_visuals.dart';
 
 class MainNavigation extends StatefulWidget {
   const MainNavigation({super.key, this.electricityScreenBuilder});
@@ -182,7 +183,11 @@ class _MainNavigationState extends State<MainNavigation> {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: ServicePayColors.border),
+            border: Border.all(
+              color: userRole == 'CUSTOMER'
+                  ? CustomerDashboardPalette.border
+                  : ServicePayColors.border,
+            ),
             boxShadow: const <BoxShadow>[
               BoxShadow(
                 color: Color(0x24101828),
@@ -302,6 +307,15 @@ class _MainNavigationState extends State<MainNavigation> {
     required String label,
   }) {
     final bool selected = currentIndex == index;
+    final Duration transitionDuration = MediaQuery.disableAnimationsOf(context)
+        ? Duration.zero
+        : const Duration(milliseconds: 220);
+    final bool customerNavigation = userRole == 'CUSTOMER';
+    final Color activeColor =
+        customerNavigation ? CustomerDashboardPalette.royalBlue : primaryGreen;
+    final Color selectedSurface = customerNavigation
+        ? CustomerDashboardPalette.paleBlue
+        : ServicePayColors.brandSoft;
 
     return Expanded(
       child: Padding(
@@ -318,11 +332,11 @@ class _MainNavigationState extends State<MainNavigation> {
             },
             borderRadius: BorderRadius.circular(18),
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 220),
+              duration: transitionDuration,
               curve: Curves.easeOut,
               padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 5),
               decoration: BoxDecoration(
-                color: selected ? const Color(0xFFEAF7F0) : Colors.transparent,
+                color: selected ? selectedSurface : Colors.transparent,
                 borderRadius: BorderRadius.circular(18),
               ),
               child: Column(
@@ -330,11 +344,11 @@ class _MainNavigationState extends State<MainNavigation> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: <Widget>[
                   AnimatedContainer(
-                    duration: const Duration(milliseconds: 220),
+                    duration: transitionDuration,
                     width: selected ? 31 : 27,
                     height: selected ? 31 : 27,
                     decoration: BoxDecoration(
-                      color: selected ? primaryGreen : Colors.transparent,
+                      color: selected ? activeColor : Colors.transparent,
                       shape: BoxShape.circle,
                     ),
                     alignment: Alignment.center,
@@ -357,7 +371,7 @@ class _MainNavigationState extends State<MainNavigation> {
                         height: 1,
                         fontWeight:
                             selected ? FontWeight.w800 : FontWeight.w600,
-                        color: selected ? primaryGreen : ServicePayColors.muted,
+                        color: selected ? activeColor : ServicePayColors.muted,
                       ),
                     ),
                   ),

@@ -60,6 +60,7 @@ import 'widgets/announcement_widgets.dart';
 import 'edupay/edupay_screen.dart';
 import 'school_portal_handoff_client.dart';
 import 'business_network/business_hub_screen.dart';
+import 'widgets/customer_dashboard_visuals.dart';
 
 List<ServicePayAnnouncement> mergeAnnouncementSessionState({
   required List<ServicePayAnnouncement> loaded,
@@ -190,6 +191,16 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
     _loadSavedProfilePhoto();
     loadDashboard();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _motionController.stop();
+    } else if (!_motionController.isAnimating) {
+      _motionController.repeat(reverse: true);
+    }
   }
 
   @override
@@ -447,7 +458,10 @@ class _DashboardScreenState extends State<DashboardScreen>
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
           gradient: const LinearGradient(
-            colors: [Color(0xFF075D35), Color(0xFF0A8F4D)],
+            colors: [
+              CustomerDashboardPalette.navy,
+              Color(0xFF173F78),
+            ],
           ),
           borderRadius: BorderRadius.circular(20),
         ),
@@ -469,7 +483,10 @@ class _DashboardScreenState extends State<DashboardScreen>
                 SizedBox(height: 4),
                 Text(
                   'Manage your school',
-                  style: TextStyle(color: Color(0xFFE5F7ED), fontSize: 12),
+                  style: TextStyle(
+                    color: Color(0xFFDCE8F8),
+                    fontSize: 12,
+                  ),
                 ),
               ],
             ),
@@ -1932,11 +1949,15 @@ class _DashboardScreenState extends State<DashboardScreen>
               height: 42,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: CustomerDashboardPalette.card,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFFE2EAE5)),
+                border: Border.all(color: CustomerDashboardPalette.border),
               ),
-              child: Icon(icon, size: 22, color: const Color(0xFF315645)),
+              child: Icon(
+                icon,
+                size: 22,
+                color: CustomerDashboardPalette.navy,
+              ),
             ),
             if (showDot)
               Positioned(
@@ -1951,7 +1972,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                   padding: const EdgeInsets.symmetric(horizontal: 3),
                   alignment: Alignment.center,
                   decoration: const BoxDecoration(
-                    color: Color(0xFFE8503D),
+                    color: CustomerDashboardPalette.error,
                     shape: BoxShape.circle,
                   ),
                   child: Text(
@@ -2086,14 +2107,17 @@ class _DashboardScreenState extends State<DashboardScreen>
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: <Color>[Color(0xFF08783E), Color(0xFF075B37)],
+          colors: <Color>[
+            CustomerDashboardPalette.navy,
+            Color(0xFF173F78),
+          ],
         ),
         borderRadius: BorderRadius.circular(24),
         boxShadow: const <BoxShadow>[
           BoxShadow(
-            color: Color(0x26075E36),
-            blurRadius: 20,
-            offset: Offset(0, 8),
+            color: Color(0x24102B55),
+            blurRadius: 23,
+            offset: Offset(0, 9),
           ),
         ],
       ),
@@ -2106,10 +2130,21 @@ class _DashboardScreenState extends State<DashboardScreen>
                 child: Text(
                   'Available Balance',
                   style: TextStyle(
-                    color: Color(0xFFE2F2E9),
+                    color: Color(0xFFDCE8F8),
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
                   ),
+                ),
+              ),
+              IconButton(
+                key: const Key('customer-support-action'),
+                tooltip: 'Help & support',
+                onPressed: () => openScreen(const HelpSupportScreen()),
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(
+                  Icons.support_agent_rounded,
+                  color: Color(0xFFDCE8F8),
+                  size: 21,
                 ),
               ),
               IconButton(
@@ -2141,7 +2176,7 @@ class _DashboardScreenState extends State<DashboardScreen>
               color: walletBalanceAvailable || hideBalance
                   ? Colors.white
                   : const Color(0xFFFFD8B1),
-              fontSize: walletBalanceAvailable || hideBalance ? 31 : 20,
+              fontSize: walletBalanceAvailable || hideBalance ? 34 : 20,
               height: 1.08,
               letterSpacing: -1,
               fontWeight: FontWeight.w900,
@@ -2160,7 +2195,7 @@ class _DashboardScreenState extends State<DashboardScreen>
               ),
             ),
           ],
-          const SizedBox(height: 18),
+          const SizedBox(height: 17),
           Row(
             children: <Widget>[
               Expanded(
@@ -2173,6 +2208,16 @@ class _DashboardScreenState extends State<DashboardScreen>
                     'Wallet Funding',
                     () => openScreen(const WalletScreen()),
                   ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _balanceActionButton(
+                  label: 'History',
+                  icon: Icons.receipt_long_rounded,
+                  filled: false,
+                  key: const Key('dashboard-wallet-history-action'),
+                  onTap: () => openScreen(const TransactionsScreen()),
                 ),
               ),
             ],
@@ -2191,11 +2236,11 @@ class _DashboardScreenState extends State<DashboardScreen>
   }) {
     return Material(
       key: key,
-      color: filled ? Colors.white : Colors.white.withValues(alpha: 0.13),
+      color: filled ? Colors.white : Colors.white.withValues(alpha: 0.10),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
         side: BorderSide(
-          color: Colors.white.withValues(alpha: filled ? 1 : 0.38),
+          color: Colors.white.withValues(alpha: filled ? 1 : 0.32),
         ),
       ),
       child: InkWell(
@@ -2206,7 +2251,11 @@ class _DashboardScreenState extends State<DashboardScreen>
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              Icon(icon, size: 17, color: filled ? primaryGreen : Colors.white),
+              Icon(
+                icon,
+                size: 18,
+                color: filled ? CustomerDashboardPalette.navy : Colors.white,
+              ),
               const SizedBox(height: 3),
               FittedBox(
                 fit: BoxFit.scaleDown,
@@ -2214,7 +2263,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                   label,
                   maxLines: 1,
                   style: TextStyle(
-                    color: filled ? primaryGreen : Colors.white,
+                    color:
+                        filled ? CustomerDashboardPalette.navy : Colors.white,
                     fontSize: 10,
                     fontWeight: FontWeight.w800,
                   ),
@@ -2333,7 +2383,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         const Text(
           'Active Services',
           style: TextStyle(
-            color: Color(0xFF15281B),
+            color: CustomerDashboardPalette.navy,
             fontSize: 17,
             fontWeight: FontWeight.w900,
           ),
@@ -2345,9 +2395,9 @@ class _DashboardScreenState extends State<DashboardScreen>
             width: double.infinity,
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: CustomerDashboardPalette.card,
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: const Color(0xFFE3ECE6)),
+              border: Border.all(color: CustomerDashboardPalette.border),
             ),
             child: const Row(
               children: <Widget>[
@@ -2373,7 +2423,7 @@ class _DashboardScreenState extends State<DashboardScreen>
 
   Widget _buildActiveServiceStatusCard(_DashboardServiceStatus item) {
     return Material(
-      color: Colors.white,
+      color: CustomerDashboardPalette.card,
       borderRadius: BorderRadius.circular(18),
       child: InkWell(
         key: Key(
@@ -2385,7 +2435,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           padding: const EdgeInsets.all(13),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: const Color(0xFFE3ECE6)),
+            border: Border.all(color: CustomerDashboardPalette.border),
           ),
           child: Row(
             children: <Widget>[
@@ -2393,11 +2443,14 @@ class _DashboardScreenState extends State<DashboardScreen>
                 width: 42,
                 height: 42,
                 alignment: Alignment.center,
-                decoration: const BoxDecoration(
-                  color: softGreen,
-                  shape: BoxShape.circle,
+                child: CustomerServiceGlyph(
+                  icon: item.icon,
+                  backgroundColor: CustomerDashboardPalette.paleBlue,
+                  iconColor: CustomerDashboardPalette.royalBlue,
+                  size: 42,
+                  iconSize: 21,
+                  radius: 14,
                 ),
-                child: Icon(item.icon, color: primaryGreen, size: 21),
               ),
               const SizedBox(width: 11),
               Expanded(
@@ -2690,10 +2743,28 @@ class _DashboardScreenState extends State<DashboardScreen>
     _DashboardService service, {
     required int index,
   }) {
+    final Color accent = switch (service.title) {
+      'Data' => CustomerDashboardPalette.royalBlue,
+      'Airtime' => CustomerDashboardPalette.teal,
+      'Delivery' => CustomerDashboardPalette.navy,
+      'EduPay' => CustomerDashboardPalette.teal,
+      'Marketplace' => const Color(0xFFB7791F),
+      'Electricity' => CustomerDashboardPalette.warning,
+      'NIN Verification' => CustomerDashboardPalette.teal,
+      'Keke Napep' => CustomerDashboardPalette.royalBlue,
+      'Flight Booking' => CustomerDashboardPalette.navy,
+      _ => service.iconColor,
+    };
+    final Color accentSurface = accent == CustomerDashboardPalette.teal
+        ? const Color(0xFFE4F6F4)
+        : accent == CustomerDashboardPalette.warning ||
+                service.title == 'Marketplace'
+            ? const Color(0xFFFFF4E1)
+            : CustomerDashboardPalette.paleBlue;
     return _floating(
       index: index + 3,
       child: Material(
-        color: const Color(0xFFFBFEFC),
+        color: const Color(0xFFFBFCFF),
         borderRadius: BorderRadius.circular(15),
         child: InkWell(
           key: Key('customer-quick-service-${service.title.toLowerCase()}'),
@@ -2703,7 +2774,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(15),
-              border: Border.all(color: const Color(0xFFDDEBE2)),
+              border: Border.all(color: CustomerDashboardPalette.border),
             ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -2712,14 +2783,13 @@ class _DashboardScreenState extends State<DashboardScreen>
                   width: 36,
                   height: 36,
                   alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: service.backgroundColor.withValues(alpha: 0.82),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    service.icon,
-                    color: primaryGreen,
-                    size: 25,
+                  child: CustomerServiceGlyph(
+                    icon: service.icon,
+                    backgroundColor: accentSurface,
+                    iconColor: accent,
+                    size: 38,
+                    iconSize: 22,
+                    radius: 13,
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -2728,7 +2798,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                   textAlign: TextAlign.center,
                   softWrap: true,
                   style: const TextStyle(
-                    color: Color(0xFF294638),
+                    color: CustomerDashboardPalette.navy,
                     fontSize: 12.5,
                     height: 1.08,
                     fontWeight: FontWeight.w800,
@@ -2836,8 +2906,15 @@ class _DashboardScreenState extends State<DashboardScreen>
       padding: const EdgeInsets.fromLTRB(14, 15, 14, 14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE3ECE6)),
+        borderRadius: BorderRadius.circular(21),
+        border: Border.all(color: CustomerDashboardPalette.border),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x08102B55),
+            blurRadius: 18,
+            offset: Offset(0, 6),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2938,9 +3015,9 @@ class _DashboardScreenState extends State<DashboardScreen>
       key: const Key('customer-funding-account'),
       padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
       decoration: BoxDecoration(
-        color: const Color(0xFFEFF7F1),
+        color: const Color(0xFFEAF1FC),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFD8E9DE)),
+        border: Border.all(color: CustomerDashboardPalette.border),
       ),
       child: Row(
         children: <Widget>[
@@ -2953,7 +3030,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             ),
             child: const Icon(
               Icons.account_balance_rounded,
-              color: primaryGreen,
+              color: CustomerDashboardPalette.royalBlue,
               size: 21,
             ),
           ),
@@ -2965,7 +3042,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 const Text(
                   'SERVICEPAY • ACCOUNT NUMBER',
                   style: TextStyle(
-                    color: Color(0xFF587064),
+                    color: CustomerDashboardPalette.muted,
                     fontSize: 9.5,
                     fontWeight: FontWeight.w800,
                     letterSpacing: .45,
@@ -2975,7 +3052,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 Text(
                   fundingAccountNumber,
                   style: const TextStyle(
-                    color: Color(0xFF15352A),
+                    color: CustomerDashboardPalette.navy,
                     fontSize: 16,
                     fontWeight: FontWeight.w900,
                     letterSpacing: .3,
@@ -2988,7 +3065,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      color: Color(0xFF456052),
+                      color: CustomerDashboardPalette.navy,
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
                     ),
@@ -2998,7 +3075,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                   Text(
                     fundingAccountBank,
                     style: const TextStyle(
-                      color: Color(0xFF73877D),
+                      color: CustomerDashboardPalette.muted,
                       fontSize: 10,
                     ),
                   ),
@@ -3110,6 +3187,9 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   Widget _floating({required int index, required Widget child}) {
+    if (MediaQuery.disableAnimationsOf(context)) {
+      return child;
+    }
     return AnimatedBuilder(
       animation: _motionController,
       child: child,
@@ -3929,173 +4009,190 @@ class _DashboardScreenState extends State<DashboardScreen>
 
     final initial = firstName.isNotEmpty ? firstName[0].toUpperCase() : 'S';
 
+    final String greeting = DateTime.now().hour < 12
+        ? 'Good morning'
+        : DateTime.now().hour < 17
+            ? 'Good afternoon'
+            : 'Good evening';
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 8),
-      child: Row(
+      child: Column(
         children: <Widget>[
-          Container(
-            width: 40,
-            height: 40,
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: const Color(0xFFEAF7F0),
-              borderRadius: BorderRadius.circular(13),
-            ),
-            child: Image.asset(
-              'assets/image/servicepay_logo.png',
-              fit: BoxFit.contain,
-              errorBuilder: (
-                context,
-                error,
-                stackTrace,
-              ) {
-                return const Icon(
-                  Icons.account_balance_wallet_rounded,
-                  color: Color(0xFF08783E),
-                  size: 22,
-                );
-              },
-            ),
-          ),
-          const SizedBox(width: 11),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(
-                  'ServicePay',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF315645),
-                  ),
+          Row(
+            children: <Widget>[
+              Container(
+                width: 40,
+                height: 40,
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  color: CustomerDashboardPalette.paleBlue,
+                  borderRadius: BorderRadius.circular(13),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  firstName,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -0.35,
-                    color: Color(0xFF17231D),
-                  ),
+                child: Image.asset(
+                  'assets/image/servicepay_logo.png',
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) {
+                    return const Icon(
+                      Icons.account_balance_wallet_rounded,
+                      color: CustomerDashboardPalette.navy,
+                      size: 22,
+                    );
+                  },
                 ),
-              ],
-            ),
-          ),
-          _headerIconButton(
-            tooltip: 'Refresh dashboard',
-            icon: Icons.refresh_rounded,
-            key: const Key('dashboard-header-refresh'),
-            onTap: _refreshDashboard,
-          ),
-          const SizedBox(width: 7),
-          _headerIconButton(
-            tooltip: 'Notifications',
-            icon: Icons.notifications_none_rounded,
-            key: const Key('dashboard-header-notifications'),
-            showDot: unreadNotifications > 0,
-            onTap: () async {
-              final int? unread = await Navigator.of(context).push<int>(
-                MaterialPageRoute<int>(
-                  builder: (_) => const NotificationsScreen(),
-                ),
-              );
-              if (mounted && unread != null) {
-                setState(() => unreadNotifications = unread < 0 ? 0 : unread);
-              }
-            },
-          ),
-          const SizedBox(width: 9),
-          GestureDetector(
-            onTap:
-                isUploadingProfilePhoto ? null : _showProfilePhotoSourceSheet,
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: <Widget>[
-                Container(
-                  width: 44,
-                  height: 44,
-                  clipBehavior: Clip.antiAlias,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: const Color(0xFFEAF7F0),
-                    border: Border.all(
-                      color: Colors.white,
-                      width: 2,
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: <Widget>[
+                    const Text(
+                      'ServicePay',
+                      style: TextStyle(
+                        fontSize: 13,
+                        height: 1.05,
+                        fontWeight: FontWeight.w900,
+                        color: CustomerDashboardPalette.navy,
+                      ),
                     ),
-                    boxShadow: const <BoxShadow>[
-                      BoxShadow(
-                        color: Color(0x12000000),
-                        blurRadius: 10,
-                        offset: Offset(0, 4),
+                    const SizedBox(height: 2),
+                    Text(
+                      '$greeting,',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: CustomerDashboardPalette.muted,
+                        fontSize: 9,
+                        height: 1,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      firstName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        height: 1.05,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.3,
+                        color: CustomerDashboardPalette.navy,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              _headerIconButton(
+                tooltip: 'Refresh dashboard',
+                icon: Icons.refresh_rounded,
+                key: const Key('dashboard-header-refresh'),
+                onTap: _refreshDashboard,
+              ),
+              const SizedBox(width: 7),
+              _headerIconButton(
+                tooltip: 'Notifications',
+                icon: Icons.notifications_none_rounded,
+                key: const Key('dashboard-header-notifications'),
+                showDot: unreadNotifications > 0,
+                onTap: () async {
+                  final int? unread = await Navigator.of(context).push<int>(
+                    MaterialPageRoute<int>(
+                      builder: (_) => const NotificationsScreen(),
+                    ),
+                  );
+                  if (mounted && unread != null) {
+                    setState(
+                        () => unreadNotifications = unread < 0 ? 0 : unread);
+                  }
+                },
+              ),
+              const SizedBox(width: 9),
+              GestureDetector(
+                key: const Key('customer-profile-photo'),
+                onTap: isUploadingProfilePhoto
+                    ? null
+                    : _showProfilePhotoSourceSheet,
+                child: Semantics(
+                  button: true,
+                  label: 'Change profile photo',
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: <Widget>[
+                      Container(
+                        width: 44,
+                        height: 44,
+                        clipBehavior: Clip.antiAlias,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: CustomerDashboardPalette.paleBlue,
+                          border: Border.all(color: Colors.white, width: 2),
+                          boxShadow: const <BoxShadow>[
+                            BoxShadow(
+                              color: Color(0x10102B55),
+                              blurRadius: 10,
+                              offset: Offset(0, 3),
+                            ),
+                          ],
+                        ),
+                        child: profilePhotoUrl.trim().isNotEmpty
+                            ? Image.network(
+                                profilePhotoUrl,
+                                width: 44,
+                                height: 44,
+                                fit: BoxFit.cover,
+                                errorBuilder: (context, error, stackTrace) {
+                                  return Text(
+                                    initial,
+                                    style: const TextStyle(
+                                      color: CustomerDashboardPalette.navy,
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  );
+                                },
+                              )
+                            : Text(
+                                initial,
+                                style: const TextStyle(
+                                  color: CustomerDashboardPalette.navy,
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                      ),
+                      Positioned(
+                        right: -2,
+                        bottom: -2,
+                        child: Container(
+                          width: 19,
+                          height: 19,
+                          decoration: BoxDecoration(
+                            color: CustomerDashboardPalette.royalBlue,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 2),
+                          ),
+                          child: isUploadingProfilePhoto
+                              ? const Padding(
+                                  padding: EdgeInsets.all(4),
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 1.5,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Icon(
+                                  Icons.camera_alt_rounded,
+                                  color: Colors.white,
+                                  size: 10,
+                                ),
+                        ),
                       ),
                     ],
                   ),
-                  child: profilePhotoUrl.trim().isNotEmpty
-                      ? Image.network(
-                          profilePhotoUrl,
-                          width: 44,
-                          height: 44,
-                          fit: BoxFit.cover,
-                          errorBuilder: (
-                            context,
-                            error,
-                            stackTrace,
-                          ) {
-                            return Text(
-                              initial,
-                              style: const TextStyle(
-                                color: Color(0xFF08783E),
-                                fontSize: 17,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            );
-                          },
-                        )
-                      : Text(
-                          initial,
-                          style: const TextStyle(
-                            color: Color(0xFF08783E),
-                            fontSize: 17,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
                 ),
-                Positioned(
-                  right: -2,
-                  bottom: -2,
-                  child: Container(
-                    width: 19,
-                    height: 19,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF08783E),
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: Colors.white,
-                        width: 2,
-                      ),
-                    ),
-                    child: isUploadingProfilePhoto
-                        ? const Padding(
-                            padding: EdgeInsets.all(4),
-                            child: CircularProgressIndicator(
-                              strokeWidth: 1.5,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Icon(
-                            Icons.camera_alt_rounded,
-                            color: Colors.white,
-                            size: 10,
-                          ),
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ],
       ),
@@ -5276,9 +5373,9 @@ class _DashboardScreenState extends State<DashboardScreen>
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 15, 14, 14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: CustomerDashboardPalette.card,
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFFE2ECE5)),
+        border: Border.all(color: CustomerDashboardPalette.border),
         boxShadow: const <BoxShadow>[
           BoxShadow(
             color: Color(0x0B102A1B),
@@ -5301,7 +5398,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: Color(0xFF15281B),
+                        color: CustomerDashboardPalette.navy,
                         fontSize: 17,
                         fontWeight: FontWeight.w900,
                       ),
@@ -5311,7 +5408,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                     key: const Key('dashboard-see-all-transactions'),
                     onPressed: () => openScreen(const TransactionsScreen()),
                     style: TextButton.styleFrom(
-                      foregroundColor: primaryGreen,
+                      foregroundColor: CustomerDashboardPalette.royalBlue,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 8,
                         vertical: 8,
@@ -5356,16 +5453,16 @@ class _DashboardScreenState extends State<DashboardScreen>
     final String? direction = _recentTransactionDirection(transaction);
     final double? amount = _recentTransactionAmount(transaction);
     final Color statusColor = status == 'SUCCESSFUL'
-        ? primaryGreen
+        ? CustomerDashboardPalette.success
         : status == 'FAILED'
-            ? const Color(0xFFB42318)
+            ? CustomerDashboardPalette.error
             : status == 'STATUS UNAVAILABLE'
                 ? ServicePayColors.muted
-                : const Color(0xFFB54708);
+                : CustomerDashboardPalette.warning;
     final Color directionColor = direction == 'CREDIT'
-        ? primaryGreen
+        ? CustomerDashboardPalette.success
         : direction == 'DEBIT'
-            ? const Color(0xFF344054)
+            ? CustomerDashboardPalette.navy
             : ServicePayColors.muted;
     final String amountLabel = amount == null
         ? 'Amount unavailable'
@@ -5383,12 +5480,12 @@ class _DashboardScreenState extends State<DashboardScreen>
                 height: 42,
                 alignment: Alignment.center,
                 decoration: const BoxDecoration(
-                  color: softGreen,
+                  color: CustomerDashboardPalette.paleBlue,
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
                   _recentTransactionIcon(title),
-                  color: primaryGreen,
+                  color: CustomerDashboardPalette.royalBlue,
                   size: 20,
                 ),
               ),
@@ -5402,7 +5499,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        color: Color(0xFF263D30),
+                        color: CustomerDashboardPalette.navy,
                         fontSize: 12.5,
                         fontWeight: FontWeight.w800,
                       ),
@@ -5427,7 +5524,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                         Text(
                           _recentTransactionDateLabel(transaction),
                           style: const TextStyle(
-                            color: Color(0xFF98A69D),
+                            color: CustomerDashboardPalette.muted,
                             fontSize: 9.5,
                             fontWeight: FontWeight.w600,
                           ),
@@ -5538,30 +5635,46 @@ class _DashboardScreenState extends State<DashboardScreen>
       child: Ink(
         padding: const EdgeInsets.all(17),
         decoration: BoxDecoration(
-          color: const Color(0xFFE8F3EC),
+          color: CustomerDashboardPalette.paleBlue,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: const Color(0xFFC9E2D2)),
+          border: Border.all(color: CustomerDashboardPalette.border),
         ),
         child: const Row(
           children: [
-            Icon(Icons.hub_outlined, color: primaryGreen, size: 30),
+            Icon(
+              Icons.hub_outlined,
+              color: CustomerDashboardPalette.royalBlue,
+              size: 30,
+            ),
             SizedBox(width: 13),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Business Hub',
-                      style:
-                          TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                  Text(
+                    'Business Hub',
+                    style: TextStyle(
+                      color: CustomerDashboardPalette.navy,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
                   SizedBox(height: 3),
                   Text(
                     'Become an Agent or register your business',
-                    style: TextStyle(color: Color(0xFF53645B), fontSize: 12),
+                    style: TextStyle(
+                      color: CustomerDashboardPalette.muted,
+                      fontSize: 12,
+                    ),
                   ),
                 ],
               ),
             ),
-            Icon(Icons.arrow_forward_ios_rounded, size: 16, color: primaryGreen),
+            Icon(
+              Icons.arrow_forward_ios_rounded,
+              size: 16,
+              color: CustomerDashboardPalette.royalBlue,
+            ),
           ],
         ),
       ),
@@ -5573,10 +5686,10 @@ class _DashboardScreenState extends State<DashboardScreen>
     BuildContext context,
   ) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F9FB),
+      backgroundColor: CustomerDashboardPalette.canvas,
       body: SafeArea(
         child: RefreshIndicator(
-          color: primaryGreen,
+          color: CustomerDashboardPalette.royalBlue,
           onRefresh: _refreshDashboard,
           child: Center(
             child: ConstrainedBox(
@@ -5589,8 +5702,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                   const SizedBox(height: 14),
                   if (isLoading)
                     const LinearProgressIndicator(
-                      color: primaryGreen,
-                      backgroundColor: softGreen,
+                      color: CustomerDashboardPalette.royalBlue,
+                      backgroundColor: CustomerDashboardPalette.paleBlue,
                       minHeight: 2,
                     ),
                   if (isLoading) const SizedBox(height: 10),
@@ -5605,32 +5718,34 @@ class _DashboardScreenState extends State<DashboardScreen>
                     const SizedBox(height: 15),
                   buildCustomerQuickServices(),
                   const SizedBox(height: 14),
-                  _buildBusinessHubEntry(),
                   if (isLoadingServiceStatuses ||
                       activeServiceStatuses.isNotEmpty) ...[
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 14),
                     buildActiveServiceStatuses(),
-                    const SizedBox(height: 15),
+                    const SizedBox(height: 14),
                   ],
+                  _buildBusinessHubEntry(),
                   if (_announcementService != null &&
                       announcements.isNotEmpty) ...[
                     const SizedBox(height: 14),
-                    AnnouncementSurface(
-                      announcements: announcements,
-                      service: _announcementService!,
-                      rewardProgressService: _rewardProgressService,
-                      onPopupCompleted: (item) {
-                        _sessionPopupCompletedBanners[item.id] = item;
-                      },
-                      onBannerRemoved: (item) {
-                        setState(() {
-                          _sessionHiddenBannerIds.add(item.id);
-                          _sessionPopupCompletedBanners.remove(item.id);
-                          announcements = announcements
-                              .where((value) => value.id != item.id)
-                              .toList();
-                        });
-                      },
+                    CustomerCampaignFrame(
+                      child: AnnouncementSurface(
+                        announcements: announcements,
+                        service: _announcementService!,
+                        rewardProgressService: _rewardProgressService,
+                        onPopupCompleted: (item) {
+                          _sessionPopupCompletedBanners[item.id] = item;
+                        },
+                        onBannerRemoved: (item) {
+                          setState(() {
+                            _sessionHiddenBannerIds.add(item.id);
+                            _sessionPopupCompletedBanners.remove(item.id);
+                            announcements = announcements
+                                .where((value) => value.id != item.id)
+                                .toList();
+                          });
+                        },
+                      ),
                     ),
                   ],
                   if (schoolPortalMemberships.isNotEmpty) ...[
