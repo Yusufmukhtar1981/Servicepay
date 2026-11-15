@@ -386,6 +386,8 @@ app.use("/api/account-recovery", require("./routes/accountRecovery.routes").cust
 // ServicePay Fintech Control Enforcement
 app.use('/api/marketplace', marketplaceRoutes);
 app.use("/api/settings", appSettingsRoutes);
+// Optional Customer experience features: no startup migrations or workers.
+app.use("/api/customer-experience", require("./routes/customerExperience.routes"));
 app.use("/api/customer-leaderboard", require("./routes/customerLeaderboard.routes"));
 app.use("/api/feature-control", featureControlRoutes);
 app.use("/api/edupay", edupayRoutes);

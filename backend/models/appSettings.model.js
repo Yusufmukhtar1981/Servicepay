@@ -549,6 +549,12 @@ const supportSettingsSchema =
 const appVersionSettingsSchema =
   new mongoose.Schema(
     {
+      notificationActive: { type: Boolean, default: false },
+      latestVersionCode: { type: Number, default: 0, min: 0 },
+      minimumVersionCode: { type: Number, default: 0, min: 0 },
+      releaseTitle: { type: String, trim: true, default: "" },
+      releaseNotes: { type: String, trim: true, default: "" },
+      managementHistory: { type: [mongoose.Schema.Types.Mixed], default: [] },
       minimumSupportedVersion: {
         type: String,
         trim: true,
