@@ -167,4 +167,67 @@ void main() {
     expect(parseReferralResponse(null).total, 0);
     expect(decodeReferralJson('not json'), isEmpty);
   });
+
+  test('parses v2 policy earnings and privacy-safe activity', () {
+    final summary = parseReferralResponse(<String, dynamic>{
+      'referralCode': 'SP-V2',
+      'totalReferralEarnings': 4,
+      'registrationBonusesEarned': 2,
+      'transactionCommissionsEarned': 2,
+      'legacyRewards': 2000,
+      'historyPage': 3,
+      'historyPages': 5,
+      'historyTotal': 219,
+      'programme': <String, dynamic>{
+        'version': 2,
+        'enabled': true,
+        'activatedAt': '2025-03-01T10:00:00Z',
+        'registrationBonus': 100,
+        'transactionCommission': 1,
+        'eligibleServices': <String>['AIRTIME', 'DATA'],
+        'verification': 'VERIFIED_CONTACT',
+      },
+      'referrals': <Map<String, dynamic>>[
+        <String, dynamic>{
+          'firstName': 'Ada Example',
+          'joinedAt': '2025-03-02T00:00:00Z',
+          'verified': true,
+          'successfulTransactions': 2,
+          'registrationBonusEarned': 100,
+          'transactionCommissionsEarned': 2,
+          'rewardStatus': 'PAID',
+          'phone': '+2340000000',
+          'email': 'private@example.test',
+        },
+      ],
+      'history': <Map<String, dynamic>>[
+        <String, dynamic>{
+          'id': 'ledger-1',
+          'reference': 'REF-1',
+          'date': '2025-03-03T10:00:00Z',
+          'amount': 1,
+          'direction': 'CREDIT',
+          'rewardType': 'TRANSACTION',
+          'referredCustomer': <String, dynamic>{'firstName': 'Ada Lovelace'},
+          'sourceReference': 'PAY-1',
+        },
+      ],
+    });
+
+    expect(summary.programme.version, 2);
+    expect(summary.programme.enabled, isTrue);
+    expect(summary.programme.registrationBonus, 100);
+    expect(summary.programme.eligibleServices, <String>['AIRTIME', 'DATA']);
+    expect(summary.totalRewards, 4);
+    expect(summary.legacyRewards, 2000);
+    expect(summary.historyPage, 3);
+    expect(summary.historyPages, 5);
+    expect(summary.historyTotal, 219);
+    expect(summary.referrals.single.firstName, 'Ada');
+    expect(summary.referrals.single.verified, isTrue);
+    expect(summary.referrals.single.successfulTransactions, 2);
+    expect(summary.referrals.single.registrationBonusEarned, 100);
+    expect(summary.history.single.firstName, 'Ada');
+    expect(summary.history.single.reference, 'REF-1');
+  });
 }

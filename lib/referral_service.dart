@@ -57,6 +57,14 @@ class ReferralSummary {
     this.rewardPolicy = const ReferralRewardPolicy(
       status: 'NOT_CONFIGURED',
     ),
+    this.programme = const ReferralProgramme(),
+    this.registrationBonusesEarned = 0,
+    this.transactionCommissionsEarned = 0,
+    this.legacyRewards = 0,
+    this.history = const <ReferralRewardActivity>[],
+    this.historyPage = 1,
+    this.historyPages = 1,
+    this.historyTotal = 0,
     required this.referrals,
   });
 
@@ -68,6 +76,14 @@ class ReferralSummary {
   final num totalRewards;
   final String rewardProgramStatus;
   final ReferralRewardPolicy rewardPolicy;
+  final ReferralProgramme programme;
+  final num registrationBonusesEarned;
+  final num transactionCommissionsEarned;
+  final num legacyRewards;
+  final List<ReferralRewardActivity> history;
+  final int historyPage;
+  final int historyPages;
+  final int historyTotal;
   final List<ReferralEntry> referrals;
 
   /// The old UI and old response contract called this `referredCount`.
@@ -81,6 +97,50 @@ class ReferralSummary {
   String get rewardPolicyStatus => rewardProgramStatus;
 }
 
+class ReferralProgramme {
+  const ReferralProgramme({
+    this.version = 1,
+    this.enabled = false,
+    this.activatedAt = '',
+    this.registrationBonus = 100,
+    this.transactionCommission = 1,
+    this.eligibleServices = const <String>[],
+    this.verification = 'VERIFIED_CONTACT',
+  });
+
+  final int version;
+  final bool enabled;
+  final String activatedAt;
+  final num registrationBonus;
+  final num transactionCommission;
+  final List<String> eligibleServices;
+  final String verification;
+
+  bool get isVersionTwo => version >= 2;
+}
+
+class ReferralRewardActivity {
+  const ReferralRewardActivity({
+    required this.id,
+    required this.reference,
+    required this.date,
+    required this.amount,
+    required this.direction,
+    required this.rewardType,
+    required this.firstName,
+    required this.sourceReference,
+  });
+
+  final String id;
+  final String reference;
+  final String date;
+  final num amount;
+  final String direction;
+  final String rewardType;
+  final String firstName;
+  final String sourceReference;
+}
+
 class ReferralEntry {
   const ReferralEntry({
     required this.firstName,
@@ -89,6 +149,10 @@ class ReferralEntry {
     required this.rewardStatus,
     this.category = '',
     this.bestCategoryProgress = '',
+    this.verified = false,
+    this.successfulTransactions = 0,
+    this.registrationBonusEarned = 0,
+    this.transactionCommissionsEarned = 0,
   });
 
   /// Deliberately contains only one name component.  Referral data must not
@@ -99,6 +163,10 @@ class ReferralEntry {
   final String rewardStatus;
   final String category;
   final String bestCategoryProgress;
+  final bool verified;
+  final int successfulTransactions;
+  final num registrationBonusEarned;
+  final num transactionCommissionsEarned;
 
   String get bestProgress => bestCategoryProgress.isEmpty
       ? qualificationProgress
@@ -170,6 +238,11 @@ ReferralSummary parseReferralResponse(dynamic decoded) {
 
   final policy = _parsePolicy(source);
   final status = _policyStatus(source, policy);
+  final programme = _parseProgramme(source['programme']);
+  final rawHistory = source['history'];
+  final history = rawHistory is List
+      ? rawHistory.whereType<Map>().map(_parseActivity).toList()
+      : <ReferralRewardActivity>[];
 
   return ReferralSummary(
     code: _stringValue(
@@ -181,6 +254,7 @@ ReferralSummary parseReferralResponse(dynamic decoded) {
     paid: paid,
     totalRewards: _numValue(
       _firstPresent(source, <String>[
+        'totalReferralEarnings',
         'totalRewards',
         'totalReferralRewards',
         'rewardsEarned',
@@ -193,7 +267,56 @@ ReferralSummary parseReferralResponse(dynamic decoded) {
       status: status,
       categories: policy.categories,
     ),
+    programme: programme,
+    registrationBonusesEarned: _numValue(source['registrationBonusesEarned']),
+    transactionCommissionsEarned:
+        _numValue(source['transactionCommissionsEarned']),
+    legacyRewards: _numValue(source['legacyRewards']),
+    history: history,
+    historyPage: _positiveInt(source['historyPage'], fallback: 1),
+    historyPages: _positiveInt(source['historyPages'], fallback: 1),
+    historyTotal: _nonNegativeInt(source['historyTotal']),
     referrals: items,
+  );
+}
+
+ReferralProgramme _parseProgramme(dynamic raw) {
+  if (raw is! Map) return const ReferralProgramme();
+  final value = Map<String, dynamic>.from(raw);
+  final services = value['eligibleServices'];
+  return ReferralProgramme(
+    version: _nonNegativeInt(value['version'] ?? 1),
+    enabled: value['enabled'] == true,
+    activatedAt: _stringValue(value['activatedAt']),
+    registrationBonus: _numValue(value['registrationBonus'] ?? 100),
+    transactionCommission: _numValue(value['transactionCommission'] ?? 1),
+    eligibleServices: services is List
+        ? services
+            .map(_stringValue)
+            .where((service) => service.isNotEmpty)
+            .toList()
+        : const <String>[],
+    verification: _stringValue(value['verification']).isEmpty
+        ? 'VERIFIED_CONTACT'
+        : _stringValue(value['verification']),
+  );
+}
+
+ReferralRewardActivity _parseActivity(Map raw) {
+  final item = Map<String, dynamic>.from(raw);
+  final customer = item['referredCustomer'];
+  final firstName = customer is Map
+      ? _firstNameOnly(_stringValue(customer['firstName']))
+      : '';
+  return ReferralRewardActivity(
+    id: _stringValue(item['id']),
+    reference: _stringValue(item['reference']),
+    date: _dateValue(item['date']),
+    amount: _numValue(item['amount']),
+    direction: _normaliseStatus(item['direction'], fallback: 'CREDIT'),
+    rewardType: _normaliseStatus(item['rewardType'], fallback: 'TRANSACTION'),
+    firstName: firstName,
+    sourceReference: _stringValue(item['sourceReference']),
   );
 }
 
@@ -233,6 +356,11 @@ ReferralEntry _parseEntry(Map<String, dynamic> item) {
     bestCategoryProgress: progressText,
     category: category,
     rewardStatus: _displayValue(reward),
+    verified: item['verified'] == true,
+    successfulTransactions: _nonNegativeInt(item['successfulTransactions']),
+    registrationBonusEarned: _numValue(item['registrationBonusEarned']),
+    transactionCommissionsEarned:
+        _numValue(item['transactionCommissionsEarned']),
   );
 }
 
@@ -565,6 +693,11 @@ String _numberText(num value) {
 int _nonNegativeInt(dynamic value) {
   final number = _numValue(value).toInt();
   return number < 0 ? 0 : number;
+}
+
+int _positiveInt(dynamic value, {required int fallback}) {
+  final number = _numValue(value).toInt();
+  return number > 0 ? number : fallback;
 }
 
 Map<String, dynamic> decodeReferralJson(String body) {
