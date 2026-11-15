@@ -10,6 +10,7 @@ const schema = new mongoose.Schema(
     status: { type: String, enum: ["PENDING", "RESOLVED"], default: "PENDING", index: true },
     lastError: { type: String, default: "", maxlength: 1000 },
     attempts: { type: Number, default: 0, min: 0 },
+    eventVersion: { type: Number, default: 0, min: 0 },
     nextAttemptAt: { type: Date, default: Date.now },
     leaseId: { type: String, default: "", index: true },
     leaseUntil: { type: Date, default: null, index: true },

@@ -746,11 +746,13 @@ const userSchema = new mongoose.Schema(
       ref: "User",
       default: undefined,
       index: true,
+      immutable: true,
     },
 
     referralCapturedAt: {
       type: Date,
       default: null,
+      immutable: true,
     },
 
     totalEarnings: {
@@ -1439,6 +1441,8 @@ userSchema.add({
 });
 
 userSchema.index({ createdAt: -1 });
+
+userSchema.plugin(require("../services/referralEvents.plugin"), { type: "REGISTRATION" });
 
 module.exports =
   mongoose.model(

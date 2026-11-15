@@ -63,7 +63,7 @@ const invoke = async (handler, req) => {
   return result;
 };
 
-const makeUser = async () => {
+const makeUser = async (overrides = {}) => {
   const user = await User.create({
   fullName: `Focused DATA Buyer ${++sequence}`,
   phone: `080${String(sequence).padStart(8, "0")}`,
@@ -72,6 +72,7 @@ const makeUser = async () => {
   role: "CUSTOMER",
   status: "ACTIVE",
   walletBalance: 1000,
+  ...overrides,
   });
   user.setTransactionPin("2468");
   await user.save();
@@ -639,5 +640,35 @@ test("an unresolved different recipient does not impose an account-wide lock", a
   const result = await purchase(user, { key: "unrelated-new-key" });
   assert.equal(result.status, 200);
   assert.equal(result.body.status, "SUCCESSFUL");
+  assert.equal(dispatchCalls, 1);
+});
+
+test("activated referral programme preserves real purchase admission and exactly-once source debit", async () => {
+  const AppSettings = require("../models/appSettings.model");
+  const Outbox = require("../models/referralRewardReconciliation.model");
+  const Claim = require("../models/referralRewardClaim.model");
+  const Clawback = require("../models/referralRewardClawback.model");
+  await Promise.all([AppSettings, Outbox, Claim, Clawback].map((model) => model.init()));
+  await AppSettings.create({ key: "GLOBAL_SETTINGS" });
+  const admin = await makeUser({ role: "HEAD_OFFICE" });
+  await require("../services/referralProgramme.service").configure({
+    enabled: true, registrationBonus: 100, transactionCommission: 1,
+    eligibleServices: ["DATA"], reason: "Isolated end-to-end referral purchase test",
+  }, admin);
+  const referrer = await makeUser({ walletBalance: 0 });
+  const customer = await makeUser({
+    referredBy: referrer._id, referralCapturedAt: new Date(), emailVerified: true,
+  });
+  await addCanonicalPrice();
+  const first = await purchase(customer, { key: "referral-active-unique-purchase" });
+  const duplicate = await purchase(customer, { key: "referral-active-unique-purchase" });
+  assert.equal(first.status, 200);
+  assert.equal(first.body.status, "SUCCESSFUL");
+  assert.equal(duplicate.body.reference, first.body.reference);
+  await require("../services/referralReward.service").processReferralRewardReconciliation();
+  assert.equal((await User.findById(customer._id)).walletBalance, 1000 - SERVICEPAY_PRICE);
+  assert.equal((await User.findById(referrer._id)).walletBalance, 101);
+  assert.equal(await LedgerEntry.countDocuments({ user: customer._id, direction: "DEBIT" }), 1);
+  assert.equal(await LedgerEntry.countDocuments({ user: referrer._id, direction: "CREDIT" }), 2);
   assert.equal(dispatchCalls, 1);
 });

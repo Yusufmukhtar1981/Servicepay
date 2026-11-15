@@ -507,6 +507,8 @@ deliverySchema.methods.calculateCommission =
 deliverySchema.statics.STANDARD_DELIVERY_FEE = 2000;
 deliverySchema.statics.STANDARD_RIDER_SHARE_RATE = 0.30;
 
+deliverySchema.plugin(require("../services/referralEvents.plugin"), { type: "DELIVERY" });
+
 module.exports = mongoose.model(
   "Delivery",
   deliverySchema

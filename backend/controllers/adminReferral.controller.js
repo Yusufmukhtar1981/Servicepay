@@ -233,6 +233,9 @@ const referralReportingStages = ({ userFilter = null } = {}) => {
 exports.summary = async (req, res) => {
   if (!globalHeadOfficeOnly(req, res)) return;
   try {
+    if ((await require("../services/referralProgramme.service").policy()).activatedAt) {
+      return await require("./referralProgramme.controller").summary(req, res);
+    }
     const [stats] = await User.aggregate([
       ...referralReportingStages({
         userFilter: { role: "CUSTOMER", referredBy: { $exists: true, $ne: null } },
@@ -366,6 +369,9 @@ exports.readiness = async (req, res) => {
 exports.search = async (req, res) => {
   if (!globalHeadOfficeOnly(req, res)) return;
   try {
+    if ((await require("../services/referralProgramme.service").policy()).activatedAt) {
+      return await require("./referralProgramme.controller").searchReferrals(req, res);
+    }
     const limit = Math.min(Math.max(Number(req.query.limit) || 50, 1), 200);
     const page = Math.max(Number(req.query.page) || 1, 1);
     const category = String(req.query.category || "").trim().toUpperCase();
@@ -460,8 +466,23 @@ exports.progress = async (req, res) => {
       _id: req.params.customerId,
       role: "CUSTOMER",
       referredBy: { $exists: true, $ne: null },
-    }).select("_id fullName status createdAt referredBy").lean();
+    }).select("_id fullName status createdAt referredBy emailVerified phoneVerified").lean();
     if (!customer) return res.status(404).json({ success: false, message: "Referral customer not found." });
+    const programme = require("../services/referralProgramme.service");
+    if ((await programme.policy()).activatedAt) {
+      const earnings = await programme.totals({ relatedUser: customer._id });
+      const entries = await require("../models/ledgerEntry.model").find({
+        ...programme.baseFilter, relatedUser: customer._id,
+      }).sort({ createdAt: -1, _id: -1 }).select("metadata direction reference").lean();
+      const successfulTransactions = entries.filter((row) => row.metadata.rewardType === "TRANSACTION")
+        .reduce((total, row) => total + (row.direction === "CREDIT" ? 1 : -1), 0);
+      return res.json({ success: true, customer: safeCustomer(customer), referrerId: customer.referredBy,
+        ...earnings, verified: programme.verified(customer), successfulTransactions, progress: {},
+        qualificationStatus: programme.verified(customer) ? "QUALIFIED" : "PENDING",
+        rewardStatus: earnings.registrationBonusesEarned > 0 ? "AWARDED" : "NOT_ISSUED",
+        ledgerReference: entries[0]?.reference || null, rewardReference: entries[0]?.reference || null,
+      });
+    }
     const progress = await progressFor(customer);
     const [claim, clawback, pending] = await Promise.all([
       ReferralRewardClaim.findOne({ referredCustomer: customer._id }).select("category status amount ledgerReference awardedAt").lean(),
@@ -518,6 +539,19 @@ exports.audit = async (req, res) => {
       reversalReference: clawback.ledgerReference,
       occurredAt: clawback.reversedAt || clawback.createdAt,
     });
+    const programme = require("../services/referralProgramme.service");
+    if ((await programme.policy()).activatedAt) {
+      const rows = await require("../models/ledgerEntry.model").find({
+        ...programme.baseFilter, relatedUser: req.params.customerId,
+      }).sort({ createdAt: -1, _id: -1 }).limit(200).lean();
+      auditHistory.push(...rows.map((row) => ({
+        event: row.direction === "CREDIT" ? "REFERRAL_REWARD_CREDIT" : "REFERRAL_REWARD_REVERSAL",
+        action: row.direction === "CREDIT" ? "REFERRAL_REWARD_CREDIT" : "REFERRAL_REWARD_REVERSAL",
+        type: row.metadata.rewardType, reference: row.reference, rewardReference: row.reference,
+        amount: row.amount, direction: row.direction, status: row.status,
+        occurredAt: row.createdAt, createdAt: row.createdAt,
+      })));
+    }
     return res.json({ success: true, auditHistory });
   } catch (error) {
     return res.status(500).json({ success: false, message: "Unable to load referral audit history." });

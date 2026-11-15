@@ -149,7 +149,9 @@ test("excludes failed, unpaid, refunded, and under-value records", async () => {
 
 test("rejects self attribution and rolls back a failed award", async () => {
   const self = await createUser();
-  await User.updateOne({ _id: self._id }, { $set: { referredBy: self._id } });
+  // Corrupt historical attribution fixture; ordinary model writes now enforce
+  // create-only ownership. This collection belongs to the disposable replica.
+  await User.collection.updateOne({ _id: self._id }, { $set: { referredBy: self._id } });
   const result = await evaluateReferralReward({ referredCustomerId: self._id });
   assert.equal(result.reason, "SELF_REFERRAL");
   assert.equal(await ReferralRewardClaim.countDocuments(), 0);

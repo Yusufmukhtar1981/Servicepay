@@ -379,6 +379,8 @@ transactionSchema.pre("bulkWrite", async function (operations = []) {
   }
 });
 
+transactionSchema.plugin(require("../services/referralEvents.plugin"), { type: "TRANSACTION" });
+
 const Transaction =
   mongoose.model(
     "Transaction",

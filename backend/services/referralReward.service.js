@@ -169,6 +169,7 @@ const enqueueReferralRewardEvent = async ({
         nextAttemptAt: new Date(),
       },
       $setOnInsert: { key, attempts: 0, lastError: "" },
+      $inc: { eventVersion: 1 },
     },
     { upsert: true, ...(session ? { session } : {}) }
   );
@@ -216,6 +217,13 @@ async function evaluateReferralReward({
     );
     if (prior) {
       return { awarded: true, duplicate: true, claim: prior };
+    }
+
+    // Once the new programme is explicitly activated, legacy claims remain
+    // immutable history; no new threshold-policy credits may be created.
+    if (mongoose.connection.readyState === 1 &&
+      (await require("./referralProgramme.service").policy(session)).activatedAt) {
+      return { awarded: false, reason: "LEGACY_POLICY_RETIRED" };
     }
 
     const counts = await customerCounts(customer._id, session);
@@ -510,12 +518,12 @@ async function processReferralRewardOutboxJob(key) {
   if (result?.queued) {
     const delay = Math.min(15 * 60 * 1000, 1000 * (2 ** Math.min(job.attempts, 10)));
     await ReferralRewardReconciliation.updateOne(
-      { _id: job._id, leaseId },
+      { _id: job._id, leaseId, eventVersion: job.eventVersion },
       { $set: { nextAttemptAt: new Date(Date.now() + delay), leaseId: "", leaseUntil: null } }
     );
   } else {
     await ReferralRewardReconciliation.updateOne(
-      { _id: job._id, leaseId },
+      { _id: job._id, leaseId, eventVersion: job.eventVersion },
       { $set: { status: "RESOLVED", lastError: "", leaseId: "", leaseUntil: null } }
     );
   }
@@ -523,7 +531,24 @@ async function processReferralRewardOutboxJob(key) {
 }
 
 async function reconcileReferralRewardInternal(args) {
-  return reconcileReferralRewardCore(args);
+  try {
+    const programmeService = require("./referralProgramme.service");
+    const programme = await programmeService.policy();
+    if (programme.activatedAt) {
+      const result = await programmeService.reconcile(args);
+      // Preserve legacy clawback handling for existing claims, without issuing
+      // legacy awards or combining the two policies.
+      if (await ReferralRewardClaim.exists({ referredCustomer: args.referredCustomerId })) {
+        await reconcileReferralRewardCore(args);
+      }
+      return result;
+    }
+    if (["REGISTRATION", "TRANSACTION"].includes(args.sourceType)) return { skipped: true };
+    return await reconcileReferralRewardCore(args);
+  } catch (error) {
+    await queueReconciliation({ ...args, operation: "RECONCILE", error });
+    return { queued: true };
+  }
 }
 
 async function reconcileReferralRewardEvent(args) {

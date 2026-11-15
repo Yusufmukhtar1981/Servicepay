@@ -330,6 +330,8 @@ marketplaceOrderSchema.index(
   }
 );
 
+marketplaceOrderSchema.plugin(require("../services/referralEvents.plugin"), { type: "MARKETPLACE" });
+
 module.exports = mongoose.model(
   'MarketplaceOrder',
   marketplaceOrderSchema

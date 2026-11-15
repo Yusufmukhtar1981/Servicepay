@@ -2524,6 +2524,17 @@ exports.getMyReferral = async (req, res) => {
       };
     }
 
+    if (require("mongoose").connection.readyState === 1) {
+      const programmeService = require("../services/referralProgramme.service");
+      if ((await programmeService.policy()).activatedAt) {
+        return res.status(200).json({
+          success: true,
+          referralCode: user.referralCode,
+          referralLink: `https://servicepay.ng/register?ref=${encodeURIComponent(user.referralCode)}`,
+          ...(await programmeService.customerSummary(userId, req.query || {})),
+        });
+      }
+    }
     const referrals = await getReferralProgress(userId);
 
     const referredCount =

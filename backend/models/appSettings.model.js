@@ -704,6 +704,21 @@ const appSettingsSchema =
         required: true,
       },
 
+      // Absent on legacy settings. Activation is explicit; never backfill rewards.
+      referralProgramme: {
+        type: new mongoose.Schema({
+          version: { type: Number, enum: [2], required: true },
+          enabled: { type: Boolean, required: true },
+          activatedAt: { type: Date, default: null, immutable: true },
+          registrationBonus: { type: Number, required: true, min: 0, max: 1000000 },
+          transactionCommission: { type: Number, required: true, min: 0, max: 1000000 },
+          eligibleServices: { type: [String], required: true },
+          revision: { type: Number, required: true, min: 1 },
+          updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+        }, { _id: false }),
+        default: undefined,
+      },
+
       deliveryPricing: {
         type: new mongoose.Schema({
           price: { type: Number, required: true, min: 0.01, max: 10000000 },

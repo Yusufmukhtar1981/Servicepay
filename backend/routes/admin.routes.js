@@ -130,6 +130,11 @@ router.use((req, res, next) => {
 });
 
 const controlCenterBase = [protect, adminOnly("HEAD_OFFICE"), loadStaffRole];
+const referralProgrammeController = require("../controllers/referralProgramme.controller");
+router.get("/referrals/programme", protect, loadStaffRole, requirePermission(P.REFERRALS_VIEW), referralProgrammeController.getProgramme);
+router.patch("/referrals/programme", protect, loadStaffRole, requirePermission(P.REFERRALS_VIEW), requirePermission(P.SETTINGS_UPDATE), referralProgrammeController.updateProgramme);
+router.get("/referrals/commissions/export", protect, loadStaffRole, requirePermission(P.REFERRALS_VIEW), referralProgrammeController.exportCommissions);
+router.get("/referrals/commissions", protect, loadStaffRole, requirePermission(P.REFERRALS_VIEW), referralProgrammeController.commissions);
 router.get("/referrals/summary", protect, loadStaffRole, requirePermission(P.REFERRALS_VIEW), adminReferralController.summary);
 router.get("/referrals/readiness", protect, loadStaffRole, requirePermission(P.REFERRALS_VIEW), adminReferralController.readiness);
 router.get("/referrals", protect, loadStaffRole, requirePermission(P.REFERRALS_VIEW), adminReferralController.search);
