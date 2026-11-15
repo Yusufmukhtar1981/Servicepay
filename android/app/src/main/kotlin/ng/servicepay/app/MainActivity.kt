@@ -10,12 +10,47 @@ import io.flutter.plugin.common.EventChannel
 
 class MainActivity : FlutterFragmentActivity() {
     private val settingsChannel = "ng.servicepay.app/settings"
+    private val versionChannel = "ng.servicepay.app/version"
     private val deepLinkChannel = "ng.servicepay.app/deep_links"
     private val deepLinkEvents = "ng.servicepay.app/deep_links/events"
     private var deepLinkSink: EventChannel.EventSink? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            versionChannel
+        ).setMethodCallHandler { call, result ->
+            if (call.method != "getVersion") {
+                result.notImplemented()
+                return@setMethodCallHandler
+            }
+            try {
+                val packageInfo = if (android.os.Build.VERSION.SDK_INT >= 33) {
+                    packageManager.getPackageInfo(
+                        packageName,
+                        android.content.pm.PackageManager.PackageInfoFlags.of(0)
+                    )
+                } else {
+                    @Suppress("DEPRECATION")
+                    packageManager.getPackageInfo(packageName, 0)
+                }
+                @Suppress("DEPRECATION")
+                val versionCode = if (android.os.Build.VERSION.SDK_INT >= 28) {
+                    packageInfo.longVersionCode.toInt()
+                } else {
+                    packageInfo.versionCode
+                }
+                result.success(
+                    mapOf(
+                        "versionName" to (packageInfo.versionName ?: ""),
+                        "versionCode" to versionCode
+                    )
+                )
+            } catch (error: Exception) {
+                result.error("VERSION_UNAVAILABLE", error.message, null)
+            }
+        }
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             settingsChannel

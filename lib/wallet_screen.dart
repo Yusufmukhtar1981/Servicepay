@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'transactions_screen.dart';
+import 'customer_experience_screen.dart';
 import 'servicepay_theme.dart';
 import 'services/customer_feature_config_service.dart';
 
@@ -464,7 +465,6 @@ class _WalletScreenState extends State<WalletScreen> {
     );
   }
 
-
   Future<void> _openTransactionsScreen() async {
     await _openWalletDestination(const TransactionsScreen());
   }
@@ -782,108 +782,109 @@ class _WalletScreenState extends State<WalletScreen> {
     return CustomerFeatureGate(
       featureKey: 'WALLET',
       child: Scaffold(
-      backgroundColor: ServicePayColors.canvas,
-      appBar: AppBar(
         backgroundColor: ServicePayColors.canvas,
-        foregroundColor: ServicePayColors.ink,
-        iconTheme: const IconThemeData(
-          color: ServicePayColors.ink,
-        ),
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-        titleSpacing: 20,
-        title: const Text(
-          'Wallet',
-          style: TextStyle(
+        appBar: AppBar(
+          backgroundColor: ServicePayColors.canvas,
+          foregroundColor: ServicePayColors.ink,
+          iconTheme: const IconThemeData(
             color: ServicePayColors.ink,
-            fontSize: 24,
-            fontWeight: FontWeight.w800,
           ),
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
+          titleSpacing: 20,
+          title: const Text(
+            'Wallet',
+            style: TextStyle(
+              color: ServicePayColors.ink,
+              fontSize: 24,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          actions: [
+            IconButton(
+              tooltip: 'Refresh wallet',
+              onPressed: isRefreshing
+                  ? null
+                  : () {
+                      _loadWallet(
+                        showRefreshLoader: true,
+                      );
+                    },
+              icon: isRefreshing
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.4,
+                        color: ServicePayColors.brand,
+                      ),
+                    )
+                  : const Icon(
+                      Icons.refresh_rounded,
+                      color: Color(0xFF0F172A),
+                    ),
+            ),
+            const SizedBox(width: 8),
+          ],
         ),
-        actions: [
-          IconButton(
-            tooltip: 'Refresh wallet',
-            onPressed: isRefreshing
-                ? null
-                : () {
-                    _loadWallet(
-                      showRefreshLoader: true,
-                    );
-                  },
-            icon: isRefreshing
-                ? const SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.4,
-                      color: ServicePayColors.brand,
-                    ),
-                  )
-                : const Icon(
-                    Icons.refresh_rounded,
-                    color: Color(0xFF0F172A),
-                  ),
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: isLoading
-          ? const Center(
-              child: CircularProgressIndicator(
+        body: isLoading
+            ? const Center(
+                child: CircularProgressIndicator(
+                  color: ServicePayColors.brand,
+                ),
+              )
+            : RefreshIndicator(
                 color: ServicePayColors.brand,
-              ),
-            )
-          : RefreshIndicator(
-              color: ServicePayColors.brand,
-              onRefresh: () => _loadWallet(
-                showRefreshLoader: true,
-              ),
-              child: LayoutBuilder(
-                builder: (
-                  BuildContext context,
-                  BoxConstraints constraints,
-                ) {
-                  final double horizontalPadding =
-                      constraints.maxWidth >= 700 ? 32 : 16;
+                onRefresh: () => _loadWallet(
+                  showRefreshLoader: true,
+                ),
+                child: LayoutBuilder(
+                  builder: (
+                    BuildContext context,
+                    BoxConstraints constraints,
+                  ) {
+                    final double horizontalPadding =
+                        constraints.maxWidth >= 700 ? 32 : 16;
 
-                  final double contentWidth =
-                      constraints.maxWidth >= 900 ? 850 : constraints.maxWidth;
+                    final double contentWidth = constraints.maxWidth >= 900
+                        ? 850
+                        : constraints.maxWidth;
 
-                  return SingleChildScrollView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: EdgeInsets.fromLTRB(
-                      horizontalPadding,
-                      8,
-                      horizontalPadding,
-                      30,
-                    ),
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(
-                          maxWidth: contentWidth,
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            _buildWalletCard(),
-                            if (walletNotice.isNotEmpty) ...[
-                              const SizedBox(height: 12),
-                              _buildWalletNotice(),
+                    return SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: EdgeInsets.fromLTRB(
+                        horizontalPadding,
+                        8,
+                        horizontalPadding,
+                        30,
+                      ),
+                      child: Center(
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxWidth: contentWidth,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildWalletCard(),
+                              if (walletNotice.isNotEmpty) ...[
+                                const SizedBox(height: 12),
+                                _buildWalletNotice(),
+                              ],
+                              const SizedBox(height: 18),
+                              _buildVirtualAccountCard(),
+                              const SizedBox(height: 18),
+                              _buildAccountStatementEntry(),
+                              const SizedBox(height: 26),
+                              _buildTransactionsSection(),
                             ],
-                            const SizedBox(height: 18),
-                            _buildVirtualAccountCard(),
-                            const SizedBox(height: 18),
-                            _buildAccountStatementEntry(),
-                            const SizedBox(height: 26),
-                            _buildTransactionsSection(),
-                          ],
+                          ),
                         ),
                       ),
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
-            ),
       ),
     );
   }
@@ -1315,13 +1316,16 @@ class _WalletScreenState extends State<WalletScreen> {
     );
   }
 
-
   Widget _buildAccountStatementEntry() {
     return Material(
       color: Colors.white,
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
-        onTap: _openTransactionsScreen,
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute<void>(
+            builder: (_) => const GenerateStatementScreen(),
+          ),
+        ),
         borderRadius: BorderRadius.circular(20),
         child: Container(
           padding: const EdgeInsets.all(16),
@@ -1342,7 +1346,7 @@ class _WalletScreenState extends State<WalletScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Account statement',
+                      'Generate Statement',
                       style: TextStyle(
                         color: Color(0xFF0F172A),
                         fontWeight: FontWeight.w800,
@@ -1350,7 +1354,7 @@ class _WalletScreenState extends State<WalletScreen> {
                     ),
                     SizedBox(height: 3),
                     Text(
-                      'Review your complete wallet activity',
+                      'Get a server-prepared PDF for your chosen dates',
                       style: TextStyle(
                         color: Color(0xFF64748B),
                         fontSize: 12,
@@ -1369,7 +1373,6 @@ class _WalletScreenState extends State<WalletScreen> {
       ),
     );
   }
-
 
   Widget _buildTransactionsSection() {
     return Column(

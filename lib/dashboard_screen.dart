@@ -22,12 +22,11 @@ import 'delivery_history_screen.dart';
 import 'notifications_screen.dart';
 import 'transactions_screen.dart';
 import 'wallet_screen.dart';
-
+import 'customer_experience_screen.dart';
 
 import 'community_agent_locator_screen.dart';
 import 'help_support_screen.dart';
 import 'profile_screen.dart';
-
 
 import 'referral_screen.dart';
 
@@ -37,7 +36,6 @@ import 'kyc_screen.dart';
 import 'cards_screen.dart';
 
 import 'partner_application_screen.dart';
-
 
 import 'mini_apps_screen.dart';
 import 'keke_order_screen.dart';
@@ -150,6 +148,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       <_DashboardServiceStatus>[];
   List<Map<String, dynamic>> schoolPortalMemberships = <Map<String, dynamic>>[];
   bool isOpeningSchoolPortal = false;
+  bool _checkingAppUpdate = false;
   bool get _schoolPortalSupported => widget.schoolPortalSupported ?? kIsWeb;
   CustomerFeatureConfiguration featureConfiguration =
       CustomerFeatureConfigurationService.defaults();
@@ -191,6 +190,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
     _loadSavedProfilePhoto();
     loadDashboard();
+    unawaited(_checkAppUpdate());
   }
 
   @override
@@ -219,6 +219,33 @@ class _DashboardScreenState extends State<DashboardScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && mounted) {
       _loadServiceAvailability();
+      unawaited(_checkAppUpdate());
+    }
+  }
+
+  Future<void> _checkAppUpdate() async {
+    if (_checkingAppUpdate ||
+        !mounted ||
+        kIsWeb ||
+        defaultTargetPlatform != TargetPlatform.android) {
+      return;
+    }
+    _checkingAppUpdate = true;
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final token = await getSavedAuthToken(preferences);
+      if (token == null || token.isEmpty || !mounted) return;
+      final api = CustomerExperienceApi(client: _client);
+      await checkCustomerAppUpdate(
+        context: context,
+        isWeb: kIsWeb,
+        platform: defaultTargetPlatform,
+        api: api,
+      );
+    } catch (_) {
+      // Update checks are best-effort; offline customers remain in the app.
+    } finally {
+      _checkingAppUpdate = false;
     }
   }
 
@@ -531,8 +558,10 @@ class _DashboardScreenState extends State<DashboardScreen>
             current: announcements,
             popupCompletedBanners: _sessionPopupCompletedBanners,
             hiddenBannerIds: _sessionHiddenBannerIds,
-          ).where((item) => !promotesHiddenCustomerService(
-              '${item.title} ${item.message} ${item.cta ?? ''}')).toList();
+          )
+              .where((item) => !promotesHiddenCustomerService(
+                  '${item.title} ${item.message} ${item.cta ?? ''}'))
+              .toList();
         });
       }
     } catch (_) {
@@ -2749,13 +2778,13 @@ class _DashboardScreenState extends State<DashboardScreen>
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(15),
               border: Border.all(color: CustomerDashboardPalette.border),
-            boxShadow: const <BoxShadow>[
-              BoxShadow(
-                color: Color(0x0D123B25),
-                blurRadius: 14,
-                offset: Offset(0, 5),
-              ),
-            ],
+              boxShadow: const <BoxShadow>[
+                BoxShadow(
+                  color: Color(0x0D123B25),
+                  blurRadius: 14,
+                  offset: Offset(0, 5),
+                ),
+              ],
             ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -2840,6 +2869,12 @@ class _DashboardScreenState extends State<DashboardScreen>
       }
       final List<_DashboardService> all = <_DashboardService>[
         ...byTitle.values,
+        _customerServiceEntry(
+          'Cashback',
+          Icons.savings_outlined,
+          () => openScreen(const CashbackScreen()),
+          subtitle: 'Your ServicePay cashback',
+        ),
         if (_isServiceVisible('Referral'))
           _customerServiceEntry(
             'Referral',
@@ -2931,7 +2966,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                 labelHeight = math.max(labelHeight, painter.height);
                 painter.dispose();
               }
-              final double rowExtent = math.max(104, 56 + labelHeight.ceilToDouble());
+              final double rowExtent =
+                  math.max(104, 56 + labelHeight.ceilToDouble());
               return GridView.builder(
                 key: const Key('customer-services-grid'),
                 shrinkWrap: true,
@@ -3534,7 +3570,6 @@ class _DashboardScreenState extends State<DashboardScreen>
         );
       },
     );
-
 
     addItem(
       feature: 'kyc',

@@ -51,7 +51,7 @@ void main() {
       await tester.pumpWidget(const MaterialApp(home: WalletScreen()));
       await tester.pump(const Duration(milliseconds: 150));
       expect(find.text('Transfer'), findsNothing);
-      await tester.scrollUntilVisible(find.text('Account statement'), 300,
+      await tester.scrollUntilVisible(find.text('Generate Statement'), 300,
           scrollable: find.byType(Scrollable).first);
       expect(find.text('QR Pay'), findsNothing);
       expect(find.text('Withdraw'), findsNothing);
