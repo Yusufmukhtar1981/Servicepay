@@ -52,7 +52,7 @@ exports.me = wrap(async (req, res) => {
   const memberships = await M.Staff.find({ user: req.user._id, status: { $in: ["INVITED", "ACTIVE"] } }).populate("profile", "networkId kind services details.businessName status").lean();
   const settings = await M.Settings.findById("network");
   output(res, { customer: user, applications, memberships, features: P.features,
-    featureAccess: require("../services/businessNetwork.controls").matrix(settings),
+    featureAccess: require("../services/businessNetwork.controls").publicMatrix(settings),
     categories: settings?.categories || new M.Settings().categories,
     supportedServices: P.billServices, serviceCatalogue: await catalogue.catalogue(settings) });
 });
@@ -112,7 +112,7 @@ exports.dashboard = wrap(async (req, res) => {
   const safeProfile = profile.toObject();
   if (membership) delete safeProfile.directory;
   output(res, { profile: safeProfile, summary, commissions, features: P.features,
-    featureAccess: require("../services/businessNetwork.controls").matrix(await M.Settings.findById("network")),
+    featureAccess: require("../services/businessNetwork.controls").publicMatrix(await M.Settings.findById("network")),
     pricingContext: { businessKind: profile.kind, walletAuthority: "AUTHENTICATED_CUSTOMER_ONLY" } });
 });
 exports.transactions = wrap(async (req, res) => {

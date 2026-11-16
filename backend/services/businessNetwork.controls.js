@@ -31,6 +31,10 @@ function matrix(doc) {
     reason: definition.ready ? "" : "Not activated: verified integration, allocation and supported device checks are required.",
   }));
 }
+function publicMatrix(doc) {
+  // Preserve enforcement flags, but keep integration diagnostics in Admin.
+  return matrix(doc).map(({ reason, ...feature }) => feature);
+}
 function validate(input, previous = {}) {
   if (!input || Array.isArray(input) || typeof input !== "object" ||
       Object.keys(input).some(category => !["CUSTOMER", "AGENT", "MERCHANT"].includes(category)))
@@ -65,4 +69,4 @@ async function requireFeature(category, key, session, { lock = false } = {}) {
     await M.Settings.updateOne({ _id: "network", revision: doc.revision }, { $inc: { loyaltyFence: 1 } }, { session, timestamps: false });
   return doc;
 }
-module.exports = { states, definitions, matrix, validate, requireFeature };
+module.exports = { states, definitions, matrix, publicMatrix, validate, requireFeature };

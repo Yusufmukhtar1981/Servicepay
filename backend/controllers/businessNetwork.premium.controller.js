@@ -12,7 +12,7 @@ async function owner(req, session) {
   return result.profile;
 }
 exports.catalogue = wrap(async (_req, res) => out(res, { serviceCatalogue: await C.catalogue(await M.Settings.findById("network")),
-  features: P.features, capabilityReasons: B.capabilityReasons, voucherContract: V.contract }));
+  features: P.features }));
 exports.settings = wrap(async (_req, res) => {
   const row = await M.Settings.findById("network");
   out(res, { ...B.settings(row), revision: row?.revision || 0, features: P.features, capabilityReasons: B.capabilityReasons,
@@ -75,8 +75,7 @@ exports.tools = wrap(async (req, res) => {
     referralCode: user?.referralCode || null, referralRewardAuthority: "Existing ServicePay referral programme; no duplicate rewards created.",
     publicProfile: profile.publicProfile === true,
     publicProfilePath: profile.publicProfile ? `/api/business-network/public/${encodeURIComponent(profile.networkId)}` : null,
-    features: P.features, capabilityReasons: B.capabilityReasons,
-    voucherContract: V.contract,
+    features: P.features,
     pricingDescription: "Purchase prices come from existing secure service quotes. Verified commission is separate from the price charged.",
   });
 });
@@ -186,13 +185,12 @@ exports.level = wrap(async (req, res) => {
   out(res, { profile: result });
 });
 exports.unavailable = wrap(async (req, _res) => {
-  const reason = B.capabilityReasons[req.params.capability];
-  P.fail(reason || "This provider capability has not been verified.", "NETWORK_CAPABILITY_DISABLED", 409);
+  P.fail("This service is not available yet. Please contact Business Support for help.", "NETWORK_CAPABILITY_DISABLED", 409);
 });
 exports.vouchers = wrap(async (req, res) => {
   await owner(req);
-  out(res, { enabled: false, inventoryVerified: false, items: [], contract: V.contract,
-    capabilityReasons: B.capabilityReasons, message: "No live voucher purchase or stock has been verified. No PINs are issued or exposed." });
+  out(res, { enabled: false, inventoryVerified: false, items: [], status: "COMING_SOON",
+    message: "Recharge cards, Data cards and printing are not available yet." });
 });
 exports.adminVouchers = wrap(async (_req, res) => out(res, { enabled: false, inventoryVerified: false, items: [],
   contract: V.contract, capabilityReasons: B.capabilityReasons }));

@@ -85,11 +85,67 @@ test.after(async () => { await new Promise(resolve => server?.close(resolve)); a
 test("unauthenticated access is rejected by existing JWT middleware", async () => {
   const r = await fetch(origin + "/me"); assert.equal(r.status, 401);
 });
+test("customer service status hides integration diagnostics while Admin retains them", async () => {
+  const controls = require("../services/businessNetwork.controls");
+  assert.ok(controls.matrix(null).some(row => row.reason.includes("integration")));
+  const r = await call("GET", "/me");
+  assert.equal(r.status, 200);
+  assert.ok(r.data.featureAccess.length > 0);
+  assert.ok(r.data.featureAccess.every(row => !Object.hasOwn(row, "reason")));
+  const unsupported = r.data.featureAccess.filter(row => !row.ready);
+  assert.ok(unsupported.length > 0);
+  assert.ok(unsupported.every(row => Object.values(row.categories).every(state => state !== "ENABLED")));
+  const catalogue = await call("GET", "/catalogue");
+  assert.equal(catalogue.status, 200);
+  assert.equal(catalogue.data.capabilityReasons, undefined);
+  assert.equal(catalogue.data.voucherContract, undefined);
+});
+test("customer voucher response preserves disabled state and keeps contracts Admin-only", async () => {
+  await approved();
+  const r = await call("GET", "/vouchers/AGENT");
+  assert.equal(r.status, 200);
+  assert.equal(r.data.enabled, false);
+  assert.equal(r.data.status, "COMING_SOON");
+  assert.equal(r.data.contract, undefined);
+  assert.equal(r.data.capabilityReasons, undefined);
+  const admin = await call("GET", "/admin/vouchers", undefined, users.admin);
+  assert.equal(admin.status, 200);
+  assert.ok(admin.data.contract);
+});
 test("separate Agent and Merchant applications preserve the Customer identity", async () => {
   await approved("AGENT"); await approved("MERCHANT");
   const r = await call("GET", "/me");
   assert.equal(r.data.applications.length, 2); assert.deepEqual(r.data.features, P.features);
   assert.notEqual(r.data.applications[0].networkId, r.data.applications[1].networkId);
+});
+test("Merchant owner approval has one canonical profile across applications, Admin and dashboard without a staff membership", async () => {
+  const agent = await call("PUT", "/applications/AGENT", detail);
+  let r = await call("PUT", "/applications/MERCHANT", detail);
+  const id = r.data.profile._id;
+  r = await call("POST", "/applications/MERCHANT/submit", { revision: r.data.profile.revision });
+  assert.equal(r.status, 200);
+  assert.equal((await call("GET", "/dashboard/MERCHANT")).status, 403);
+  const decision = { status: "APPROVED", revision: r.data.profile.revision };
+  r = await call("POST", `/admin/profiles/${id}/review`, decision, users.admin);
+  assert.equal(r.status, 200);
+  assert.equal((await call("POST", `/admin/profiles/${id}/review`, decision, users.admin)).status, 200);
+  const me = (await call("GET", "/me")).data;
+  assert.deepEqual(me.memberships, []);
+  assert.equal(me.applications.find(p => p.kind === "MERCHANT").status, "APPROVED");
+  assert.equal(me.applications.find(p => p.kind === "AGENT").status, agent.data.profile.status);
+  const dashboard = await call("GET", "/dashboard/MERCHANT");
+  assert.equal(dashboard.status, 200);
+  assert.equal(dashboard.data.profile._id, id);
+  assert.equal(dashboard.data.profile.status, "APPROVED");
+  const admin = await call("GET", "/admin/profiles?kind=MERCHANT", null, users.admin);
+  assert.equal(admin.status, 200);
+  assert.equal(admin.data.items.find(p => p._id === id).status, "APPROVED");
+  assert.equal(await M.Profile.countDocuments({ owner: users.customer._id, kind: "MERCHANT" }), 1);
+  assert.equal(await M.Staff.countDocuments({ user: users.customer._id }), 0);
+  assert.equal((await call("GET", `/dashboard/MERCHANT?profileId=${id}`, null, users.other)).status, 403);
+  assert.equal((await call("GET", "/me", null, users.other)).data.applications.length, 0);
+  for (const feature of ["merchantQr", "payByLink", "automaticPayouts"])
+    assert.equal(dashboard.data.features[feature], false);
 });
 test("application cannot self-approve or mass-assign privilege fields", async () => {
   assert.equal((await call("PUT", "/applications/AGENT", { ...detail, status: "APPROVED" })).status, 400);
@@ -618,7 +674,7 @@ test("premium reports distinguish commission income from purchase volume and nev
   assert.equal(r.data.salesRevenueKobo, null);
   assert.equal(r.data.bestSellingServices[0].service, "DATA");
   assert.equal(r.data.transactionSummary.successful, 1);
-  assert.equal(r.data.voucherContract.enabled, false);
+  assert.equal(r.data.voucherContract, undefined, "Customer tools must not expose the provider contract");
   const stock = await call("GET", "/vouchers/agent");
   assert.equal(stock.status, 200); assert.equal(stock.data.inventoryVerified, false); assert.equal(stock.data.items.length, 0);
   assert.equal((await call("POST", "/vouchers/agent/purchase", { quantity: 1, type: "data" })).status, 409);
