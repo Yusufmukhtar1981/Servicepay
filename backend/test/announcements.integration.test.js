@@ -162,6 +162,70 @@ test.beforeEach(async () => {
   fullStaff = await makeUser("STAFF", { staffRoleId: role._id });
 });
 
+test("banner image uploads require editor authority, validate files, and persist only via existing announcement CRUD", async () => {
+  const { v2: cloudinary } = require("cloudinary");
+  const original = cloudinary.uploader.upload_stream;
+  const names = ["CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_KEY", "CLOUDINARY_API_SECRET"];
+  const saved = names.map((key) => process.env[key]);
+  let uploads = 0;
+  const imageUrl = "https://res.cloudinary.com/test/image/upload/banner.png";
+  cloudinary.uploader.upload_stream = (options, callback) => {
+    assert.equal(options.overwrite, false);
+    assert.equal(options.transformation, undefined, "Do not crop the original banner");
+    uploads += 1;
+    return { end() { callback(null, { secure_url: imageUrl, width: 800, height: 300 }); } };
+  };
+  try {
+    names.forEach((key) => { process.env[key] = "isolated-test-value"; });
+    const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jgekAAAAASUVORK5CYII=", "base64");
+    const upload = async (actor, bytes = png, name = "banner.png", type = "image/png") => {
+      const body = new FormData();
+      body.set("image", new Blob([bytes], { type }), name);
+      return fetch(`${base}/api/announcements/admin/image`, {
+        method: "POST", headers: actor ? { Authorization: `Bearer ${tokenFor(actor, "image-upload-fixture")}` } : {}, body,
+      });
+    };
+    assert.equal((await upload(null)).status, 401);
+    assert.equal((await upload(await makeUser())).status, 403);
+    const viewerRole = await Role.create({ name: "IMAGE_VIEWER", displayName: "Image Viewer",
+      department: "CUSTOMER_SUPPORT", scopeType: "GLOBAL", permissions: ["announcements.view"] });
+    assert.equal((await upload(await makeUser("STAFF", { staffRoleId: viewerRole._id }))).status, 403);
+    assert.equal((await upload(fullStaff, Buffer.from("<svg></svg>"), "bad.svg", "image/svg+xml")).status, 400);
+    assert.equal((await upload(fullStaff, Buffer.from("not an image"))).status, 400);
+    assert.equal((await upload(fullStaff, Buffer.alloc(5 * 1024 * 1024 + 1))).status, 413);
+    const missing = await fetch(`${base}/api/announcements/admin/image`, {
+      method: "POST", headers: { Authorization: `Bearer ${tokenFor(fullStaff, "image-upload-fixture")}` }, body: new FormData(),
+    });
+    assert.equal(missing.status, 400);
+    delete process.env.CLOUDINARY_API_KEY;
+    assert.equal((await upload(fullStaff)).status, 503);
+    process.env.CLOUDINARY_API_KEY = "isolated-test-value";
+    assert.equal(uploads, 0);
+    const result = await upload(fullStaff);
+    assert.equal(result.status, 200);
+    assert.equal((await result.json()).data.imageUrl, imageUrl);
+    assert.equal(uploads, 1);
+    assert.equal(await Announcement.countDocuments(), 0, "Uploading alone must not create a promotion");
+    const created = await api({ method: "POST", path: "/api/announcements/admin", actor: fullStaff,
+      body: announcementBody({ style: "BANNER", visibility: "UNTIL_DISMISSED", imageUrl }) });
+    assert.equal(created.status, 201);
+    const stored = await Announcement.findOne({ imageUrl }).lean();
+    assert(stored, "The uploaded URL persists through the existing CRUD path");
+    const visible = await api({ path: "/api/announcements/active", actor: await makeUser() });
+    assert.equal(visible.body.data.announcements[0].imageUrl, imageUrl);
+    cloudinary.uploader.upload_stream = (_options, callback) => ({
+      end() { callback(new Error("Provider internal diagnostic must not be exposed")); },
+    });
+    const failedUpload = await upload(fullStaff);
+    assert.equal(failedUpload.status, 502);
+    assert.equal((await failedUpload.json()).message, "Image upload failed. Please try again.");
+  } finally {
+    cloudinary.uploader.upload_stream = original;
+    names.forEach((key, index) => saved[index] === undefined
+      ? delete process.env[key] : process.env[key] = saved[index]);
+  }
+});
+
 test("plural routes enforce least-privilege staff permissions while allowing authorized CRUD", async () => {
   const unauthenticated = await fetch(`${base}/api/announcements/admin`, {
     headers: { Accept: "application/json" },

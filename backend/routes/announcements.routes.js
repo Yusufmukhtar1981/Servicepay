@@ -1,4 +1,6 @@
 const express = require("express");
+const multer = require("multer");
+const { uploadAnnouncementImage } = require("../services/announcementImage.service");
 const controller = require("../controllers/announcements.controller");
 const { protect, customerOnly } = require("../middleware/auth.middleware");
 const {
@@ -19,6 +21,25 @@ router.post("/:id/click", protect, customerOnly, controller.click);
 
 const staff = (permission) => [protect, loadStaffRole, requirePermission(permission)];
 const staffAny = (...permissions) => [protect, loadStaffRole, requireAnyPermission(permissions)];
+const bannerImageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 0 },
+}).single("image");
+router.post("/admin/image", ...staffAny(P.ANNOUNCEMENTS_CREATE, P.ANNOUNCEMENTS_UPDATE),
+  (req, res) => {
+    bannerImageUpload(req, res, async (error) => {
+      if (error) return res.status(error.code === "LIMIT_FILE_SIZE" ? 413 : 400).json({
+        success: false, message: "Attach one JPEG, PNG, or WebP image, 5 MB or smaller.",
+      });
+      try {
+        return res.json({ success: true, data: await uploadAnnouncementImage(req.file) });
+      } catch (failure) {
+        const status = [400, 413, 503].includes(failure.status) ? failure.status : 502;
+        return res.status(status).json({ success: false,
+          message: status === 502 ? "Image upload failed. Please try again." : failure.message });
+      }
+    });
+  });
 const headOfficePromo = (permission) => [
   protect,
   loadStaffRole,
