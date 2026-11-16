@@ -4027,8 +4027,13 @@ class _DashboardScreenState extends State<DashboardScreen>
             ? 'Good afternoon'
             : 'Good evening';
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 12, 18, 8),
+    return Container(
+      key: const Key('customer-dashboard-header'),
+      padding: const EdgeInsets.fromLTRB(18, 12, 18, 16),
+      decoration: BoxDecoration(
+        color: CustomerDashboardPalette.royalBlue,
+        borderRadius: BorderRadius.circular(22),
+      ),
       child: Column(
         children: <Widget>[
           Row(
@@ -4065,7 +4070,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                         fontSize: 13,
                         height: 1.05,
                         fontWeight: FontWeight.w900,
-                        color: CustomerDashboardPalette.navy,
+                        color: Colors.white,
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -4074,7 +4079,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        color: CustomerDashboardPalette.muted,
+                        color: Colors.white,
                         fontSize: 9,
                         height: 1,
                         fontWeight: FontWeight.w700,
@@ -4089,7 +4094,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                         height: 1.05,
                         fontWeight: FontWeight.w900,
                         letterSpacing: -0.3,
-                        color: CustomerDashboardPalette.navy,
+                        color: Colors.white,
                       ),
                     ),
                   ],

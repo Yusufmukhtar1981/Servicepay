@@ -37,7 +37,10 @@ class BusinessFeatureAccessPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final entries = featureAccess.whereType<Map>().map(
+    final entries = featureAccess.whereType<Map>().where((entry) {
+      final categories = entry['categories'];
+      return categories is Map && categories.containsKey(kind.toUpperCase());
+    }).map(
           (entry) => Map<String, dynamic>.from(entry),
         );
     return Card(
@@ -56,8 +59,8 @@ class BusinessFeatureAccessPanel extends StatelessWidget {
                 style:
                     const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
             const SizedBox(height: 5),
-            Text('Status for ${kind.toUpperCase()} purchases',
-                style: const TextStyle(color: Color(0xFF59685F), fontSize: 12)),
+            const Text('Services for your account',
+                style: TextStyle(color: Color(0xFF59685F), fontSize: 12)),
             const SizedBox(height: 5),
             ...entries.map((entry) => _FeatureAccessRow(
                   feature: entry,
@@ -90,28 +93,19 @@ class _FeatureAccessRow extends StatelessWidget {
         ?.toString()
         .toUpperCase();
     final available = businessFeatureAvailableForKind(feature, kind);
-    final status = !feature.containsKey('ready')
-        ? 'Status not confirmed'
-        : !feature.containsKey('categories') || rawCategory == null
-            ? 'Not confirmed for ${kind.toUpperCase()}'
-            : !featureReady(feature)
-                ? _humanState(state ?? 'DISABLED')
-                : available
-                    ? 'Available'
-                    : _humanState(state ?? 'NOT_CONFIRMED');
+    final comingSoon = state == 'COMING_SOON' || state == 'COMINGSOON';
+    final status = available
+        ? 'Available'
+        : comingSoon
+            ? 'Coming Soon'
+            : 'Temporarily Unavailable';
     final history = feature['history'] == true || category['history'] == true;
-    final reason = (category['reason'] ?? feature['reason'])?.toString();
-    final explanation = reason?.trim().isNotEmpty == true
-        ? reason!.trim()
-        : available
-            ? 'The service is ready for this purchase category.'
-            : state == 'MAINTENANCE'
-                ? 'Temporarily unavailable while maintenance is in progress.'
-                : state == 'COMING_SOON' || state == 'COMINGSOON'
-                    ? 'This service is planned but is not available yet.'
-                    : state == 'DISABLED'
-                        ? 'This service is currently disabled.'
-                        : 'Availability has not been confirmed for this category.';
+    // Provider/configuration reasons belong to Admin, never customer copy.
+    final explanation = available
+        ? 'You can use this service.'
+        : comingSoon
+            ? 'This service is not available yet.'
+            : 'Please try again later or contact Business Support.';
     return Padding(
       padding: const EdgeInsets.only(top: 11),
       child: Row(
@@ -138,11 +132,11 @@ class _FeatureAccessRow extends StatelessWidget {
                         style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
                     ),
-                    Text(status,
-                        style: const TextStyle(
-                            fontSize: 12, fontWeight: FontWeight.w700)),
                   ],
                 ),
+                Text(status,
+                    style: const TextStyle(
+                        fontSize: 12, fontWeight: FontWeight.w700)),
                 Text(explanation,
                     style: const TextStyle(
                         fontSize: 12, height: 1.35, color: Color(0xFF59685F))),
@@ -163,18 +157,3 @@ class _FeatureAccessRow extends StatelessWidget {
 
 bool featureReady(Map<String, dynamic> feature) => feature['ready'] == true;
 
-String _humanState(String state) {
-  return switch (state) {
-    'COMING_SOON' || 'COMINGSOON' => 'Coming soon',
-    'MAINTENANCE' || 'UNDER_MAINTENANCE' => 'Maintenance',
-    'DISABLED' || 'OFF' => 'Disabled',
-    'NOT_CONFIRMED' => 'Not confirmed',
-    'READY' ||
-    'AVAILABLE' ||
-    'ENABLED' ||
-    'ACTIVE' ||
-    'SUPPORTED' =>
-      'Unavailable',
-    _ => 'Not available',
-  };
-}

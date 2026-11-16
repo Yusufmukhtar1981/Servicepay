@@ -43,6 +43,42 @@ void main() {
     ));
     await tester.pump(const Duration(milliseconds: 120));
 
+    final Container header = tester.widget<Container>(
+      find.byKey(const Key('customer-dashboard-header')),
+    );
+    final BoxDecoration headerDecoration =
+        header.decoration! as BoxDecoration;
+    expect(headerDecoration.color, const Color(0xFF087A45));
+    expect(headerDecoration.borderRadius, BorderRadius.circular(22));
+    for (final String label in <String>['ServicePay', 'Ada']) {
+      expect(
+        tester.widget<Text>(find.text(label)).style?.color,
+        Colors.white,
+      );
+    }
+    expect(
+      tester.widget<Text>(find.byWidgetPredicate(
+        (Widget widget) =>
+            widget is Text &&
+            <String>[
+              'Good morning,',
+              'Good afternoon,',
+              'Good evening,',
+            ].contains(widget.data),
+      )).style?.color,
+      Colors.white,
+    );
+    for (final Key actionKey in <Key>[
+      const Key('dashboard-header-refresh'),
+      const Key('dashboard-header-notifications'),
+    ]) {
+      final Finder action = find.descendant(
+        of: find.byKey(actionKey),
+        matching: find.byType(Icon),
+      );
+      expect(tester.widget<Icon>(action).color, const Color(0xFF075F38));
+    }
+
     final Container wallet = tester
         .widget<Container>(find.byKey(const Key('servicepay-wallet-card')));
     final BoxDecoration decoration = wallet.decoration! as BoxDecoration;

@@ -317,7 +317,8 @@ void main() {
     expect(find.textContaining('Verified rank 2 of 13'), findsOneWidget);
     expect(find.textContaining('Business sales revenue'), findsOneWidget);
     expect(find.textContaining('resale revenue'), findsOneWidget);
-    expect(find.textContaining('/recharge_card'), findsNWidgets(2));
+    expect(find.textContaining('/recharge_card'), findsNothing);
+    expect(find.textContaining('encryption key'), findsNothing);
     expect(requested.any((uri) => uri.path.endsWith('/tools/AGENT')), isTrue);
     expect(
       requested.any((uri) =>

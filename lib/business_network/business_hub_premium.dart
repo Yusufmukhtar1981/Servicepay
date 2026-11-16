@@ -52,11 +52,7 @@ class _BusinessPremiumToolsState extends State<_BusinessPremiumTools> {
   String? _writeBlockedReason(List<String> keys) {
     final feature = _writeFeature(keys);
     if (feature == null || _canWrite(keys)) return null;
-    final categories = feature['categories'];
-    final category = categories is Map ? categories[widget.kind] : null;
-    final reason = category is Map ? category['reason'] : feature['reason'];
-    return reason?.toString() ??
-        'This action is not enabled for this business category.';
+    return 'Temporarily Unavailable. Please contact Business Support for help.';
   }
 
   String _normalizeFeatureKey(String value) =>
@@ -604,70 +600,31 @@ class _BusinessPremiumToolsState extends State<_BusinessPremiumTools> {
 
   Widget _capabilityNotice(
       String title, Map<String, dynamic> reasons, String capability) {
-    final reason = reasons[capability]?.toString() ??
-        'This capability is not enabled in the verified Business Network API.';
     return ListTile(
       contentPadding: EdgeInsets.zero,
       leading: const Icon(Icons.lock_outline, color: Color(0xFF59685F)),
       title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
-      subtitle: Text(reason),
+      subtitle: const Text('Coming Soon'),
     );
   }
 
   Widget _voucherCapability() {
-    final contract = _voucherStatus['contract'] is Map
-        ? Map<String, dynamic>.from(_voucherStatus['contract'] as Map)
-        : const <String, dynamic>{};
-    final airtime = contract['airtime'] is Map
-        ? Map<String, dynamic>.from(contract['airtime'] as Map)
-        : const <String, dynamic>{};
-    final data = contract['data'] is Map
-        ? Map<String, dynamic>.from(contract['data'] as Map)
-        : const <String, dynamic>{};
-    final prerequisites = contract['prerequisites'] as List? ?? const [];
     return _card(
-      title: 'Voucher issuance readiness',
+      title: 'Recharge and Data Cards',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(_voucherStatus['message']?.toString() ??
-              'Voucher issuing remains disabled.'),
-          const SizedBox(height: 8),
-          const Text(
-            'Telecom Abode publishes official airtime and data PIN request documentation. This customer app does not buy or print vouchers: pre-purchase price/availability, duplicate and timeout recovery, reference mapping, data catalogue/body consistency, dedicated encryption key, settlement admission, printer verification and redemption authority are still unverified.',
-            style: TextStyle(height: 1.4),
+          Text(
+            _voucherStatus['enabled'] == true || _voucherStatus['inventoryVerified'] == true
+                ? 'Temporarily Unavailable'
+                : 'Coming Soon',
+            style: const TextStyle(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 6),
           const Text(
-            'Printer readiness can be checked for 58 mm or 80 mm paper after issuance and print transport are verified. No PIN or printer connection is created here.',
+            'Recharge cards, Data cards and printing are not available yet. Please contact Business Support for help.',
             style: TextStyle(fontSize: 12, height: 1.4),
           ),
-          const SizedBox(height: 8),
-          if (airtime['documentation'] != null)
-            SelectableText(
-                'Airtime PIN docs: ${airtime['documentation']} · endpoint ${airtime['issue'] ?? '/recharge_card'}'),
-          if (data['documentation'] != null)
-            SelectableText(
-                'Data PIN docs: ${data['documentation']} · endpoint ${data['issue'] ?? '/data_card'}'),
-          if (data['catalogueVerified'] == false)
-            const Text(
-              'Data PIN catalogue is not verified against the documented request body.',
-              style: TextStyle(fontWeight: FontWeight.w700),
-            ),
-          if (prerequisites.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            const Text('Remaining verification prerequisites:',
-                style: TextStyle(fontWeight: FontWeight.w700)),
-            ...prerequisites.map((item) => Padding(
-                  padding: const EdgeInsets.only(top: 3),
-                  child: Text('• ${item.toString()}'),
-                )),
-          ],
-          if (_voucherStatus['enabled'] == true ||
-              _voucherStatus['inventoryVerified'] == true)
-            const Text(
-              'The API reports an unexpected enabled or verified state; no purchase or PIN control is available in this screen.',
-            ),
         ],
       ),
     );

@@ -136,6 +136,13 @@ Future<void> _openPurchaseScreen(
             widget is Scrollable && widget.axisDirection == AxisDirection.down)
         .first,
   );
+  // Keep the whole action inside the viewport after wrapping status labels.
+  await tester.drag(
+    find.byWidgetPredicate((widget) =>
+        widget is Scrollable && widget.axisDirection == AxisDirection.down).first,
+    const Offset(0, -120),
+  );
+  await tester.pumpAndSettle();
   await tester.tap(cta);
   await tester.pumpAndSettle();
   await tester.tap(find.text(service).last);
@@ -222,9 +229,9 @@ void main() {
       ),
     ));
     expect(find.text('Available'), findsOneWidget);
-    expect(find.text('Maintenance'), findsOneWidget);
-    expect(find.text('Coming soon'), findsOneWidget);
-    expect(find.text('Paused by ServicePay'), findsOneWidget);
+    expect(find.text('Temporarily Unavailable'), findsAtLeastNWidgets(1));
+    expect(find.text('Coming Soon'), findsAtLeastNWidgets(1));
+    expect(find.text('Paused by ServicePay'), findsNothing);
     expect(find.text('Existing history remains accessible.'), findsNWidgets(2));
   });
 
