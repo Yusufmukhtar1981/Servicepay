@@ -6,7 +6,7 @@ abstract final class CustomerDashboardPalette {
   static const navy = Color(0xFF075F38);
   static const royalBlue = Color(0xFF087A45);
   static const teal = Color(0xFF178652);
-  static const canvas = Color(0xFFF5F9F6);
+  static const canvas = Color(0xFFE8F5EC);
   static const card = Color(0xFFFFFFFF);
   static const success = Color(0xFF159B70);
   static const warning = Color(0xFFE6A52B);

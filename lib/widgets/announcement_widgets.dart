@@ -431,14 +431,23 @@ class _AnnouncementPromotionCarouselState
               // every viewport width when customers use larger system text.
               final double textScale =
                   MediaQuery.textScalerOf(context).scale(1);
-              final double baseHeight = constraints.maxWidth < 360
-                  ? 194
-                  : (constraints.maxWidth * .43).clamp(158.0, 194.0);
+              final bool containsImage = widget.announcements.any(
+                (item) => item.imageUrl?.trim().isNotEmpty == true,
+              );
+              final bool narrowImageCard =
+                  containsImage && constraints.maxWidth < 560;
+              final double baseHeight = containsImage
+                  ? (narrowImageCard ? 342 : constraints.maxWidth * .34)
+                  : (constraints.maxWidth < 360
+                      ? 194
+                      : (constraints.maxWidth * .30).clamp(176.0, 218.0));
               final double scaleExtra =
-                  ((textScale - 1).clamp(0, 1.5) * 320).toDouble();
+                  ((textScale - 1).clamp(0, 1.5) * (containsImage ? 230 : 320))
+                      .toDouble();
               final double height =
                   (baseHeight + scaleExtra).clamp(baseHeight, 560.0);
               return SizedBox(
+                key: const Key('announcement-promotion-viewport'),
                 height: height,
                 child: Listener(
                   onPointerDown: (_) => _pauseRotation(),
@@ -482,16 +491,43 @@ class _AnnouncementPromotionCarouselState
               mainAxisAlignment: MainAxisAlignment.center,
               children: List<Widget>.generate(
                 widget.announcements.length,
-                (index) => AnimatedContainer(
-                  duration: const Duration(milliseconds: 220),
-                  margin: const EdgeInsets.symmetric(horizontal: 3),
-                  width: index == _page ? 20 : 6,
-                  height: 6,
-                  decoration: BoxDecoration(
-                    color: index == _page
-                        ? ServicePayColors.brand
-                        : ServicePayColors.border,
-                    borderRadius: BorderRadius.circular(8),
+                (index) => Semantics(
+                  button: true,
+                  selected: index == _page,
+                  label: 'Show promotion ${index + 1}',
+                  child: SizedBox(
+                    width: 44,
+                    height: 44,
+                    child: InkWell(
+                      key: Key('announcement-promotion-dot-$index'),
+                      borderRadius: BorderRadius.circular(22),
+                      onTap: () {
+                        _pauseRotation();
+                        _programmaticPageChange = true;
+                        _pageController.animateToPage(
+                          index,
+                          duration: _animationsDisabled
+                              ? Duration.zero
+                              : const Duration(milliseconds: 320),
+                          curve: Curves.easeOutCubic,
+                        );
+                      },
+                      child: Center(
+                        child: AnimatedContainer(
+                          duration: _animationsDisabled
+                              ? Duration.zero
+                              : const Duration(milliseconds: 220),
+                          width: index == _page ? 20 : 6,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            color: index == _page
+                                ? ServicePayColors.brand
+                                : ServicePayColors.border,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -561,11 +597,21 @@ class _PromotionCard extends StatelessWidget {
     final bool hasImage = announcement.imageUrl?.trim().isNotEmpty == true;
     final String start = _dateLabel(announcement.startsAt);
     final String published = _dateLabel(announcement.createdAt);
+    if (hasImage) {
+      return _ImagePromotionCard(
+        announcement: announcement,
+        startLabel: start,
+        publishedLabel: published,
+        onDismiss: onDismiss,
+        onAcknowledge: onAcknowledge,
+        onAction: onAction,
+      );
+    }
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 1),
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: hasImage ? ServicePayColors.ink : ServicePayColors.brandDeep,
+        color: ServicePayColors.brandDeep,
         borderRadius: BorderRadius.circular(20),
         boxShadow: const [
           BoxShadow(
@@ -578,24 +624,7 @@ class _PromotionCard extends StatelessWidget {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          if (hasImage)
-            Image.network(
-              announcement.imageUrl!,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => const _BrandedPromotionBackdrop(),
-            )
-          else
-            const _BrandedPromotionBackdrop(),
-          if (hasImage)
-            const DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Color(0xC9002919), Color(0x24103527)],
-                  begin: Alignment.bottomLeft,
-                  end: Alignment.topRight,
-                ),
-              ),
-            ),
+          const _BrandedPromotionBackdrop(),
           Padding(
             padding: const EdgeInsets.fromLTRB(18, 15, 54, 14),
             child: Column(
@@ -729,6 +758,181 @@ class _PromotionCard extends StatelessWidget {
   }
 }
 
+class _ImagePromotionCard extends StatelessWidget {
+  const _ImagePromotionCard({
+    required this.announcement,
+    required this.startLabel,
+    required this.publishedLabel,
+    required this.onDismiss,
+    required this.onAcknowledge,
+    required this.onAction,
+  });
+
+  final ServicePayAnnouncement announcement;
+  final String startLabel;
+  final String publishedLabel;
+  final VoidCallback onDismiss;
+  final VoidCallback onAcknowledge;
+  final VoidCallback onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final bool wide = constraints.maxWidth >= 560;
+        final Widget image = ColoredBox(
+          key: const Key('announcement-promotion-image-area'),
+          color: Colors.white,
+          child: SizedBox.expand(
+            child: Image.network(
+              announcement.imageUrl!,
+              key: const Key('announcement-promotion-image'),
+              fit: BoxFit.contain,
+              alignment: Alignment.center,
+              errorBuilder: (_, __, ___) => const Icon(
+                Icons.campaign_outlined,
+                color: ServicePayColors.brandDeep,
+                size: 38,
+              ),
+            ),
+          ),
+        );
+        final Widget caption = Container(
+          key: const Key('announcement-promotion-caption'),
+          color: Colors.white,
+          padding: const EdgeInsets.fromLTRB(18, 14, 14, 12),
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        announcement.type == 'PROMOTION'
+                            ? 'SERVICEPAY PROMOTION'
+                            : 'SERVICEPAY UPDATE',
+                        style: const TextStyle(
+                          color: ServicePayColors.brandDeep,
+                          fontSize: 10,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: .8,
+                        ),
+                      ),
+                    ),
+                    if (announcement.canDismiss)
+                      IconButton(
+                        tooltip: 'Dismiss announcement',
+                        onPressed: onDismiss,
+                        visualDensity: VisualDensity.compact,
+                        iconSize: 18,
+                        color: ServicePayColors.brandDeep,
+                        icon: const Icon(Icons.close_rounded),
+                      ),
+                  ],
+                ),
+                if (startLabel.isNotEmpty)
+                  Text(
+                    'Live $startLabel',
+                    style: const TextStyle(
+                      color: ServicePayColors.muted,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                const SizedBox(height: 5),
+                Text(
+                  announcement.title,
+                  style: const TextStyle(
+                    color: ServicePayColors.brandDeep,
+                    fontSize: 18,
+                    height: 1.1,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  announcement.message,
+                  style: const TextStyle(
+                    color: ServicePayColors.muted,
+                    fontSize: 12,
+                    height: 1.3,
+                  ),
+                ),
+                if (publishedLabel.isNotEmpty) ...[
+                  const SizedBox(height: 5),
+                  Text(
+                    'Published $publishedLabel',
+                    style: const TextStyle(
+                      color: ServicePayColors.muted,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+                if (announcement.ctaText != null || announcement.mandatory) ...[
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 4,
+                    children: [
+                      if (announcement.ctaText != null)
+                        FilledButton(
+                          onPressed: onAction,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: ServicePayColors.brandDeep,
+                            foregroundColor: Colors.white,
+                          ),
+                          child: Text(announcement.ctaText!),
+                        ),
+                      if (announcement.mandatory)
+                        TextButton(
+                          onPressed: onAcknowledge,
+                          child: const Text('Acknowledge'),
+                        ),
+                    ],
+                  ),
+                ],
+              ],
+            ),
+          ),
+        );
+        return Container(
+          key: const Key('announcement-promotion-card'),
+          margin: const EdgeInsets.symmetric(horizontal: 1),
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: const Color(0xFFDCE9E0)),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x190A3B27),
+                blurRadius: 18,
+                offset: Offset(0, 8),
+              ),
+            ],
+          ),
+          child: wide
+              ? Row(
+                  children: [
+                    Expanded(flex: 5, child: image),
+                    Expanded(flex: 6, child: caption),
+                  ],
+                )
+              : Column(
+                  children: [
+                    Expanded(flex: 5, child: image),
+                    Expanded(flex: 6, child: caption),
+                  ],
+                ),
+        );
+      },
+    );
+  }
+}
+
 class _BrandedPromotionBackdrop extends StatelessWidget {
   const _BrandedPromotionBackdrop();
 
@@ -844,7 +1048,7 @@ class AnnouncementPopup extends StatelessWidget {
                 child: Image.network(announcement.imageUrl!,
                     width: double.infinity,
                     height: 150,
-                    fit: BoxFit.cover,
+                    fit: BoxFit.contain,
                     errorBuilder: (_, __, ___) => const SizedBox.shrink()),
               ),
             if (announcement.imageUrl?.isNotEmpty == true)
@@ -914,6 +1118,116 @@ class AnnouncementSurface extends StatefulWidget {
 
   @override
   State<AnnouncementSurface> createState() => _AnnouncementSurfaceState();
+}
+
+/// Campaign delivery is independent of wallet/dashboard loading. Only a
+/// successful empty response is described as having no active promotions.
+class AnnouncementLoadPlaceholder extends StatelessWidget {
+  const AnnouncementLoadPlaceholder({
+    required this.loading,
+    required this.error,
+    required this.onRetry,
+    super.key,
+  });
+
+  final bool loading;
+  final String? error;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) {
+      return Semantics(
+        key: const Key('announcement-loading-state'),
+        label: 'Loading ServicePay updates',
+        child: const SizedBox(
+          height: 112,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _AnnouncementSkeletonLine(width: .62),
+              SizedBox(height: 12),
+              _AnnouncementSkeletonLine(width: .92),
+              SizedBox(height: 8),
+              _AnnouncementSkeletonLine(width: .74),
+            ],
+          ),
+        ),
+      );
+    }
+    if (error != null) {
+      return Container(
+        key: const Key('announcement-error-state'),
+        padding: const EdgeInsets.fromLTRB(2, 9, 2, 12),
+        child: Row(
+          children: [
+            const Icon(Icons.cloud_off_outlined,
+                color: ServicePayColors.muted, size: 20),
+            const SizedBox(width: 10),
+            const Expanded(
+              child: Text(
+                'Updates could not be loaded.',
+                style: TextStyle(
+                    color: ServicePayColors.muted,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700),
+              ),
+            ),
+            TextButton(
+              onPressed: onRetry,
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+    }
+    return Container(
+      key: const Key('announcement-empty-state'),
+      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 12),
+      child: const Row(
+        children: [
+          Icon(Icons.campaign_outlined,
+              color: ServicePayColors.brandDeep, size: 23),
+          SizedBox(width: 11),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('No active promotions',
+                    style: TextStyle(
+                        color: Color(0xFF17382B), fontWeight: FontWeight.w900)),
+                SizedBox(height: 3),
+                Text('ServicePay updates will appear here when available.',
+                    style: TextStyle(
+                        color: ServicePayColors.muted,
+                        height: 1.35,
+                        fontSize: 12)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AnnouncementSkeletonLine extends StatelessWidget {
+  const _AnnouncementSkeletonLine({required this.width});
+
+  final double width;
+
+  @override
+  Widget build(BuildContext context) => FractionallySizedBox(
+        widthFactor: width,
+        child: Container(
+          height: 11,
+          decoration: BoxDecoration(
+            color: const Color(0xFFE8F5EC),
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+      );
 }
 
 class _AnnouncementSurfaceState extends State<AnnouncementSurface> {

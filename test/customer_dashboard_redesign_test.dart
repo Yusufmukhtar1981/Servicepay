@@ -110,6 +110,123 @@ void main() {
     );
   });
 
+  testWidgets('promotions are directly after the header before the wallet',
+      (WidgetTester tester) async {
+    for (final Size size in <Size>[
+      const Size(390, 844),
+      const Size(1440, 1000),
+    ]) {
+      await tester.binding.setSurfaceSize(size);
+      await tester.pumpWidget(const MaterialApp(home: DashboardScreen()));
+
+      final double headerBottom = tester
+          .getBottomLeft(find.byKey(const Key('customer-dashboard-header')))
+          .dy;
+      final double promoTop = tester
+          .getTopLeft(find.byKey(const Key('customer-announcement-surface')))
+          .dy;
+      final double walletTop =
+          tester.getTopLeft(find.byKey(const Key('servicepay-wallet-card'))).dy;
+      expect(promoTop, greaterThan(headerBottom));
+      expect(walletTop, greaterThan(promoTop));
+      expect(
+        find
+                .byKey(const Key('announcement-loading-state'))
+                .evaluate()
+                .isNotEmpty ||
+            find
+                .byKey(const Key('announcement-error-state'))
+                .evaluate()
+                .isNotEmpty,
+        isTrue,
+      );
+      expect(tester.takeException(), isNull);
+    }
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('shows no-active-promotions only after a successful empty fetch',
+      (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'user_name': 'Ada Okafor',
+      'user_role': 'CUSTOMER',
+      'auth_token': 'test-token',
+      'wallet_balance': 24500.0,
+    });
+    final MockClient client = MockClient((http.Request request) async {
+      if (request.url.path.endsWith('/announcements/active')) {
+        return http.Response('{"announcements":[]}', 200);
+      }
+      if (request.url.path.endsWith('/wallet')) {
+        return http.Response('{"walletBalance":24500}', 200);
+      }
+      if (request.url.path.endsWith('/settings/public')) {
+        return http.Response('{"settings":{"services":{}}}', 200);
+      }
+      return http.Response('{}', 404);
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(home: DashboardScreen(client: client)),
+    );
+    for (int index = 0; index < 12; index++) {
+      await tester.pump(const Duration(milliseconds: 40));
+    }
+
+    expect(find.byKey(const Key('announcement-empty-state')), findsOneWidget);
+    expect(find.text('No active promotions'), findsOneWidget);
+    expect(find.byKey(const Key('announcement-loading-state')), findsNothing);
+    expect(find.byKey(const Key('announcement-error-state')), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('announcement fetch failure stays distinct and retry reloads',
+      (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'user_name': 'Ada Okafor',
+      'user_role': 'CUSTOMER',
+      'auth_token': 'test-token',
+      'wallet_balance': 24500.0,
+    });
+    int announcementRequests = 0;
+    final MockClient client = MockClient((http.Request request) async {
+      if (request.url.path.endsWith('/announcements/active')) {
+        announcementRequests++;
+        return http.Response('{"message":"offline"}', 503);
+      }
+      if (request.url.path.endsWith('/wallet')) {
+        return http.Response('{"walletBalance":24500}', 200);
+      }
+      if (request.url.path.endsWith('/settings/public')) {
+        return http.Response('{"settings":{"services":{}}}', 200);
+      }
+      return http.Response('{}', 404);
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(home: DashboardScreen(client: client)),
+    );
+    for (int index = 0; index < 12; index++) {
+      await tester.pump(const Duration(milliseconds: 40));
+    }
+
+    expect(announcementRequests, 1);
+    expect(find.byKey(const Key('announcement-error-state')), findsOneWidget);
+    expect(find.text('No active promotions'), findsNothing);
+    await tester.tap(
+      find.descendant(
+        of: find.byKey(const Key('announcement-error-state')),
+        matching: find.text('Retry'),
+      ),
+    );
+    for (int index = 0; index < 12; index++) {
+      await tester.pump(const Duration(milliseconds: 40));
+    }
+    expect(announcementRequests, 2);
+    expect(find.byKey(const Key('announcement-error-state')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('funding remains without hidden wallet actions on mobile and web',
       (WidgetTester tester) async {
     for (final Size size in <Size>[
@@ -340,8 +457,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets(
-      'keeps four customer destinations and hides QR from All Services',
+  testWidgets('keeps four customer destinations and hides QR from All Services',
       (WidgetTester tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
@@ -379,13 +495,17 @@ void main() {
     await tester.pump(const Duration(milliseconds: 1000));
     await tester.enterText(find.byType(TextField).last, 'QR Pay');
     await tester.pump();
-    expect(find.byWidgetPredicate((widget) =>
-        widget is Text && widget.data == 'QR Pay'), findsNothing);
+    expect(
+        find.byWidgetPredicate(
+            (widget) => widget is Text && widget.data == 'QR Pay'),
+        findsNothing);
     expect(find.text('ServicePay QR Pay'), findsNothing);
     await tester.enterText(find.byType(TextField).last, 'Electricity');
     await tester.pump();
-    expect(find.byWidgetPredicate((widget) =>
-        widget is Text && widget.data == 'Electricity'), findsOneWidget);
+    expect(
+        find.byWidgetPredicate(
+            (widget) => widget is Text && widget.data == 'Electricity'),
+        findsOneWidget);
   });
 
   testWidgets('balance can be hidden and shown without changing its value',

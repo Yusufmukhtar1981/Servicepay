@@ -154,6 +154,9 @@ class _DashboardScreenState extends State<DashboardScreen>
       CustomerFeatureConfigurationService.defaults();
   List<ServicePayAnnouncement> announcements = <ServicePayAnnouncement>[];
   AnnouncementService? _announcementService;
+  bool _announcementsLoading = true;
+  bool _announcementResponseEmpty = false;
+  String? _announcementsError;
   RewardProgressService? _rewardProgressService;
   final Map<String, ServicePayAnnouncement> _sessionPopupCompletedBanners =
       <String, ServicePayAnnouncement>{};
@@ -338,6 +341,9 @@ class _DashboardScreenState extends State<DashboardScreen>
           setState(() {
             isLoadingRecentActivity = false;
             recentActivityError =
+                'Your login session has expired. Please log in again.';
+            _announcementsLoading = false;
+            _announcementsError =
                 'Your login session has expired. Please log in again.';
           });
         }
@@ -547,24 +553,42 @@ class _DashboardScreenState extends State<DashboardScreen>
       baseUrl: baseUrl,
     );
     try {
+      if (mounted) {
+        setState(() {
+          _announcementsLoading = true;
+          _announcementsError = null;
+        });
+      }
       final List<ServicePayAnnouncement> loaded = await service.fetchActive();
       if (mounted) {
+        final List<ServicePayAnnouncement> visible =
+            mergeAnnouncementSessionState(
+          loaded: loaded,
+          current: announcements,
+          popupCompletedBanners: _sessionPopupCompletedBanners,
+          hiddenBannerIds: _sessionHiddenBannerIds,
+        )
+                .where((item) => !promotesHiddenCustomerService(
+                    '${item.title} ${item.message} ${item.cta ?? ''}'))
+                .toList();
         setState(() {
           // The backend intentionally returns EVERY_LOGIN announcements once
           // per login token. Popup-completed BOTH banners are also retained
           // independently, unless the customer explicitly removed the banner.
-          announcements = mergeAnnouncementSessionState(
-            loaded: loaded,
-            current: announcements,
-            popupCompletedBanners: _sessionPopupCompletedBanners,
-            hiddenBannerIds: _sessionHiddenBannerIds,
-          )
-              .where((item) => !promotesHiddenCustomerService(
-                  '${item.title} ${item.message} ${item.cta ?? ''}'))
-              .toList();
+          announcements = visible;
+          _announcementResponseEmpty = loaded.isEmpty && visible.isEmpty;
+          _announcementsLoading = false;
+          _announcementsError = null;
         });
       }
     } catch (_) {
+      if (mounted) {
+        setState(() {
+          _announcementsLoading = false;
+          _announcementResponseEmpty = false;
+          _announcementsError = 'Updates could not be loaded.';
+        });
+      }
       // Campaign delivery must never interrupt dashboard usage.
     }
   }
@@ -2133,7 +2157,14 @@ class _DashboardScreenState extends State<DashboardScreen>
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 15),
       decoration: BoxDecoration(
-        color: ServicePayColors.brand,
+        gradient: const LinearGradient(
+          colors: <Color>[
+            ServicePayColors.brand,
+            Color(0xFF159B70),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
         borderRadius: BorderRadius.circular(24),
         boxShadow: const <BoxShadow>[
           BoxShadow(
@@ -4031,7 +4062,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       key: const Key('customer-dashboard-header'),
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 16),
       decoration: BoxDecoration(
-        color: CustomerDashboardPalette.royalBlue,
+        color: CustomerDashboardPalette.navy,
         borderRadius: BorderRadius.circular(22),
       ),
       child: Column(
@@ -5717,6 +5748,39 @@ class _DashboardScreenState extends State<DashboardScreen>
                 children: <Widget>[
                   buildHeader(),
                   const SizedBox(height: 14),
+                  if (_announcementsLoading ||
+                      _announcementsError != null ||
+                      announcements.isNotEmpty ||
+                      _announcementResponseEmpty) ...[
+                    CustomerCampaignFrame(
+                      key: const Key('customer-announcement-surface'),
+                      child: announcements.isNotEmpty &&
+                              _announcementService != null
+                          ? AnnouncementSurface(
+                              announcements: announcements,
+                              service: _announcementService!,
+                              rewardProgressService: _rewardProgressService,
+                              onPopupCompleted: (item) {
+                                _sessionPopupCompletedBanners[item.id] = item;
+                              },
+                              onBannerRemoved: (item) {
+                                setState(() {
+                                  _sessionHiddenBannerIds.add(item.id);
+                                  _sessionPopupCompletedBanners.remove(item.id);
+                                  announcements = announcements
+                                      .where((value) => value.id != item.id)
+                                      .toList();
+                                });
+                              },
+                            )
+                          : AnnouncementLoadPlaceholder(
+                              loading: _announcementsLoading,
+                              error: _announcementsError,
+                              onRetry: _refreshDashboard,
+                            ),
+                    ),
+                    const SizedBox(height: 14),
+                  ],
                   if (isLoading)
                     const LinearProgressIndicator(
                       color: CustomerDashboardPalette.royalBlue,
@@ -5742,29 +5806,6 @@ class _DashboardScreenState extends State<DashboardScreen>
                     const SizedBox(height: 14),
                   ],
                   _buildBusinessHubEntry(),
-                  if (_announcementService != null &&
-                      announcements.isNotEmpty) ...[
-                    const SizedBox(height: 14),
-                    CustomerCampaignFrame(
-                      child: AnnouncementSurface(
-                        announcements: announcements,
-                        service: _announcementService!,
-                        rewardProgressService: _rewardProgressService,
-                        onPopupCompleted: (item) {
-                          _sessionPopupCompletedBanners[item.id] = item;
-                        },
-                        onBannerRemoved: (item) {
-                          setState(() {
-                            _sessionHiddenBannerIds.add(item.id);
-                            _sessionPopupCompletedBanners.remove(item.id);
-                            announcements = announcements
-                                .where((value) => value.id != item.id)
-                                .toList();
-                          });
-                        },
-                      ),
-                    ),
-                  ],
                   if (schoolPortalMemberships.isNotEmpty) ...[
                     const SizedBox(height: 14),
                     buildSchoolPortalCard(),

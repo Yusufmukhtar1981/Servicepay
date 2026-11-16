@@ -486,6 +486,233 @@ void main() {
     expect(find.text('Lower promotion'), findsOneWidget);
   });
 
+  testWidgets('promotion dots navigate and image artwork uses full contain fit',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AnnouncementPromotionCarousel(
+            announcements: <ServicePayAnnouncement>[
+              item(
+                id: 'one',
+                title: 'First promotion',
+                cta: <String, dynamic>{'text': 'Open offer'},
+              ),
+              ServicePayAnnouncement(
+                id: 'two',
+                title: 'Second promotion',
+                message: 'Original art, uncropped.',
+                type: 'PROMOTION',
+                displayStyle: 'BANNER',
+                priority: 2,
+                visibility: 'always',
+                mandatory: false,
+                imageUrl: 'https://example.test/promo.png',
+              ),
+            ],
+            onDismiss: (_) {},
+            onAcknowledge: (_) {},
+            onAction: (_) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(
+        find.byKey(const Key('announcement-promotion-dot-0')), findsOneWidget);
+    expect(
+        find.byKey(const Key('announcement-promotion-dot-1')), findsOneWidget);
+    expect(
+      tester
+          .getSize(find.byKey(const Key('announcement-promotion-dot-0')))
+          .height,
+      greaterThanOrEqualTo(44),
+    );
+    await tester.tap(find.byKey(const Key('announcement-promotion-dot-1')));
+    await tester.pumpAndSettle();
+    expect(find.text('Second promotion'), findsOneWidget);
+    expect(
+        find.byKey(const Key('announcement-promotion-image')), findsOneWidget);
+    final Rect imageRect = tester.getRect(
+      find.byKey(const Key('announcement-promotion-image-area')),
+    );
+    final Rect captionRect = tester.getRect(
+      find.byKey(const Key('announcement-promotion-caption')),
+    );
+    expect(imageRect.bottom, lessThanOrEqualTo(captionRect.top));
+    expect(
+      tester
+          .widget<Image>(
+            find.byKey(const Key('announcement-promotion-image')),
+          )
+          .fit,
+      BoxFit.contain,
+    );
+    expect(tester.getSize(find.byType(PageView)).height,
+        greaterThanOrEqualTo(176));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('image promotion separates artwork from caption on wide cards',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(900, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AnnouncementPromotionCarousel(
+            announcements: <ServicePayAnnouncement>[
+              ServicePayAnnouncement(
+                id: 'wide',
+                title: 'A clear offer title',
+                message: 'Caption is readable beside the full artwork.',
+                type: 'PROMOTION',
+                displayStyle: 'BANNER',
+                priority: 1,
+                visibility: 'always',
+                mandatory: false,
+                imageUrl: 'https://example.test/promo-wide.png',
+                cta: <String, dynamic>{'text': 'See offer'},
+              ),
+            ],
+            onDismiss: (_) {},
+            onAcknowledge: (_) {},
+            onAction: (_) {},
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final Rect imageRect = tester.getRect(
+      find.byKey(const Key('announcement-promotion-image-area')),
+    );
+    final Rect captionRect = tester.getRect(
+      find.byKey(const Key('announcement-promotion-caption')),
+    );
+    expect(imageRect.right, lessThanOrEqualTo(captionRect.left));
+    expect(find.text('A clear offer title'), findsOneWidget);
+    expect(find.text('See offer'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('image promotion allows larger text without clipping the card',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(textScaler: TextScaler.linear(2)),
+        child: MaterialApp(
+          home: Scaffold(
+            body: AnnouncementPromotionCarousel(
+              announcements: <ServicePayAnnouncement>[
+                ServicePayAnnouncement(
+                  id: 'scaled',
+                  title: 'A promotion with a longer title that needs room',
+                  message:
+                      'A longer description remains separate from the artwork when system text is enlarged.',
+                  type: 'PROMOTION',
+                  displayStyle: 'BANNER',
+                  priority: 1,
+                  visibility: 'always',
+                  mandatory: false,
+                  imageUrl: 'https://example.test/promo-scaled.png',
+                  cta: <String, dynamic>{'text': 'Review this offer'},
+                ),
+              ],
+              onDismiss: (_) {},
+              onAcknowledge: (_) {},
+              onAction: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(tester.getSize(find.byType(PageView)).height, greaterThan(342));
+    expect(
+      find.text('A promotion with a longer title that needs room'),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('reduced motion prevents automatic carousel rotation',
+      (tester) async {
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(disableAnimations: true),
+        child: MaterialApp(
+          home: Scaffold(
+            body: AnnouncementPromotionCarousel(
+              announcements: <ServicePayAnnouncement>[
+                item(id: 'one', title: 'First promotion'),
+                item(id: 'two', title: 'Second promotion'),
+              ],
+              onDismiss: (_) {},
+              onAcknowledge: (_) {},
+              onAction: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(find.byTooltip('Auto-rotation unavailable'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 7));
+    expect(find.text('First promotion'), findsOneWidget);
+    expect(find.text('Second promotion'), findsNothing);
+  });
+
+  testWidgets('announcement loading error and successful-empty states differ',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AnnouncementLoadPlaceholder(
+            loading: true,
+            error: null,
+            onRetry: () {},
+          ),
+        ),
+      ),
+    );
+    expect(find.byKey(const Key('announcement-loading-state')), findsOneWidget);
+    expect(find.text('No active promotions'), findsNothing);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AnnouncementLoadPlaceholder(
+            loading: false,
+            error: 'offline',
+            onRetry: () {},
+          ),
+        ),
+      ),
+    );
+    expect(find.byKey(const Key('announcement-error-state')), findsOneWidget);
+    expect(find.text('No active promotions'), findsNothing);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AnnouncementLoadPlaceholder(
+            loading: false,
+            error: null,
+            onRetry: () {},
+          ),
+        ),
+      ),
+    );
+    expect(find.byKey(const Key('announcement-empty-state')), findsOneWidget);
+    expect(find.text('No active promotions'), findsOneWidget);
+  });
+
   testWidgets('promotion carousel is compact and uses branded no-image artwork',
       (tester) async {
     await tester.pumpWidget(
