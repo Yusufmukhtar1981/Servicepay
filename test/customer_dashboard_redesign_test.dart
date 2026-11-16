@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:servicepay_app/referral_screen.dart';
+import 'package:servicepay_app/widgets/customer_dashboard_visuals.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -110,7 +112,7 @@ void main() {
     );
   });
 
-  testWidgets('promotions are directly after the header before the wallet',
+  testWidgets('promotions are directly after the wallet before the account',
       (WidgetTester tester) async {
     for (final Size size in <Size>[
       const Size(390, 844),
@@ -122,13 +124,12 @@ void main() {
       final double headerBottom = tester
           .getBottomLeft(find.byKey(const Key('customer-dashboard-header')))
           .dy;
-      final double promoTop = tester
-          .getTopLeft(find.byKey(const Key('customer-announcement-surface')))
-          .dy;
       final double walletTop =
           tester.getTopLeft(find.byKey(const Key('servicepay-wallet-card'))).dy;
-      expect(promoTop, greaterThan(headerBottom));
-      expect(walletTop, greaterThan(promoTop));
+      expect(walletTop, greaterThan(headerBottom));
+      final double promoTop =
+          tester.getTopLeft(find.byKey(const Key('customer-announcement-surface'))).dy;
+      expect(promoTop, greaterThan(walletTop));
       expect(
         find
                 .byKey(const Key('announcement-loading-state'))
@@ -143,6 +144,52 @@ void main() {
       expect(tester.takeException(), isNull);
     }
     addTearDown(() => tester.binding.setSurfaceSize(null));
+  });
+
+  testWidgets('live referral policy renders below wallet and opens existing Referral page',
+      (WidgetTester tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    SharedPreferences.setMockInitialValues(<String, Object>{
+      'user_name': 'Ada Okafor',
+      'user_role': 'CUSTOMER',
+      'auth_token': 'test-token',
+      'wallet_balance': 24500.0,
+    });
+    final requests = <http.Request>[];
+    final client = MockClient((http.Request request) async {
+      requests.add(request);
+      if (request.url.path.endsWith('/auth/referral')) {
+        return http.Response('{"success":true,"programme":{"version":2,'
+            '"enabled":true,"activatedAt":"2020-01-01T00:00:00Z",'
+            '"registrationBonus":100,"transactionCommission":1}}', 200);
+      }
+      if (request.url.path.endsWith('/announcements/active')) {
+        return http.Response('{"announcements":[]}', 200);
+      }
+      if (request.url.path.endsWith('/wallet')) {
+        return http.Response('{"walletBalance":24500}', 200);
+      }
+      return http.Response('{}', 404);
+    });
+    await tester.pumpWidget(MaterialApp(home: DashboardScreen(client: client)));
+    for (var i = 0; i < 15; i++) {
+      await tester.pump(const Duration(milliseconds: 40));
+    }
+    expect(find.byKey(const Key('referral-promotion-card')), findsOneWidget);
+    expect(find.text('Get ₦100 for each successful referral and ₦1 per eligible transaction.'),
+        findsOneWidget);
+    expect(tester.getTopLeft(find.byKey(const Key('referral-promotion-card'))).dy,
+        greaterThan(tester.getTopLeft(find.text('Available Balance')).dy));
+    expect(requests.every((request) => request.method == 'GET'), isTrue);
+    expect(requests.singleWhere((request) =>
+        request.url.path.endsWith('/auth/referral')).url.queryParameters['historyLimit'], '1');
+    await tester.ensureVisible(find.byKey(const Key('referral-promotion-cta')));
+    await tester.tap(find.byKey(const Key('referral-promotion-cta')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byType(ReferralScreen), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('shows no-active-promotions only after a successful empty fetch',
@@ -493,6 +540,8 @@ void main() {
     await tester.tap(find.byKey(const Key('customer-all-services')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 1000));
+    expect(tester.widget<Scaffold>(find.byType(Scaffold).last).backgroundColor,
+        CustomerDashboardPalette.canvas);
     await tester.enterText(find.byType(TextField).last, 'QR Pay');
     await tester.pump();
     expect(

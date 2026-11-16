@@ -4,7 +4,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:servicepay_app/dashboard_screen.dart';
 import 'package:servicepay_app/main_navigation.dart';
-import 'package:servicepay_app/servicepay_theme.dart';
 import 'package:servicepay_app/transactions_screen.dart';
 import 'package:servicepay_app/widgets/customer_dashboard_visuals.dart';
 
@@ -20,6 +19,21 @@ class _RouteObserver extends NavigatorObserver {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  testWidgets('campaign frame clips artwork to rounded green borders',
+      (tester) async {
+    await tester.pumpWidget(const MaterialApp(
+      home: CustomerCampaignFrame(child: SizedBox(width: 320, height: 220)),
+    ));
+    final frame = tester.widget<Container>(find.descendant(
+      of: find.byType(CustomerCampaignFrame),
+      matching: find.byType(Container),
+    ).first);
+    expect(frame.clipBehavior, Clip.antiAlias);
+    expect((frame.decoration as BoxDecoration).borderRadius,
+        BorderRadius.circular(22));
+    expect((frame.foregroundDecoration as BoxDecoration).border, isNotNull);
+  });
 
   setUp(() {
     SharedPreferences.setMockInitialValues(<String, Object>{
@@ -48,7 +62,7 @@ void main() {
     );
     final BoxDecoration headerDecoration =
         header.decoration! as BoxDecoration;
-    expect(headerDecoration.color, const Color(0xFF087A45));
+    expect(headerDecoration.color, CustomerDashboardPalette.card);
     expect(headerDecoration.borderRadius, BorderRadius.circular(22));
     for (final String label in <String>['ServicePay', 'Ada']) {
       expect(
@@ -76,14 +90,22 @@ void main() {
         of: find.byKey(actionKey),
         matching: find.byType(Icon),
       );
-      expect(tester.widget<Icon>(action).color, const Color(0xFF075F38));
+      expect(tester.widget<Icon>(action).color,
+          CustomerDashboardPalette.royalBlue);
     }
 
     final Container wallet = tester
         .widget<Container>(find.byKey(const Key('servicepay-wallet-card')));
     final BoxDecoration decoration = wallet.decoration! as BoxDecoration;
-    expect(decoration.color, ServicePayColors.brand);
-    expect(decoration.gradient, isNull);
+    expect(decoration.color, isNull);
+    expect(decoration.gradient, isA<LinearGradient>());
+    expect(
+      (decoration.gradient! as LinearGradient).colors,
+      <Color>[
+        CustomerDashboardPalette.walletStart,
+        CustomerDashboardPalette.walletEnd,
+      ],
+    );
     final Text balance =
         tester.widget<Text>(find.byKey(const Key('dashboard-balance-value')));
     expect(balance.style?.color, Colors.white);
@@ -97,25 +119,30 @@ void main() {
     ]) {
       final Finder action = find.byKey(actionKey);
       expect(action, findsOneWidget);
+      final bool filled =
+          actionKey == const Key('dashboard-add-money-action');
+      final Color foreground = filled ? const Color(0xFF064120) : Colors.white;
       final Color actionBackground = tester.widget<Material>(action).color!;
-      final double contrast =
-          (Colors.white.computeLuminance() + 0.05) /
-          (actionBackground.computeLuminance() + 0.05);
+      final double foregroundLuminance = foreground.computeLuminance();
+      final double backgroundLuminance = actionBackground.computeLuminance();
+      final double contrast = foregroundLuminance > backgroundLuminance
+          ? (foregroundLuminance + 0.05) / (backgroundLuminance + 0.05)
+          : (backgroundLuminance + 0.05) / (foregroundLuminance + 0.05);
       expect(contrast, greaterThanOrEqualTo(4.5),
-          reason: 'White wallet action labels must remain accessible');
+          reason: 'Wallet action labels must remain accessible');
       expect(
         tester.widget<Text>(find.descendant(
           of: action,
           matching: find.byType(Text),
         )).style?.color,
-        Colors.white,
+        foreground,
       );
       expect(
         tester.widget<Icon>(find.descendant(
           of: action,
           matching: find.byType(Icon),
         )).color,
-        Colors.white,
+        foreground,
       );
     }
     expect(find.byKey(const Key('dashboard-add-money-action')), findsOneWidget);

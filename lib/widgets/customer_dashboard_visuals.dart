@@ -3,17 +3,21 @@ import 'package:flutter/material.dart';
 /// Customer-home colors are intentionally scoped here so staff dashboards keep
 /// the palette defined by the shared application theme.
 abstract final class CustomerDashboardPalette {
-  static const navy = Color(0xFF075F38);
-  static const royalBlue = Color(0xFF087A45);
-  static const teal = Color(0xFF178652);
-  static const canvas = Color(0xFFE8F5EC);
-  static const card = Color(0xFFFFFFFF);
-  static const success = Color(0xFF159B70);
+  static const navy = Color(0xFF06271D);
+  static const royalBlue = Color(0xFF36E875);
+  static const teal = Color(0xFF16894B);
+  static const canvas = Color(0xFF031D16);
+  static const card = Color(0xFF082D21);
+  static const success = Color(0xFF36E875);
   static const warning = Color(0xFFE6A52B);
   static const error = Color(0xFFDC4545);
-  static const muted = Color(0xFF53675B);
-  static const border = Color(0xFFDCE9E0);
-  static const paleBlue = Color(0xFFE8F5EC);
+  static const muted = Color(0xFFA4C2B0);
+  static const border = Color(0xFF174735);
+  static const paleBlue = Color(0xFF10412C);
+  static const text = Color(0xFFF3FFF6);
+  static const softText = Color(0xFFC2DCCD);
+  static const walletStart = Color(0xFF08D95B);
+  static const walletEnd = Color(0xFF087D3B);
 }
 
 class CustomerServiceGlyph extends StatelessWidget {
@@ -62,69 +66,20 @@ class CustomerCampaignFrame extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(1.5),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
+      clipBehavior: Clip.antiAlias,
+      decoration: const BoxDecoration(
+        borderRadius: BorderRadius.all(Radius.circular(22)),
+        gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: <Color>[
-            CustomerDashboardPalette.navy,
-            Color(0xFF14945A),
-          ],
+          colors: <Color>[Color(0xFF0B3928), Color(0xFF06271D)],
         ),
+      ),
+      foregroundDecoration: BoxDecoration(
         borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: CustomerDashboardPalette.border),
       ),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 2),
-        decoration: BoxDecoration(
-          color: CustomerDashboardPalette.card,
-          borderRadius: BorderRadius.circular(20.5),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Row(
-              children: <Widget>[
-                const CustomerServiceGlyph(
-                  icon: Icons.campaign_rounded,
-                  backgroundColor: CustomerDashboardPalette.paleBlue,
-                  iconColor: CustomerDashboardPalette.royalBlue,
-                  size: 34,
-                  iconSize: 19,
-                  radius: 11,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: <Widget>[
-                      Text(
-                        'SERVICEPAY UPDATES',
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                              color: CustomerDashboardPalette.royalBlue,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: 0.8,
-                            ),
-                      ),
-                      const SizedBox(height: 2),
-                      const Text(
-                        'Offers and important notices',
-                        style: TextStyle(
-                          color: CustomerDashboardPalette.navy,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            child,
-          ],
-        ),
-      ),
+      child: child,
     );
   }
 }

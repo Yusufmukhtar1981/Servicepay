@@ -29,6 +29,7 @@ import 'help_support_screen.dart';
 import 'profile_screen.dart';
 
 import 'referral_screen.dart';
+import 'referral_presentation_policy.dart';
 
 import 'empowerment_screen.dart';
 import 'program_sponsor_screen.dart';
@@ -153,6 +154,8 @@ class _DashboardScreenState extends State<DashboardScreen>
   CustomerFeatureConfiguration featureConfiguration =
       CustomerFeatureConfigurationService.defaults();
   List<ServicePayAnnouncement> announcements = <ServicePayAnnouncement>[];
+  ReferralPresentationPolicy? _referralPresentationPolicy;
+  int _referralLoadGeneration = 0;
   AnnouncementService? _announcementService;
   bool _announcementsLoading = true;
   bool _announcementResponseEmpty = false;
@@ -339,6 +342,8 @@ class _DashboardScreenState extends State<DashboardScreen>
       if (token == null || token.isEmpty) {
         if (mounted) {
           setState(() {
+            _referralLoadGeneration++;
+            _referralPresentationPolicy = null;
             isLoadingRecentActivity = false;
             recentActivityError =
                 'Your login session has expired. Please log in again.';
@@ -356,10 +361,13 @@ class _DashboardScreenState extends State<DashboardScreen>
       unawaited(_loadActiveServiceStatuses(token));
       unawaited(_loadSchoolPortalMemberships(token));
       unawaited(_loadFundingAccount(token));
-      receivedFreshWalletBalance = await _loadWalletBalance(token, preferences);
+      // Referral presentation is independently fetched and never gates the
+      // wallet or Admin campaign delivery.
+      unawaited(_loadReferralPresentation(token));
       // Announcements are deliberately non-blocking: dashboard data remains
       // usable if the campaign service is slow or unavailable.
       unawaited(_loadAnnouncements(token));
+      receivedFreshWalletBalance = await _loadWalletBalance(token, preferences);
     } catch (_) {
       // Keep locally saved dashboard values.
     } finally {
@@ -373,6 +381,38 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
 
     return receivedFreshWalletBalance;
+  }
+
+  Future<void> _loadReferralPresentation(String token) async {
+    final int generation = ++_referralLoadGeneration;
+    if (mounted) setState(() => _referralPresentationPolicy = null);
+    try {
+      final http.Response response = await _client
+          .get(
+            Uri.parse('$baseUrl/auth/referral').replace(
+              queryParameters: const <String, String>{
+                'historyPage': '1',
+                'historyLimit': '1',
+              },
+            ),
+            headers: <String, String>{
+              'Authorization': 'Bearer $token',
+              'Accept': 'application/json',
+            },
+          )
+          .timeout(const Duration(seconds: 20));
+      if (response.statusCode < 200 || response.statusCode >= 300) return;
+      final ReferralPresentationPolicy? policy =
+          ReferralPresentationPolicy.parse(
+        _decodeDashboardResponse(response.body),
+      );
+      if (mounted && generation == _referralLoadGeneration) {
+        setState(() => _referralPresentationPolicy = policy);
+      }
+    } catch (_) {
+      // No referral campaign is advertised when authoritative policy is
+      // unavailable. Other dashboard data and Admin promotions remain usable.
+    }
   }
 
   Future<void> _loadSchoolPortalMemberships(String token) async {
@@ -1834,9 +1874,9 @@ class _DashboardScreenState extends State<DashboardScreen>
               height: 48,
               padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
-                color: const Color(0xFFE9F8EF),
+                color: CustomerDashboardPalette.paleBlue,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFFD4EBDD)),
+                border: Border.all(color: CustomerDashboardPalette.border),
               ),
               child: Image.asset(
                 'assets/image/servicepay_logo.png',
@@ -1856,7 +1896,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                   Text(
                     'ServicePay',
                     style: TextStyle(
-                      color: Color(0xFF13251A),
+                      color: CustomerDashboardPalette.text,
                       fontSize: 19,
                       fontWeight: FontWeight.w900,
                       letterSpacing: -0.55,
@@ -1866,7 +1906,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                   Text(
                     'Simple. Secure. Instant.',
                     style: TextStyle(
-                      color: Color(0xFF708078),
+                      color: CustomerDashboardPalette.muted,
                       fontSize: 10.5,
                       fontWeight: FontWeight.w600,
                     ),
@@ -1912,8 +1952,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: ServicePayColors.brandSoft,
-                    border: Border.all(color: Colors.white, width: 2),
+                    color: CustomerDashboardPalette.paleBlue,
+                    border: Border.all(color: CustomerDashboardPalette.border, width: 2),
                     boxShadow: const <BoxShadow>[
                       BoxShadow(
                         color: Color(0x1A087A45),
@@ -1937,7 +1977,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                               errorBuilder: (_, __, ___) => Text(
                                 initial,
                                 style: const TextStyle(
-                                  color: primaryGreen,
+                                  color: CustomerDashboardPalette.text,
                                   fontSize: 17,
                                   fontWeight: FontWeight.w900,
                                 ),
@@ -1946,7 +1986,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                           : Text(
                               initial,
                               style: const TextStyle(
-                                color: primaryGreen,
+                                color: CustomerDashboardPalette.text,
                                 fontSize: 17,
                                 fontWeight: FontWeight.w900,
                               ),
@@ -1960,7 +2000,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         Text(
           greeting,
           style: const TextStyle(
-            color: Color(0xFF63736A),
+            color: CustomerDashboardPalette.muted,
             fontSize: 13,
             fontWeight: FontWeight.w700,
           ),
@@ -1971,7 +2011,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(
-            color: Color(0xFF122219),
+            color: CustomerDashboardPalette.text,
             fontSize: 27,
             fontWeight: FontWeight.w900,
             letterSpacing: -1,
@@ -2009,7 +2049,7 @@ class _DashboardScreenState extends State<DashboardScreen>
               child: Icon(
                 icon,
                 size: 22,
-                color: CustomerDashboardPalette.navy,
+                color: CustomerDashboardPalette.royalBlue,
               ),
             ),
             if (showDot)
@@ -2159,20 +2199,16 @@ class _DashboardScreenState extends State<DashboardScreen>
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           colors: <Color>[
-            ServicePayColors.brand,
-            Color(0xFF159B70),
+            CustomerDashboardPalette.walletStart,
+            CustomerDashboardPalette.walletEnd,
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(24),
-        boxShadow: const <BoxShadow>[
-          BoxShadow(
-            color: Color(0x24087A45),
-            blurRadius: 23,
-            offset: Offset(0, 9),
-          ),
-        ],
+        border: Border.all(
+          color: const Color(0xFF78F59E).withValues(alpha: .55),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2287,11 +2323,11 @@ class _DashboardScreenState extends State<DashboardScreen>
   }) {
     return Material(
       key: key,
-      color: filled ? ServicePayColors.brandDeep : ServicePayColors.brand,
+      color: filled ? const Color(0xFFB9FFD0) : const Color(0xFF075D33),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
         side: BorderSide(
-          color: Colors.white.withValues(alpha: filled ? 1 : 0.32),
+          color: Colors.white.withValues(alpha: filled ? 0 : 0.68),
         ),
       ),
       child: InkWell(
@@ -2305,7 +2341,7 @@ class _DashboardScreenState extends State<DashboardScreen>
               Icon(
                 icon,
                 size: 18,
-                color: Colors.white,
+                 color: filled ? const Color(0xFF064120) : Colors.white,
               ),
               const SizedBox(height: 3),
               FittedBox(
@@ -2314,7 +2350,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                   label,
                   maxLines: 1,
                   style: TextStyle(
-                    color: Colors.white,
+                    color: filled ? const Color(0xFF064120) : Colors.white,
                     fontSize: 10,
                     fontWeight: FontWeight.w800,
                   ),
@@ -2393,7 +2429,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 textAlign: TextAlign.center,
                 overflow: TextOverflow.visible,
                 style: const TextStyle(
-                  color: Color(0xFF263D30),
+                  color: CustomerDashboardPalette.text,
                   fontSize: 10.8,
                   fontWeight: FontWeight.w800,
                 ),
@@ -2408,7 +2444,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      color: Color(0xFF839189),
+                      color: CustomerDashboardPalette.muted,
                       fontSize: 8.8,
                       fontWeight: FontWeight.w600,
                     ),
@@ -2433,7 +2469,7 @@ class _DashboardScreenState extends State<DashboardScreen>
         const Text(
           'Active Services',
           style: TextStyle(
-            color: CustomerDashboardPalette.navy,
+            color: CustomerDashboardPalette.text,
             fontSize: 17,
             fontWeight: FontWeight.w900,
           ),
@@ -2512,7 +2548,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        color: Color(0xFF263D30),
+                        color: CustomerDashboardPalette.text,
                         fontSize: 12.5,
                         fontWeight: FontWeight.w900,
                       ),
@@ -2523,7 +2559,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        color: Color(0xFF78877E),
+                        color: CustomerDashboardPalette.muted,
                         fontSize: 10.5,
                         fontWeight: FontWeight.w600,
                       ),
@@ -2540,7 +2576,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: primaryGreen.withValues(alpha: 0.09),
+                    color: CustomerDashboardPalette.success.withValues(alpha: 0.09),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Text(
@@ -2549,8 +2585,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                     textAlign: TextAlign.center,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      color: primaryGreen,
-                      fontSize: 8.5,
+                      color: CustomerDashboardPalette.success,
+                      fontSize: 10,
                       fontWeight: FontWeight.w900,
                     ),
                   ),
@@ -2793,12 +2829,12 @@ class _DashboardScreenState extends State<DashboardScreen>
     _DashboardService service, {
     required int index,
   }) {
-    const Color accent = ServicePayColors.brand;
-    const Color accentSurface = ServicePayColors.brandSoft;
+    const Color accent = CustomerDashboardPalette.royalBlue;
+    const Color accentSurface = CustomerDashboardPalette.paleBlue;
     return _floating(
       index: index + 3,
       child: Material(
-        color: Colors.white,
+        color: CustomerDashboardPalette.card,
         borderRadius: BorderRadius.circular(15),
         child: InkWell(
           key: Key('customer-quick-service-${service.title.toLowerCase()}'),
@@ -2809,13 +2845,6 @@ class _DashboardScreenState extends State<DashboardScreen>
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(15),
               border: Border.all(color: CustomerDashboardPalette.border),
-              boxShadow: const <BoxShadow>[
-                BoxShadow(
-                  color: Color(0x0D123B25),
-                  blurRadius: 14,
-                  offset: Offset(0, 5),
-                ),
-              ],
             ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -2839,7 +2868,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                   textAlign: TextAlign.center,
                   softWrap: true,
                   style: const TextStyle(
-                    color: CustomerDashboardPalette.navy,
+                    color: CustomerDashboardPalette.text,
                     fontSize: 12.5,
                     height: 1.08,
                     fontWeight: FontWeight.w800,
@@ -2952,16 +2981,9 @@ class _DashboardScreenState extends State<DashboardScreen>
       key: const Key('customer-quick-services'),
       padding: const EdgeInsets.fromLTRB(14, 15, 14, 14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: CustomerDashboardPalette.card,
         borderRadius: BorderRadius.circular(21),
         border: Border.all(color: CustomerDashboardPalette.border),
-        boxShadow: const <BoxShadow>[
-          BoxShadow(
-            color: Color(0x08102B55),
-            blurRadius: 18,
-            offset: Offset(0, 6),
-          ),
-        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -3063,7 +3085,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       key: const Key('customer-funding-account'),
       padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
       decoration: BoxDecoration(
-        color: ServicePayColors.brandSoft,
+        color: CustomerDashboardPalette.card,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: CustomerDashboardPalette.border),
       ),
@@ -3073,7 +3095,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: CustomerDashboardPalette.paleBlue,
               borderRadius: BorderRadius.circular(13),
             ),
             child: const Icon(
@@ -3100,7 +3122,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 Text(
                   fundingAccountNumber,
                   style: const TextStyle(
-                    color: CustomerDashboardPalette.navy,
+                    color: CustomerDashboardPalette.text,
                     fontSize: 16,
                     fontWeight: FontWeight.w900,
                     letterSpacing: .3,
@@ -3113,7 +3135,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                      color: CustomerDashboardPalette.navy,
+                      color: CustomerDashboardPalette.text,
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
                     ),
@@ -3134,7 +3156,8 @@ class _DashboardScreenState extends State<DashboardScreen>
             key: const Key('customer-copy-account'),
             tooltip: 'Copy account number',
             onPressed: _copyFundingAccount,
-            icon: const Icon(Icons.copy_rounded, color: primaryGreen, size: 19),
+            icon: const Icon(Icons.copy_rounded,
+                color: CustomerDashboardPalette.royalBlue, size: 19),
           ),
         ],
       ),
@@ -4062,8 +4085,9 @@ class _DashboardScreenState extends State<DashboardScreen>
       key: const Key('customer-dashboard-header'),
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 16),
       decoration: BoxDecoration(
-        color: CustomerDashboardPalette.navy,
+        color: CustomerDashboardPalette.card,
         borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: CustomerDashboardPalette.border),
       ),
       child: Column(
         children: <Widget>[
@@ -4175,14 +4199,10 @@ class _DashboardScreenState extends State<DashboardScreen>
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           color: CustomerDashboardPalette.paleBlue,
-                          border: Border.all(color: Colors.white, width: 2),
-                          boxShadow: const <BoxShadow>[
-                            BoxShadow(
-                              color: Color(0x10102B55),
-                              blurRadius: 10,
-                              offset: Offset(0, 3),
-                            ),
-                          ],
+                          border: Border.all(
+                            color: CustomerDashboardPalette.border,
+                            width: 2,
+                          ),
                         ),
                         child: profilePhotoUrl.trim().isNotEmpty
                             ? Image.network(
@@ -4219,7 +4239,10 @@ class _DashboardScreenState extends State<DashboardScreen>
                           decoration: BoxDecoration(
                             color: CustomerDashboardPalette.royalBlue,
                             shape: BoxShape.circle,
-                            border: Border.all(color: Colors.white, width: 2),
+                            border: Border.all(
+                              color: CustomerDashboardPalette.card,
+                              width: 2,
+                            ),
                           ),
                           child: isUploadingProfilePhoto
                               ? const Padding(
@@ -5424,13 +5447,6 @@ class _DashboardScreenState extends State<DashboardScreen>
         color: CustomerDashboardPalette.card,
         borderRadius: BorderRadius.circular(22),
         border: Border.all(color: CustomerDashboardPalette.border),
-        boxShadow: const <BoxShadow>[
-          BoxShadow(
-            color: Color(0x0B102A1B),
-            blurRadius: 16,
-            offset: Offset(0, 7),
-          ),
-        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -5446,7 +5462,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: CustomerDashboardPalette.navy,
+                        color: CustomerDashboardPalette.text,
                         fontSize: 17,
                         fontWeight: FontWeight.w900,
                       ),
@@ -5558,7 +5574,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        color: Color(0xFF78877E),
+                        color: CustomerDashboardPalette.muted,
                         fontSize: 10.5,
                         fontWeight: FontWeight.w600,
                       ),
@@ -5683,7 +5699,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       child: Ink(
         padding: const EdgeInsets.all(17),
         decoration: BoxDecoration(
-          color: CustomerDashboardPalette.paleBlue,
+          color: CustomerDashboardPalette.card,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: CustomerDashboardPalette.border),
         ),
@@ -5702,7 +5718,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                   Text(
                     'Business Hub',
                     style: TextStyle(
-                      color: CustomerDashboardPalette.navy,
+                      color: CustomerDashboardPalette.text,
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
                     ),
@@ -5748,18 +5764,32 @@ class _DashboardScreenState extends State<DashboardScreen>
                 children: <Widget>[
                   buildHeader(),
                   const SizedBox(height: 14),
+                  if (isLoading)
+                    const LinearProgressIndicator(
+                      color: CustomerDashboardPalette.royalBlue,
+                      backgroundColor: CustomerDashboardPalette.paleBlue,
+                      minHeight: 2,
+                    ),
+                  if (isLoading) const SizedBox(height: 10),
+                  buildPremiumBalanceCard(),
+                  const SizedBox(height: 14),
                   if (_announcementsLoading ||
                       _announcementsError != null ||
                       announcements.isNotEmpty ||
-                      _announcementResponseEmpty) ...[
+                      _announcementResponseEmpty ||
+                      _referralPresentationPolicy != null) ...[
                     CustomerCampaignFrame(
                       key: const Key('customer-announcement-surface'),
-                      child: announcements.isNotEmpty &&
-                              _announcementService != null
+                      child: _announcementService != null &&
+                              (announcements.isNotEmpty ||
+                                  _referralPresentationPolicy != null)
                           ? AnnouncementSurface(
                               announcements: announcements,
                               service: _announcementService!,
                               rewardProgressService: _rewardProgressService,
+                              referralPolicy: _referralPresentationPolicy,
+                              onReferralAction: () =>
+                                  openScreen(const ReferralScreen()),
                               onPopupCompleted: (item) {
                                 _sessionPopupCompletedBanners[item.id] = item;
                               },
@@ -5773,30 +5803,32 @@ class _DashboardScreenState extends State<DashboardScreen>
                                 });
                               },
                             )
-                          : AnnouncementLoadPlaceholder(
-                              loading: _announcementsLoading,
-                              error: _announcementsError,
-                              onRetry: _refreshDashboard,
-                            ),
+                          : _referralPresentationPolicy != null
+                              ? AnnouncementPromotionCarousel(
+                                  announcements: const <ServicePayAnnouncement>[],
+                                  onDismiss: (_) {},
+                                  onAcknowledge: (_) {},
+                                  onAction: (_) {},
+                                  referralPolicy: _referralPresentationPolicy,
+                                  onReferralAction: () =>
+                                      openScreen(const ReferralScreen()),
+                                )
+                              : AnnouncementLoadPlaceholder(
+                                  loading: _announcementsLoading,
+                                  error: _announcementsError,
+                                  onRetry: _refreshDashboard,
+                                ),
                     ),
                     const SizedBox(height: 14),
                   ],
-                  if (isLoading)
-                    const LinearProgressIndicator(
-                      color: CustomerDashboardPalette.royalBlue,
-                      backgroundColor: CustomerDashboardPalette.paleBlue,
-                      minHeight: 2,
-                    ),
-                  if (isLoading) const SizedBox(height: 10),
-                  buildPremiumBalanceCard(),
-                  const SizedBox(height: 11),
+                  buildFundingAccountCard(),
+                  if (fundingAccountNumber.isNotEmpty)
+                    const SizedBox(height: 15),
                   CustomerChampionsDashboardEntry(
                     key: _championsEntryKey,
                     refreshVersion: _championsRefreshVersion,
                   ),
-                  buildFundingAccountCard(),
-                  if (fundingAccountNumber.isNotEmpty)
-                    const SizedBox(height: 15),
+                  const SizedBox(height: 12),
                   buildCustomerQuickServices(),
                   const SizedBox(height: 14),
                   if (isLoadingServiceStatuses ||
@@ -5912,9 +5944,9 @@ class _DashboardEmptyState extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(14, 18, 14, 16),
       decoration: BoxDecoration(
-        color: const Color(0xFFFAFCFB),
+        color: CustomerDashboardPalette.card,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFEAF0EC)),
+        border: Border.all(color: CustomerDashboardPalette.border),
       ),
       child: Column(
         children: <Widget>[
@@ -5923,7 +5955,7 @@ class _DashboardEmptyState extends StatelessWidget {
             height: 42,
             alignment: Alignment.center,
             decoration: const BoxDecoration(
-              color: ServicePayColors.brandSoft,
+              color: CustomerDashboardPalette.paleBlue,
               shape: BoxShape.circle,
             ),
             child: Icon(
@@ -5937,7 +5969,7 @@ class _DashboardEmptyState extends StatelessWidget {
             title,
             textAlign: TextAlign.center,
             style: const TextStyle(
-              color: Color(0xFF263D30),
+              color: CustomerDashboardPalette.text,
               fontSize: 12.5,
               fontWeight: FontWeight.w800,
             ),
@@ -5947,7 +5979,7 @@ class _DashboardEmptyState extends StatelessWidget {
             message,
             textAlign: TextAlign.center,
             style: const TextStyle(
-              color: Color(0xFF78877E),
+              color: CustomerDashboardPalette.muted,
               fontSize: 10.5,
               height: 1.35,
               fontWeight: FontWeight.w600,
@@ -6046,7 +6078,7 @@ class CustomerServicesSectionHeader extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: Color(0xFF173629),
+                color: CustomerDashboardPalette.text,
                 fontSize: 17,
                 fontWeight: FontWeight.w900,
               ),
@@ -6061,6 +6093,7 @@ class CustomerServicesSectionHeader extends StatelessWidget {
                 key: const Key('customer-all-services'),
                 onPressed: allServicesUnavailable ? null : onAllServices,
                 style: TextButton.styleFrom(
+                  foregroundColor: CustomerDashboardPalette.royalBlue,
                   padding: const EdgeInsets.symmetric(horizontal: 6),
                   minimumSize: const Size(0, 44),
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -6338,8 +6371,8 @@ class _ServicePayAllServicesScreenState
   final TextEditingController _controller = TextEditingController();
   String query = '';
 
-  static const Color _green = ServicePayColors.brand;
-  static const Color _softGreen = ServicePayColors.brandSoft;
+  static const Color _green = CustomerDashboardPalette.royalBlue;
+  static const Color _softGreen = CustomerDashboardPalette.paleBlue;
 
   @override
   void dispose() {
@@ -6468,17 +6501,17 @@ class _ServicePayAllServicesScreenState
     final groups = _groups;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAF9),
+      backgroundColor: CustomerDashboardPalette.canvas,
       appBar: AppBar(
         elevation: 0,
-        backgroundColor: Colors.white,
-        foregroundColor: ServicePayColors.ink,
-        iconTheme: const IconThemeData(color: ServicePayColors.ink),
+        backgroundColor: CustomerDashboardPalette.card,
+        foregroundColor: CustomerDashboardPalette.text,
+        iconTheme: const IconThemeData(color: CustomerDashboardPalette.text),
         centerTitle: false,
         title: const Text(
           'All Services',
           style: TextStyle(
-            color: ServicePayColors.ink,
+            color: CustomerDashboardPalette.text,
             fontSize: 20,
             fontWeight: FontWeight.w800,
           ),
@@ -6491,23 +6524,25 @@ class _ServicePayAllServicesScreenState
               padding: const EdgeInsets.fromLTRB(18, 12, 18, 8),
               child: TextField(
                 controller: _controller,
+                style: const TextStyle(color: CustomerDashboardPalette.text),
                 onChanged: (value) {
                   setState(() => query = value);
                 },
                 decoration: InputDecoration(
                   hintText: 'Search ServicePay services',
-                  prefixIcon: const Icon(Icons.search_rounded),
+                  hintStyle: const TextStyle(color: CustomerDashboardPalette.muted),
+                  prefixIcon: const Icon(Icons.search_rounded, color: _green),
                   suffixIcon: query.isEmpty
                       ? null
                       : IconButton(
-                          icon: const Icon(Icons.close_rounded),
+                          icon: const Icon(Icons.close_rounded, color: _green),
                           onPressed: () {
                             _controller.clear();
                             setState(() => query = '');
                           },
                         ),
                   filled: true,
-                  fillColor: Colors.white,
+                  fillColor: CustomerDashboardPalette.card,
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 16,
                     vertical: 15,
@@ -6515,7 +6550,7 @@ class _ServicePayAllServicesScreenState
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
                     borderSide: const BorderSide(
-                      color: Color(0xFFE4ECE7),
+                      color: CustomerDashboardPalette.border,
                     ),
                   ),
                   focusedBorder: OutlineInputBorder(
@@ -6536,7 +6571,7 @@ class _ServicePayAllServicesScreenState
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w700,
-                          color: Color(0xFF66756D),
+                          color: CustomerDashboardPalette.muted,
                         ),
                       ),
                     )
@@ -6588,7 +6623,7 @@ class _ServicePayAllServicesScreenState
                 style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w800,
-                  color: Color(0xFF14211B),
+                  color: CustomerDashboardPalette.text,
                 ),
               ),
             ),
@@ -6610,7 +6645,14 @@ class _ServicePayAllServicesScreenState
           itemBuilder: (context, index) {
             final service = services[index];
 
-            return InkWell(
+            return Material(
+              color: CustomerDashboardPalette.card,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+                side: const BorderSide(color: CustomerDashboardPalette.border),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: InkWell(
               borderRadius: BorderRadius.circular(14),
               onTap: service.onTap,
               child: Padding(
@@ -6649,7 +6691,7 @@ class _ServicePayAllServicesScreenState
                               fontSize: 10.8,
                               height: 1.08,
                               fontWeight: FontWeight.w700,
-                              color: Color(0xFF536159),
+                              color: CustomerDashboardPalette.text,
                             ),
                           ),
                           if (service.unavailable)
@@ -6658,7 +6700,7 @@ class _ServicePayAllServicesScreenState
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                color: Color(0xFFB45309),
+                                color: CustomerDashboardPalette.warning,
                                 fontSize: 7.5,
                                 fontWeight: FontWeight.w800,
                               ),
@@ -6669,6 +6711,7 @@ class _ServicePayAllServicesScreenState
                   ],
                 ),
               ),
+            ),
             );
           },
         ),

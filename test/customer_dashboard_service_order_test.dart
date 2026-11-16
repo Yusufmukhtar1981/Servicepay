@@ -304,6 +304,12 @@ void main() {
         'Keke Napep',
         'Flight Booking',
       ];
+      await tester.scrollUntilVisible(
+        find.byKey(const Key('customer-quick-services')),
+        250,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pump();
       final List<Offset> positions = <Offset>[
         for (final String service in services)
           tester.getCenter(find.text(service)),

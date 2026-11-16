@@ -6,6 +6,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../servicepay_theme.dart';
 import '../services/announcement_service.dart';
 import '../services/reward_progress_service.dart';
+import '../referral_presentation_policy.dart';
+import 'customer_dashboard_visuals.dart';
 
 class AnnouncementBanner extends StatelessWidget {
   const AnnouncementBanner({
@@ -134,16 +136,9 @@ class RewardProgressCard extends StatelessWidget {
       margin: const EdgeInsets.only(top: 12, bottom: 4),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: CustomerDashboardPalette.card,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: ServicePayColors.brand.withValues(alpha: .2)),
-        boxShadow: const <BoxShadow>[
-          BoxShadow(
-            color: Color(0x120A3B27),
-            blurRadius: 16,
-            offset: Offset(0, 6),
-          ),
-        ],
+        border: Border.all(color: CustomerDashboardPalette.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -154,11 +149,11 @@ class RewardProgressCard extends StatelessWidget {
             crossAxisAlignment: WrapCrossAlignment.center,
             children: <Widget>[
               const Icon(Icons.card_giftcard_rounded,
-                  color: ServicePayColors.brand, size: 23),
+                  color: CustomerDashboardPalette.royalBlue, size: 23),
               const Text(
                 'Smartphone Reward Progress',
                 style: TextStyle(
-                  color: Color(0xFF17382B),
+                  color: CustomerDashboardPalette.text,
                   fontSize: 16,
                   fontWeight: FontWeight.w900,
                 ),
@@ -171,7 +166,7 @@ class RewardProgressCard extends StatelessWidget {
                 ? announcement.rewardDescription!
                 : 'Reward campaign',
             style: const TextStyle(
-              color: ServicePayColors.muted,
+              color: CustomerDashboardPalette.muted,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -191,11 +186,12 @@ class RewardProgressCard extends StatelessWidget {
           else if (error != null && value == null)
             Text(error!,
                 style: const TextStyle(
-                    color: ServicePayColors.muted, height: 1.35))
+                    color: CustomerDashboardPalette.muted, height: 1.35))
           else if (value == null || !value.hasData)
             const Text(
               'No reward progress is available for this campaign yet.',
-              style: TextStyle(color: ServicePayColors.muted, height: 1.35),
+              style: TextStyle(
+                  color: CustomerDashboardPalette.muted, height: 1.35),
             )
           else ...[
             _ProgressMetric(
@@ -224,7 +220,7 @@ class RewardProgressCard extends StatelessWidget {
               const Text(
                 'QUALIFIED',
                 style: TextStyle(
-                  color: ServicePayColors.brandDeep,
+                  color: CustomerDashboardPalette.royalBlue,
                   fontWeight: FontWeight.w900,
                   letterSpacing: .7,
                 ),
@@ -233,7 +229,7 @@ class RewardProgressCard extends StatelessWidget {
               const Text(
                 'Keep going! Complete both requirements to qualify for the reward draw.',
                 style: TextStyle(
-                  color: ServicePayColors.muted,
+                  color: CustomerDashboardPalette.softText,
                   height: 1.35,
                   fontWeight: FontWeight.w700,
                 ),
@@ -244,7 +240,7 @@ class RewardProgressCard extends StatelessWidget {
                 Text(
                   _remainingLabel(value),
                   style: const TextStyle(
-                    color: ServicePayColors.muted,
+                    color: CustomerDashboardPalette.muted,
                     fontSize: 12,
                   ),
                 ),
@@ -290,11 +286,12 @@ class _ProgressMetric extends StatelessWidget {
           children: <Widget>[
             Text(label,
                 style: const TextStyle(
-                    color: ServicePayColors.muted,
+                    color: CustomerDashboardPalette.muted,
                     fontWeight: FontWeight.w700)),
             Text(value,
                 style: const TextStyle(
-                    color: Color(0xFF17382B), fontWeight: FontWeight.w900)),
+                    color: CustomerDashboardPalette.text,
+                    fontWeight: FontWeight.w900)),
           ],
         ),
         const SizedBox(height: 7),
@@ -303,8 +300,8 @@ class _ProgressMetric extends StatelessWidget {
           child: LinearProgressIndicator(
             value: progress.clamp(0.0, 1.0).toDouble(),
             minHeight: 8,
-            color: ServicePayColors.brand,
-            backgroundColor: const Color(0xFFE6F1EA),
+            color: CustomerDashboardPalette.royalBlue,
+            backgroundColor: CustomerDashboardPalette.paleBlue,
           ),
         ),
       ],
@@ -319,12 +316,18 @@ class AnnouncementPromotionCarousel extends StatefulWidget {
     required this.onDismiss,
     required this.onAcknowledge,
     required this.onAction,
+    this.referralPolicy,
+    this.onReferralAction,
   });
 
   final List<ServicePayAnnouncement> announcements;
   final ValueChanged<ServicePayAnnouncement> onDismiss;
   final ValueChanged<ServicePayAnnouncement> onAcknowledge;
   final ValueChanged<ServicePayAnnouncement> onAction;
+  final ReferralPresentationPolicy? referralPolicy;
+  final VoidCallback? onReferralAction;
+
+  int get _itemCount => announcements.length + (referralPolicy == null ? 0 : 1);
 
   @override
   State<AnnouncementPromotionCarousel> createState() =>
@@ -339,6 +342,49 @@ class _AnnouncementPromotionCarouselState
   bool _isPaused = false;
   bool _animationsDisabled = false;
   bool _programmaticPageChange = false;
+
+  double _referralContentHeight(BuildContext context, double width) {
+    final policy = widget.referralPolicy;
+    if (policy == null) return 0;
+    final scaler = MediaQuery.textScalerOf(context);
+    final scale = scaler.scale(1);
+    final compact = width < 365;
+    final hasIllustration = !(scale > 1.35 && width < 420);
+    final innerWidth = width - (compact ? 32 : 40);
+    final copyWidth = hasIllustration ? (innerWidth - 5) * .6 : innerWidth;
+    double measure(String text, double size, double lineHeight,
+        {int? maxLines, double? maxWidth, double? letterSpacing}) {
+      final painter = TextPainter(
+        text: TextSpan(
+          text: text,
+          style: DefaultTextStyle.of(context).style.merge(TextStyle(
+            fontSize: size,
+            height: lineHeight,
+            fontWeight: FontWeight.w900,
+            letterSpacing: letterSpacing,
+          )),
+        ),
+        textDirection: Directionality.of(context),
+        textScaler: scaler,
+        maxLines: maxLines,
+      )..layout(
+          maxWidth: (maxWidth ?? copyWidth)
+              .clamp(1.0, double.infinity)
+              .toDouble());
+      final height = painter.height;
+      painter.dispose();
+      return height;
+    }
+    final labelHeight =
+        measure('Refer Now →', 12, 1.3, maxWidth: copyWidth - 28) + 16;
+    final buttonHeight = labelHeight > 44 ? labelHeight : 44.0;
+    return measure('Refer & Earn', 21, 1.08, letterSpacing: -.45) +
+        measure(policy.message, 13, 1.3) +
+        buttonHeight +
+        measure('Rewards follow verification and eligibility.', 9, 1.2,
+            maxLines: 2) +
+        34 + 8 + 11 + 6 + 12;
+  }
 
   @override
   void initState() {
@@ -367,22 +413,22 @@ class _AnnouncementPromotionCarouselState
   @override
   void didUpdateWidget(covariant AnnouncementPromotionCarousel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.announcements.length != oldWidget.announcements.length) {
-      _page = widget.announcements.isEmpty
+    if (widget._itemCount != oldWidget._itemCount) {
+      _page = widget._itemCount == 0
           ? 0
-          : _page.clamp(0, widget.announcements.length - 1);
+          : _page.clamp(0, widget._itemCount - 1);
       _startRotation();
     }
   }
 
   void _startRotation() {
     _rotationTimer?.cancel();
-    if (widget.announcements.length < 2 || _isPaused || _animationsDisabled) {
+    if (widget._itemCount < 2 || _isPaused || _animationsDisabled) {
       return;
     }
     _rotationTimer = Timer.periodic(const Duration(seconds: 6), (_) {
       if (!mounted || !_pageController.hasClients) return;
-      final int next = (_page + 1) % widget.announcements.length;
+      final int next = (_page + 1) % widget._itemCount;
       _programmaticPageChange = true;
       _pageController.animateToPage(
         next,
@@ -419,7 +465,7 @@ class _AnnouncementPromotionCarouselState
 
   @override
   Widget build(BuildContext context) {
-    if (widget.announcements.isEmpty) return const SizedBox.shrink();
+    if (widget._itemCount == 0) return const SizedBox.shrink();
     return Semantics(
       container: true,
       label: 'ServicePay promotions',
@@ -436,16 +482,24 @@ class _AnnouncementPromotionCarouselState
               );
               final bool narrowImageCard =
                   containsImage && constraints.maxWidth < 560;
+              final bool hasReferral = widget.referralPolicy != null;
               final double baseHeight = containsImage
                   ? (narrowImageCard ? 342 : constraints.maxWidth * .34)
-                  : (constraints.maxWidth < 360
+                  : hasReferral
+                      ? (constraints.maxWidth < 330 ? 252 : 220)
+                      : (constraints.maxWidth < 360
                       ? 194
                       : (constraints.maxWidth * .30).clamp(176.0, 218.0));
               final double scaleExtra =
                   ((textScale - 1).clamp(0, 1.5) * (containsImage ? 230 : 320))
                       .toDouble();
-              final double height =
+              final double fallbackHeight =
                   (baseHeight + scaleExtra).clamp(baseHeight, 560.0);
+              final double referralHeight =
+                  _referralContentHeight(context, constraints.maxWidth);
+              final double height = referralHeight > fallbackHeight
+                  ? referralHeight
+                  : fallbackHeight;
               return SizedBox(
                 key: const Key('announcement-promotion-viewport'),
                 height: height,
@@ -453,7 +507,7 @@ class _AnnouncementPromotionCarouselState
                   onPointerDown: (_) => _pauseRotation(),
                   child: PageView.builder(
                     controller: _pageController,
-                    itemCount: widget.announcements.length,
+                    itemCount: widget._itemCount,
                     onPageChanged: (value) {
                       if (!_programmaticPageChange) _pauseRotation();
                       _programmaticPageChange = false;
@@ -461,36 +515,47 @@ class _AnnouncementPromotionCarouselState
                     },
                     itemBuilder: (context, index) => Semantics(
                       container: true,
-                      label:
-                          'Promotion ${index + 1} of ${widget.announcements.length}',
+                      label: 'Promotion ${index + 1} of ${widget._itemCount}',
                       liveRegion: index == _page,
-                      child: _PromotionCard(
-                        announcement: widget.announcements[index],
-                        onDismiss: () =>
-                            widget.onDismiss(widget.announcements[index]),
-                        onAcknowledge: () =>
-                            widget.onAcknowledge(widget.announcements[index]),
-                        onAction: () =>
-                            widget.onAction(widget.announcements[index]),
-                      ),
+                      child: widget.referralPolicy != null && index == 0
+                          ? _ReferralPromotionCard(
+                              policy: widget.referralPolicy!,
+                              onTap: widget.onReferralAction ?? () {},
+                            )
+                          : _PromotionCard(
+                              announcement: widget.announcements[
+                                  index - (widget.referralPolicy == null ? 0 : 1)],
+                              onDismiss: () => widget.onDismiss(
+                                widget.announcements[
+                                    index - (widget.referralPolicy == null ? 0 : 1)],
+                              ),
+                              onAcknowledge: () => widget.onAcknowledge(
+                                widget.announcements[
+                                    index - (widget.referralPolicy == null ? 0 : 1)],
+                              ),
+                              onAction: () => widget.onAction(
+                                widget.announcements[
+                                    index - (widget.referralPolicy == null ? 0 : 1)],
+                              ),
+                            ),
                     ),
                   ),
                 ),
               );
             },
           ),
-          if (widget.announcements.length > 1) ...[
+          if (widget._itemCount > 1) ...[
             const SizedBox(height: 9),
             Semantics(
               container: true,
               liveRegion: true,
-              label: 'Promotion ${_page + 1} of ${widget.announcements.length}',
+              label: 'Promotion ${_page + 1} of ${widget._itemCount}',
               child: const SizedBox.shrink(),
             ),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: List<Widget>.generate(
-                widget.announcements.length,
+                widget._itemCount,
                 (index) => Semantics(
                   button: true,
                   selected: index == _page,
@@ -521,8 +586,8 @@ class _AnnouncementPromotionCarouselState
                           height: 6,
                           decoration: BoxDecoration(
                             color: index == _page
-                                ? ServicePayColors.brand
-                                : ServicePayColors.border,
+                                ? CustomerDashboardPalette.royalBlue
+                                : CustomerDashboardPalette.muted,
                             borderRadius: BorderRadius.circular(8),
                           ),
                         ),
@@ -557,6 +622,232 @@ class _AnnouncementPromotionCarouselState
       ),
     );
   }
+}
+
+class _ReferralPromotionCard extends StatelessWidget {
+  const _ReferralPromotionCard({
+    required this.policy,
+    required this.onTap,
+  });
+
+  final ReferralPresentationPolicy policy;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final double scale = MediaQuery.textScalerOf(context).scale(1);
+        final bool compact = constraints.maxWidth < 365;
+        return Semantics(
+          key: const Key('referral-promotion-card'),
+          container: true,
+          label: 'Refer and Earn. ${policy.message}',
+          child: Material(
+            color: const Color(0xFF082D21),
+            clipBehavior: Clip.antiAlias,
+            borderRadius: BorderRadius.circular(20),
+            child: Stack(
+                children: <Widget>[
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      compact ? 16 : 20,
+                      18,
+                      compact ? 16 : 20,
+                      16,
+                    ),
+                    child: Row(
+                      children: <Widget>[
+                        Expanded(
+                          flex: 6,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: <Widget>[
+                              const Text(
+                                'Refer & Earn',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 21,
+                                  height: 1.08,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: -.45,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                policy.message,
+                                style: const TextStyle(
+                                  color: Color(0xFFD4EBDD),
+                                  fontSize: 13,
+                                  height: 1.3,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 11),
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: FilledButton(
+                                  key: const Key('referral-promotion-cta'),
+                                  onPressed: onTap,
+                                  style: FilledButton.styleFrom(
+                                    backgroundColor: const Color(0xFF39E875),
+                                    foregroundColor: const Color(0xFF052619),
+                                    minimumSize: const Size(0, 44),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 14,
+                                    ),
+                                    shape: const StadiumBorder(),
+                                  ),
+                                  child: const Text(
+                                    'Refer Now →',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              const Text(
+                                'Rewards follow verification and eligibility.',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: Color(0xFFA7C5B1),
+                                  fontSize: 9,
+                                  height: 1.2,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        if (!(scale > 1.35 && constraints.maxWidth < 420)) ...[
+                        const SizedBox(width: 5),
+                        Expanded(
+                          flex: 4,
+                          child: SizedBox(
+                            height: compact ? 142 : 170,
+                            child: CustomPaint(
+                              painter: _ReferralArtworkPainter(
+                                reward: ReferralPresentationPolicy.money(
+                                  policy.registrationBonus,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _ReferralArtworkPainter extends CustomPainter {
+  const _ReferralArtworkPainter({this.reward = ''});
+
+  final String reward;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final Paint ring = Paint()
+      ..color = const Color(0xFF56EB84).withValues(alpha: .14)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2;
+    canvas.drawCircle(
+      Offset(size.width * .53, size.height * .53),
+      size.shortestSide * .38,
+      ring,
+    );
+    final Paint cone = Paint()..color = const Color(0xFFDAF7E3);
+    final Path mouth = Path()
+      ..moveTo(size.width * .23, size.height * .44)
+      ..lineTo(size.width * .68, size.height * .26)
+      ..lineTo(size.width * .68, size.height * .72)
+      ..lineTo(size.width * .23, size.height * .55)
+      ..close();
+    canvas.drawPath(mouth, cone);
+    final Paint bell = Paint()..color = const Color(0xFF37E875);
+    canvas.drawPath(
+      Path()
+        ..moveTo(size.width * .61, size.height * .29)
+        ..quadraticBezierTo(size.width * .73, size.height * .49,
+            size.width * .61, size.height * .69)
+        ..lineTo(size.width * .70, size.height * .70)
+        ..quadraticBezierTo(size.width * .84, size.height * .49,
+            size.width * .70, size.height * .28)
+        ..close(),
+      bell,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(size.width * .25, size.height * .49,
+            size.width * .18, size.height * .13),
+        const Radius.circular(5),
+      ),
+      Paint()..color = const Color(0xFF16894B),
+    );
+    canvas.drawLine(
+      Offset(size.width * .37, size.height * .59),
+      Offset(size.width * .47, size.height * .78),
+      Paint()
+        ..color = const Color(0xFF36E875)
+        ..strokeWidth = 5
+        ..strokeCap = StrokeCap.round,
+    );
+    final Paint coin = Paint()..color = const Color(0xFFFFC94A);
+    canvas.drawOval(
+      Rect.fromCenter(
+        center: Offset(size.width * .75, size.height * .76),
+        width: size.width * .43,
+        height: size.height * .23,
+      ),
+      coin,
+    );
+    if (reward.isNotEmpty) {
+      final TextPainter text = TextPainter(
+        text: TextSpan(
+          text: reward,
+          style: const TextStyle(
+            color: Color(0xFF3A2A08),
+            fontSize: 11,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+        maxLines: 1,
+      )..layout(maxWidth: size.width * .40);
+      text.paint(
+        canvas,
+        Offset(size.width * .75 - text.width / 2,
+            size.height * .76 - text.height / 2),
+      );
+      text.dispose();
+    }
+    final Paint sparkle = Paint()
+      ..color = const Color(0xFFFFC94A)
+      ..strokeWidth = 2.2
+      ..strokeCap = StrokeCap.round;
+    for (final Offset point in <Offset>[
+      Offset(size.width * .17, size.height * .27),
+      Offset(size.width * .48, size.height * .15),
+      Offset(size.width * .88, size.height * .38),
+    ]) {
+      canvas.drawLine(point.translate(-3, 0), point.translate(3, 0), sparkle);
+      canvas.drawLine(point.translate(0, -3), point.translate(0, 3), sparkle);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _ReferralArtworkPainter oldDelegate) =>
+      reward != oldDelegate.reward;
 }
 
 class _PromotionCard extends StatelessWidget {
@@ -613,13 +904,7 @@ class _PromotionCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: ServicePayColors.brandDeep,
         borderRadius: BorderRadius.circular(20),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x190A3B27),
-            blurRadius: 18,
-            offset: Offset(0, 8),
-          ),
-        ],
+        border: Border.all(color: CustomerDashboardPalette.border),
       ),
       child: Stack(
         fit: StackFit.expand,
@@ -799,7 +1084,7 @@ class _ImagePromotionCard extends StatelessWidget {
         );
         final Widget caption = Container(
           key: const Key('announcement-promotion-caption'),
-          color: Colors.white,
+          color: CustomerDashboardPalette.card,
           padding: const EdgeInsets.fromLTRB(18, 14, 14, 12),
           child: SingleChildScrollView(
             child: Column(
@@ -814,7 +1099,7 @@ class _ImagePromotionCard extends StatelessWidget {
                             ? 'SERVICEPAY PROMOTION'
                             : 'SERVICEPAY UPDATE',
                         style: const TextStyle(
-                          color: ServicePayColors.brandDeep,
+                          color: CustomerDashboardPalette.royalBlue,
                           fontSize: 10,
                           fontWeight: FontWeight.w900,
                           letterSpacing: .8,
@@ -836,7 +1121,7 @@ class _ImagePromotionCard extends StatelessWidget {
                   Text(
                     'Live $startLabel',
                     style: const TextStyle(
-                      color: ServicePayColors.muted,
+                      color: CustomerDashboardPalette.muted,
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
                     ),
@@ -845,7 +1130,7 @@ class _ImagePromotionCard extends StatelessWidget {
                 Text(
                   announcement.title,
                   style: const TextStyle(
-                    color: ServicePayColors.brandDeep,
+                    color: CustomerDashboardPalette.text,
                     fontSize: 18,
                     height: 1.1,
                     fontWeight: FontWeight.w900,
@@ -855,7 +1140,7 @@ class _ImagePromotionCard extends StatelessWidget {
                 Text(
                   announcement.message,
                   style: const TextStyle(
-                    color: ServicePayColors.muted,
+                    color: CustomerDashboardPalette.softText,
                     fontSize: 12,
                     height: 1.3,
                   ),
@@ -865,7 +1150,7 @@ class _ImagePromotionCard extends StatelessWidget {
                   Text(
                     'Published $publishedLabel',
                     style: const TextStyle(
-                      color: ServicePayColors.muted,
+                      color: CustomerDashboardPalette.muted,
                       fontSize: 10,
                       fontWeight: FontWeight.w700,
                     ),
@@ -903,16 +1188,9 @@ class _ImagePromotionCard extends StatelessWidget {
           margin: const EdgeInsets.symmetric(horizontal: 1),
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: CustomerDashboardPalette.card,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: const Color(0xFFDCE9E0)),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x190A3B27),
-                blurRadius: 18,
-                offset: Offset(0, 8),
-              ),
-            ],
+            border: Border.all(color: CustomerDashboardPalette.border),
           ),
           child: wide
               ? Row(
@@ -1108,6 +1386,8 @@ class AnnouncementSurface extends StatefulWidget {
     this.onPopupCompleted,
     this.onBannerRemoved,
     this.rewardProgressService,
+    this.referralPolicy,
+    this.onReferralAction,
   });
 
   final List<ServicePayAnnouncement> announcements;
@@ -1115,6 +1395,8 @@ class AnnouncementSurface extends StatefulWidget {
   final ValueChanged<ServicePayAnnouncement>? onPopupCompleted;
   final ValueChanged<ServicePayAnnouncement>? onBannerRemoved;
   final RewardProgressService? rewardProgressService;
+  final ReferralPresentationPolicy? referralPolicy;
+  final VoidCallback? onReferralAction;
 
   @override
   State<AnnouncementSurface> createState() => _AnnouncementSurfaceState();
@@ -1163,13 +1445,13 @@ class AnnouncementLoadPlaceholder extends StatelessWidget {
         child: Row(
           children: [
             const Icon(Icons.cloud_off_outlined,
-                color: ServicePayColors.muted, size: 20),
+                color: CustomerDashboardPalette.muted, size: 20),
             const SizedBox(width: 10),
             const Expanded(
               child: Text(
                 'Updates could not be loaded.',
                 style: TextStyle(
-                    color: ServicePayColors.muted,
+                    color: CustomerDashboardPalette.muted,
                     fontSize: 13,
                     fontWeight: FontWeight.w700),
               ),
@@ -1185,10 +1467,15 @@ class AnnouncementLoadPlaceholder extends StatelessWidget {
     return Container(
       key: const Key('announcement-empty-state'),
       padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 12),
+      decoration: BoxDecoration(
+        color: CustomerDashboardPalette.card,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: CustomerDashboardPalette.border),
+      ),
       child: const Row(
         children: [
           Icon(Icons.campaign_outlined,
-              color: ServicePayColors.brandDeep, size: 23),
+              color: CustomerDashboardPalette.royalBlue, size: 23),
           SizedBox(width: 11),
           Expanded(
             child: Column(
@@ -1196,11 +1483,12 @@ class AnnouncementLoadPlaceholder extends StatelessWidget {
               children: [
                 Text('No active promotions',
                     style: TextStyle(
-                        color: Color(0xFF17382B), fontWeight: FontWeight.w900)),
+                        color: CustomerDashboardPalette.text,
+                        fontWeight: FontWeight.w900)),
                 SizedBox(height: 3),
                 Text('ServicePay updates will appear here when available.',
                     style: TextStyle(
-                        color: ServicePayColors.muted,
+                        color: CustomerDashboardPalette.muted,
                         height: 1.35,
                         fontSize: 12)),
               ],
@@ -1482,6 +1770,19 @@ class _AnnouncementSurfaceState extends State<AnnouncementSurface> {
           onDismiss: _dismissBanner,
           onAcknowledge: (item) => unawaited(_acknowledgeBanner(item)),
           onAction: (item) => unawaited(_action(item)),
+          referralPolicy: widget.referralPolicy,
+          onReferralAction: widget.onReferralAction,
+        ),
+      );
+    } else if (widget.referralPolicy != null) {
+      children.add(
+        AnnouncementPromotionCarousel(
+          announcements: const <ServicePayAnnouncement>[],
+          onDismiss: _dismissBanner,
+          onAcknowledge: (item) => unawaited(_acknowledgeBanner(item)),
+          onAction: (item) => unawaited(_action(item)),
+          referralPolicy: widget.referralPolicy,
+          onReferralAction: widget.onReferralAction,
         ),
       );
     }

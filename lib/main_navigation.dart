@@ -162,8 +162,10 @@ class _MainNavigationState extends State<MainNavigation> {
   @override
   Widget build(BuildContext context) {
     if (isLoadingRole) {
-      return const Scaffold(
-        backgroundColor: Color(0xFFF7F9FB),
+      return Scaffold(
+        backgroundColor: userRole == 'CUSTOMER'
+            ? CustomerDashboardPalette.canvas
+            : const Color(0xFFF7F9FB),
         body: Center(child: CircularProgressIndicator(color: primaryGreen)),
       );
     }
@@ -181,20 +183,24 @@ class _MainNavigationState extends State<MainNavigation> {
           height: userRole == 'DELIVERY_RIDER' ? 78 : 82,
           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 6),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: userRole == 'CUSTOMER'
+                ? CustomerDashboardPalette.card
+                : Colors.white,
             borderRadius: BorderRadius.circular(22),
             border: Border.all(
               color: userRole == 'CUSTOMER'
                   ? CustomerDashboardPalette.border
                   : ServicePayColors.border,
             ),
-            boxShadow: const <BoxShadow>[
-              BoxShadow(
-                color: Color(0x24101828),
-                blurRadius: 24,
-                offset: Offset(0, 10),
-              ),
-            ],
+            boxShadow: userRole == 'CUSTOMER'
+                ? const <BoxShadow>[]
+                : const <BoxShadow>[
+                    BoxShadow(
+                      color: Color(0x24101828),
+                      blurRadius: 24,
+                      offset: Offset(0, 10),
+                    ),
+                  ],
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -354,7 +360,13 @@ class _MainNavigationState extends State<MainNavigation> {
                     alignment: Alignment.center,
                     child: Icon(
                       selected ? activeIcon : icon,
-                      color: selected ? Colors.white : ServicePayColors.muted,
+                      color: selected
+                          ? customerNavigation
+                              ? const Color(0xFF06271D)
+                              : Colors.white
+                          : customerNavigation
+                              ? CustomerDashboardPalette.softText
+                              : ServicePayColors.muted,
                       size: selected ? 19 : 21,
                     ),
                   ),
@@ -371,7 +383,11 @@ class _MainNavigationState extends State<MainNavigation> {
                         height: 1,
                         fontWeight:
                             selected ? FontWeight.w800 : FontWeight.w600,
-                        color: selected ? activeColor : ServicePayColors.muted,
+                        color: selected
+                            ? activeColor
+                            : customerNavigation
+                                ? CustomerDashboardPalette.muted
+                                : ServicePayColors.muted,
                       ),
                     ),
                   ),
