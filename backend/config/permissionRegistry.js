@@ -87,6 +87,7 @@ const STAFF_PERMISSION_CATALOG = Object.freeze([
   permission("WALLETS_VIEW", "wallets.view", "WALLETS", "View wallets", "View permitted wallet records."),
   permission("WALLETS_FUND", "wallets.fund", "WALLETS", "Fund wallets", "Approve supported wallet funding.", "CRITICAL"),
   permission("WALLETS_ADJUST", "wallets.adjust", "WALLETS", "Adjust wallets", "Post audited wallet adjustments.", "CRITICAL"),
+  permission("CASHBACK_CREDIT", "cashback.credit", "WALLETS", "Credit manual cashback", "Issue audited, idempotent credits to the separate Cashback Wallet. Global Head Office only.", "CRITICAL"),
   permission("WALLETS_FREEZE", "wallets.freeze", "WALLETS", "Freeze wallets", "Apply supported wallet restrictions.", "CRITICAL"),
   permission("FUNDING_VIEW", "funding.view", "FUNDING", "View funding", "View manual funding requests."),
   permission("FUNDING_APPROVE", "funding.approve", "FUNDING", "Approve funding", "Approve or reject manual funding requests.", "CRITICAL"),

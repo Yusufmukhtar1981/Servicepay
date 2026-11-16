@@ -12,6 +12,24 @@ const Ledger = require("../models/ledgerEntry.model");
 const Transaction = require("../models/transaction.model");
 const Entry = require("../models/cashbackEntry.model");
 const { provision } = require("../scripts/provisionCashbackStorage");
+test("explicit cashback authority requires active global Head Office and never a wildcard", () => {
+  const ctx = {
+    user: { role: "HEAD_OFFICE", email: "rbac-admin@example.invalid" },
+    staffAccess: { isHeadOffice: true, scope: { type: "GLOBAL" } },
+    staffRole: { status: "ACTIVE", permissions: ["cashback.credit"] },
+  };
+  assert.equal(policy.isConfiguredAdmin(ctx, ""), true);
+  for (const role of ["CUSTOMER", "STAFF", "CUSTOMER_SUPPORT"]) {
+    assert.equal(policy.isConfiguredAdmin({ ...ctx, user: { ...ctx.user, role } }, ""), false);
+  }
+  assert.equal(policy.isConfiguredAdmin({ ...ctx, staffRole: { ...ctx.staffRole, status: "INACTIVE" } }, ""), false);
+  assert.equal(policy.isConfiguredAdmin({ ...ctx, staffRole: { status: "ACTIVE", permissions: ["*"] } }, ""), false);
+  assert.equal(policy.isConfiguredAdmin({ ...ctx, staffAccess: { isHeadOffice: true, scope: { type: "BRANCH" } } }, ""), false);
+  assert.equal(policy.isConfiguredAdmin({ ...ctx, staffAccess: { isHeadOffice: false, scope: { type: "GLOBAL" } } }, ""), false);
+  const registry = require("../config/staffPermissions");
+  assert.equal(registry.normalizeStaffPermission("settings.edit"), "settings.update");
+  assert.equal(registry.validateStaffPermissions(["settings.edit", "settings.update", "cashback.credit"]).valid, true);
+});
 let replica, server, base, customer, second, admin, otherAdmin, support;
 const token = user => jwt.sign({ id: String(user._id), authTokenVersion: 0 }, process.env.JWT_SECRET);
 const request = async (user, route, options = {}) => {
@@ -198,4 +216,31 @@ test("Head Office manages integer-code update policy; unauthorized roles and fal
   assert.equal((await request(customer, "/app-update")).body.update.active, true);
   const settings = await Settings.findOne({ key: "GLOBAL_SETTINGS" }).lean();
   assert.equal(settings.appVersion.managementHistory.length, 1);
+});
+test("assigned cashback permission enables audited idempotent fixture credits and revokes when inactive", async () => {
+  const Role = require("../models/role.model");
+  await Role.createCollection();
+  const roleId = new mongoose.Types.ObjectId();
+  await Role.collection.insertOne({ _id: roleId, name: "CASHBACK_FIXTURE",
+    status: "ACTIVE", department: "ADMINISTRATION", permissions: ["cashback.credit"] });
+  await User.updateOne({ _id: otherAdmin._id }, { $set: { staffRoleId: roleId } });
+  assert.equal((await request(otherAdmin, "/admin/access")).body.canCreditCashback, true);
+  const before = (await User.findById(customer._id).lean()).walletBalance;
+  const route = `/admin/customers/${customer._id}/cashback`;
+  const options = { method: "POST", headers: { "X-Idempotency-Key": "rbac-fixture-credit-0001" },
+    body: JSON.stringify({ amountMinor: 321, description: "Isolated RBAC fixture credit" }) };
+  const first = await request(otherAdmin, route, options);
+  const duplicate = await request(otherAdmin, route, options);
+  assert.equal(first.status, 201);
+  assert.equal(duplicate.status, 200);
+  assert.equal(duplicate.body.duplicate, true);
+  assert.equal(first.body.entry.reference, duplicate.body.entry.reference);
+  assert.equal(await Entry.countDocuments({ reference: first.body.entry.reference }), 1);
+  const entry = await Entry.findOne({ reference: first.body.entry.reference }).lean();
+  assert.equal(String(entry.actor), String(otherAdmin._id));
+  assert.equal(entry.actorRole, "HEAD_OFFICE");
+  assert.equal((await User.findById(customer._id).lean()).walletBalance, before);
+  await Role.collection.updateOne({ _id: roleId }, { $set: { status: "INACTIVE" } });
+  assert.equal((await request(otherAdmin, "/admin/access")).body.canCreditCashback, false);
+  assert.equal((await request(otherAdmin, route, options)).status, 403);
 });

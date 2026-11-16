@@ -25,8 +25,19 @@ function creditPayload(body, actorId, key) {
   };
 }
 function isConfiguredAdmin(req, email = process.env.SERVICEPAY_PRODUCTION_ADMIN_EMAIL) {
-  return req.staffAccess?.isHeadOffice === true && Boolean(email?.trim()) &&
+  if (req.staffAccess?.isHeadOffice !== true) return false;
+  // Preserve the existing configured administrator. Explicit financial authority
+  // is an additive path, never implied by Head Office's operational wildcard.
+  const configured = Boolean(email?.trim()) &&
     String(req.user?.email || "").trim().toLowerCase() === email.trim().toLowerCase();
+  const explicitlyAuthorized = req.user?.role === "HEAD_OFFICE" &&
+    req.staffAccess?.scope?.type === "GLOBAL" &&
+    req.staffRole?.status === "ACTIVE" &&
+    Array.isArray(req.staffRole?.permissions) &&
+    req.staffRole.permissions.includes(
+      require("../config/staffPermissions").STAFF_PERMISSIONS.CASHBACK_CREDIT,
+    );
+  return configured || explicitlyAuthorized;
 }
 function dates(start, end) {
   const parse = value => {

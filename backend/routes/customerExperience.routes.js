@@ -39,7 +39,7 @@ const headOffice = (req, res, next) => {
 };
 const configuredAdmin = (req, res, next) => {
   if (!p.isConfiguredAdmin(req)) return res.status(403).json({
-    success: false, message: "Only the configured Head Office administrator may credit cashback.",
+    success: false, message: "Only an explicitly authorized Head Office administrator may credit cashback.",
   });
   next();
 };
