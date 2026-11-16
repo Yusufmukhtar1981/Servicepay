@@ -171,6 +171,9 @@ class _MainNavigationState extends State<MainNavigation> {
     }
 
     return Scaffold(
+      backgroundColor: userRole == 'CUSTOMER'
+          ? CustomerDashboardPalette.canvas
+          : null,
       extendBody: false,
       body: IndexedStack(index: currentIndex, children: [
         for (int i = 0; i < pages.length; i++)

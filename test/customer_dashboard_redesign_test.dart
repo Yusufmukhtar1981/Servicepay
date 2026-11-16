@@ -519,6 +519,15 @@ void main() {
     expect(find.text('Wallet'), findsWidgets);
     expect(find.text('Profile'), findsOneWidget);
     expect(find.text('Scan'), findsNothing);
+    expect(tester.widget<Scaffold>(find.byType(Scaffold).first).backgroundColor,
+        CustomerDashboardPalette.canvas);
+    expect(
+        tester
+            .widget<Text>(find.byKey(
+                const Key('customer-header-avatar-initial')))
+            .style
+            ?.color,
+        CustomerDashboardPalette.text);
 
     await tester.tap(find.text('Transactions'));
     await tester.pump(const Duration(milliseconds: 100));

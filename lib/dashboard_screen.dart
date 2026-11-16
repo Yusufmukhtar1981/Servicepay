@@ -4213,8 +4213,9 @@ class _DashboardScreenState extends State<DashboardScreen>
                                 errorBuilder: (context, error, stackTrace) {
                                   return Text(
                                     initial,
+                                    key: const Key('customer-header-avatar-initial'),
                                     style: const TextStyle(
-                                      color: CustomerDashboardPalette.navy,
+                                      color: CustomerDashboardPalette.text,
                                       fontSize: 17,
                                       fontWeight: FontWeight.w900,
                                     ),
@@ -4223,8 +4224,9 @@ class _DashboardScreenState extends State<DashboardScreen>
                               )
                             : Text(
                                 initial,
+                                key: const Key('customer-header-avatar-initial'),
                                 style: const TextStyle(
-                                  color: CustomerDashboardPalette.navy,
+                                  color: CustomerDashboardPalette.text,
                                   fontSize: 17,
                                   fontWeight: FontWeight.w900,
                                 ),
