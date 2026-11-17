@@ -143,18 +143,21 @@ const createRefundService = () => {
         const balance = Number(customer?.walletBalance);
         const amountCents = money(s.debit.amount);
         const amount = amountCents === null ? NaN : amountCents / 100;
+        const balanceCents = Math.round(balance * 100);
+        const wholeKoboBalance = balance === balanceCents / 100;
         // Legacy commission credits can leave genuine sub-kobo fractions.
         // Preserve the stored opening balance; never round it to fund a refund.
         // Both inverse addition and the posted ledger delta must conserve the
         // original balance and the exact, whole-kobo refund amount.
-        const closing = balance + amount;
+        const closing = wholeKoboBalance
+          ? (balanceCents + amountCents) / 100 : balance + amount;
         if (!customer || typeof customer.walletBalance !== "number" ||
             !Number.isFinite(balance) || balance < 0 ||
             !Number.isSafeInteger(Math.round(balance * 100)) ||
             !Number.isSafeInteger(amountCents) || amountCents <= 0 ||
             !Number.isFinite(closing) || closing <= balance ||
             !Number.isSafeInteger(Math.round(closing * 100)) ||
-            closing - amount !== balance ||
+            (!wholeKoboBalance && closing - amount !== balance) ||
             Math.abs((closing - balance) * 100 - amountCents) > 0.000001) {
           throw fail(409, "INVALID_WALLET_CUSTODY", "The customer wallet requires reconciliation before a refund.");
         }

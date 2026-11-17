@@ -98,6 +98,18 @@ test("refund preserves genuine sub-kobo balances without rounding or repeated cr
     assert.equal(await L.countDocuments({ reversalOf: f.debitId }), 1);
   }
 });
+test("ordinary zero and low whole-kobo balances retain the existing refund arithmetic", async () => {
+  for (const opening of [0, 0.01, 0.1, 0.29, 1.23]) {
+    const f = await fixture();
+    await U.collection.updateOne({ _id: f.uid }, { $set: { walletBalance: opening } });
+    const result = await service.refund(f.id, body, actor);
+    const expected = (Math.round(opening * 100) + 15000) / 100;
+    assert.equal(result.walletBalance, expected);
+    assert.equal((await U.findById(f.uid)).walletBalance, expected);
+    assert.equal((await L.findOne({ reversalOf: f.debitId })).openingBalance, opening);
+    assert.equal(await L.countDocuments({ reversalOf: f.debitId }), 1);
+  }
+});
 test("concurrent fractional-balance refunds retain exactly-once custody", async () => {
   const f = await fixture(), opening = 850.123456789123;
   await U.collection.updateOne({ _id: f.uid }, { $set: { walletBalance: opening } });
