@@ -27,6 +27,7 @@ const managedRecords = require("./managedRecords.routes");
 const router = express.Router();
 
 router.use(protect);
+router.use("/analytics", require("./managementAnalytics.routes"));
 router.use("/records", managedRecords);
 // Keep hierarchy paths explicit: generic section routes would swallow zonal
 // oversight paths and the existing management APIs below.

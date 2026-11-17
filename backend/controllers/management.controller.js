@@ -1146,7 +1146,7 @@ exports.getRoleTransactions = async (req, res) => {
     }
 
     if (search) {
-      query.$or = [
+      query.$and = [{ $or: [
         {
           reference: {
             $regex: search,
@@ -1171,7 +1171,7 @@ exports.getRoleTransactions = async (req, res) => {
             $options: "i",
           },
         },
-      ];
+      ] }];
     }
 
     const skip = (page - 1) * limit;
