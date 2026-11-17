@@ -9,12 +9,12 @@ import 'create_agent_screen.dart';
 import 'my_customers_screen.dart';
 import 'main_navigation.dart';
 import 'profile_screen.dart';
-import 'role_transactions_screen.dart';
 import 'role_commissions_screen.dart';
 import 'management_users_screen.dart';
 import 'edupay_school_management_screen.dart';
 import 'zonal_management_screen.dart';
 import 'package:http/http.dart' as http;
+import 'management/management_dashboard_screen.dart';
 
 class RoleDashboardScreen extends StatefulWidget {
   final String role;
@@ -432,6 +432,12 @@ class _RoleDashboardScreenState extends State<RoleDashboardScreen> {
       case 'AGENT':
         return [
           _RoleMenuItem(
+            title: 'Management Workspace',
+            subtitle: 'Scoped reporting, performance and transaction records',
+            icon: Icons.dashboard_customize_rounded,
+            onTap: () => openScreen(ManagementDashboardScreen(role: normalizedRole)),
+          ),
+          _RoleMenuItem(
             title: 'My Customers',
             subtitle: 'Customers registered under you',
             icon: Icons.groups_rounded,
@@ -456,20 +462,31 @@ class _RoleDashboardScreenState extends State<RoleDashboardScreen> {
             subtitle: 'Customer and commission transactions',
             icon: Icons.receipt_long_rounded,
             onTap: () {
-              openScreen(
-                const RoleTransactionsScreen(),
-              );
+              openScreen(ManagementDashboardScreen(
+                role: normalizedRole,
+                initialSection: 'Transactions',
+              ));
             },
           ),
           _RoleMenuItem(
             title: 'Performance',
             subtitle: 'Track your daily and monthly results',
             icon: Icons.insights_rounded,
+            onTap: () => openScreen(ManagementDashboardScreen(
+              role: normalizedRole,
+              initialSection: 'Performance',
+            )),
           ),
         ];
 
       case 'STATE_MANAGER':
         return [
+          _RoleMenuItem(
+            title: 'Management Workspace',
+            subtitle: 'Scoped analytics, performance and team reporting',
+            icon: Icons.dashboard_customize_rounded,
+            onTap: () => openScreen(ManagementDashboardScreen(role: normalizedRole)),
+          ),
           _RoleMenuItem(
             title: 'Create Aggregator',
             subtitle: 'Register a new Aggregator under your state',
@@ -516,19 +533,30 @@ class _RoleDashboardScreenState extends State<RoleDashboardScreen> {
             title: 'State Transactions',
             subtitle: 'Transactions completed in your state',
             icon: Icons.receipt_long_rounded,
-            onTap: () {
-              openScreen(const RoleTransactionsScreen());
-            },
+            onTap: () => openScreen(ManagementDashboardScreen(
+              role: normalizedRole,
+              initialSection: 'Transactions',
+            )),
           ),
           _RoleMenuItem(
             title: 'State Performance',
             subtitle: 'Monitor aggregators and customer activity',
             icon: Icons.bar_chart_rounded,
+            onTap: () => openScreen(ManagementDashboardScreen(
+              role: normalizedRole,
+              initialSection: 'Performance',
+            )),
           ),
         ];
 
       case 'ZONAL_MANAGER':
         return [
+          _RoleMenuItem(
+            title: 'Management Workspace',
+            subtitle: 'Scoped analytics, performance and team reporting',
+            icon: Icons.dashboard_customize_rounded,
+            onTap: () => openScreen(ManagementDashboardScreen(role: normalizedRole)),
+          ),
           _RoleMenuItem(
             title: 'Create State Manager',
             subtitle: 'Register a new manager under your zone',
@@ -611,9 +639,10 @@ class _RoleDashboardScreenState extends State<RoleDashboardScreen> {
             title: 'Zone Transactions',
             subtitle: 'Transactions completed in your zone',
             icon: Icons.receipt_long_rounded,
-            onTap: () {
-              openScreen(const RoleTransactionsScreen());
-            },
+            onTap: () => openScreen(ManagementDashboardScreen(
+              role: normalizedRole,
+              initialSection: 'Transactions',
+            )),
           ),
         ];
 
