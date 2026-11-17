@@ -141,12 +141,23 @@ const createRefundService = () => {
         if (s.blockers.length) throw fail(409, "TRANSACTION_STATE_CHANGED", s.blockers.join(" "));
         const customer = await User.findById(t.customerId).select("walletBalance fullName name").session(session).lean();
         const balance = Number(customer?.walletBalance);
-        const cents = Math.round(balance * 100), amountCents = money(s.debit.amount);
-        if (!customer || !Number.isFinite(balance) || balance < 0 || !Number.isSafeInteger(cents) ||
-            Math.abs(balance * 100 - cents) > 0.000001 || !Number.isSafeInteger(cents + amountCents)) {
+        const amountCents = money(s.debit.amount);
+        const amount = amountCents === null ? NaN : amountCents / 100;
+        // Legacy commission credits can leave genuine sub-kobo fractions.
+        // Preserve the stored opening balance; never round it to fund a refund.
+        // Both inverse addition and the posted ledger delta must conserve the
+        // original balance and the exact, whole-kobo refund amount.
+        const closing = balance + amount;
+        if (!customer || typeof customer.walletBalance !== "number" ||
+            !Number.isFinite(balance) || balance < 0 ||
+            !Number.isSafeInteger(Math.round(balance * 100)) ||
+            !Number.isSafeInteger(amountCents) || amountCents <= 0 ||
+            !Number.isFinite(closing) || closing <= balance ||
+            !Number.isSafeInteger(Math.round(closing * 100)) ||
+            closing - amount !== balance ||
+            Math.abs((closing - balance) * 100 - amountCents) > 0.000001) {
           throw fail(409, "INVALID_WALLET_CUSTODY", "The customer wallet requires reconciliation before a refund.");
         }
-        const amount = amountCents / 100, closing = (cents + amountCents) / 100;
         const refundId = new mongoose.Types.ObjectId(), ledgerId = new mongoose.Types.ObjectId();
         const reference = refFor(t._id);
         // This conditional write conflicts with existing provider settlement

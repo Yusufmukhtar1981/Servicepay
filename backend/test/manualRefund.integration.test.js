@@ -79,6 +79,46 @@ test("lost HTTP response / exact request replay cannot credit twice", async () =
   assert.equal(await L.countDocuments({ reversalOf: f.debitId }), 1);
   assert.equal((await U.findById(f.uid)).walletBalance, 1000);
 });
+test("refund preserves genuine sub-kobo balances without rounding or repeated credit", async () => {
+  for (const opening of [850.004603467313, 850.123456789123, 850.000000023842]) {
+    const f = await fixture();
+    await U.collection.updateOne({ _id: f.uid }, { $set: { walletBalance: opening } });
+    const result = await service.refund(f.id, body, actor);
+    const closing = opening + 150;
+    assert.equal(result.walletBalance, closing);
+    assert.equal((await U.findById(f.uid)).walletBalance, closing);
+    const credit = await L.findOne({ reversalOf: f.debitId }).lean();
+    assert.equal(credit.openingBalance, opening);
+    assert.equal(credit.closingBalance, closing);
+    assert.equal(credit.closingBalance - credit.amount, opening);
+    assert.equal(credit.amount, 150);
+    const retry = await service.refund(f.id, body, actor);
+    assert.equal(retry.replayed, true);
+    assert.equal((await U.findById(f.uid)).walletBalance, closing);
+    assert.equal(await L.countDocuments({ reversalOf: f.debitId }), 1);
+  }
+});
+test("concurrent fractional-balance refunds retain exactly-once custody", async () => {
+  const f = await fixture(), opening = 850.123456789123;
+  await U.collection.updateOne({ _id: f.uid }, { $set: { walletBalance: opening } });
+  const results = await Promise.all(Array.from({ length: 5 }, () => service.refund(f.id, body, actor)));
+  assert.equal(new Set(results.map(r => r.refund.reference)).size, 1);
+  assert.equal((await U.findById(f.uid)).walletBalance, opening + 150);
+  assert.equal(await L.countDocuments({ reversalOf: f.debitId }), 1);
+});
+test("unsafe or non-reversible balances fail closed with no partial refund", async () => {
+  for (const opening of [null, -1, NaN, Infinity, 90071992547409.9, 0.001]) {
+    const f = await fixture();
+    await U.collection.updateOne({ _id: f.uid }, { $set: { walletBalance: opening } });
+    await reject(f, "INVALID_WALLET_CUSTODY");
+    const saved = await U.collection.findOne({ _id: f.uid });
+    assert.ok(Object.is(saved.walletBalance, opening));
+    assert.equal((await T.findById(f.id)).status, "PENDING");
+    assert.equal(await L.countDocuments({ reversalOf: f.debitId }), 0);
+    assert.equal(await T.countDocuments({ reversedTransactionId: f.id }), 0);
+    assert.equal(await A.countDocuments({ "metadata.originalTransactionId": f.id }), 0);
+  }
+});
 test("canonically failed purchase with unreversed original debit can be explicitly refunded once", async () => {
   const f = await fixture({ status: "FAILED", dispatchStatus: "FAILED", providerStatus: "FAILED" });
   const result = await service.refund(f.id, body, actor);
