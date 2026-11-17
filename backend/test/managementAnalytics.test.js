@@ -84,6 +84,7 @@ test.before(async () => {
   const app = express(); app.use(express.json());
   app.use("/api/management/analytics", protect, router);
   app.use("/api/management", require("../routes/management.routes"));
+  app.use("/api/admin/management-performance", require("../routes/adminManagementPerformance.routes"));
   server = app.listen(0, "127.0.0.1"); await new Promise(resolve => server.once("listening", resolve));
   base = "http://127.0.0.1:" + server.address().port + "/api/management/analytics";
 });
@@ -231,4 +232,72 @@ test("state ranking uses actual state totals rather than labelling managers as s
   assert.equal(r.body.data.items[0].name, "KANO");
   assert.equal(r.body.data.items[0].role, "STATE");
   assert.equal(r.body.data.items[0].successfulValue, 300);
+});
+async function adminRequest(path, actor = f.ho) {
+  const url = base.replace("/management/analytics", "/admin/management-performance") + path;
+  const r = await fetch(url, { headers: actor ? {
+    Authorization: "Bearer " + jwt.sign({ id: String(actor._id) }, process.env.JWT_SECRET),
+  } : {} });
+  const type = r.headers.get("content-type") || "";
+  return { status: r.status, headers: r.headers, type,
+    body: type.includes("json") ? await r.json() : Buffer.from(await r.arrayBuffer()) };
+}
+test("Head Office lists all three management roles without exposing customer contacts or credentials", async () => {
+  for (const role of analytics.ROLES) {
+    const r = await adminRequest("/managers?role=" + role + "&limit=1");
+    assert.equal(r.status, 200); assert.equal(r.body.data.items.length, 1);
+    assert.ok(r.body.data.items.every(u => u.role === role));
+    for (const u of r.body.data.items) {
+      for (const forbidden of ["phone", "email", "password", "walletBalance"]) assert.equal(u[forbidden], undefined);
+    }
+  }
+  assert.equal((await adminRequest("/managers?role=CUSTOMER")).status, 400);
+  assert.equal((await adminRequest("/managers?limit=1000")).status, 400);
+});
+test("Head Office performance uses existing scoped records for Aggregator, State and Zone", async () => {
+  for (const [actor, expected] of [[f.a1, 5], [f.s1, 5], [f.z1, 6]]) {
+    const r = await adminRequest(`/report?managerId=${actor._id}&period=TODAY&teamId=${f.a3._id}`);
+    assert.equal(r.status, 200);
+    assert.equal(r.body.data.overview.kpis.totalTransactions, expected);
+    assert.equal(String(r.body.data.manager._id), String(actor._id));
+    assert.match(r.headers.get("cache-control"), /no-store/);
+    assert.ok(!JSON.stringify(r.body).includes("PRIVATE_PROVIDER_PAYLOAD"));
+  }
+});
+test("Head Office reports include suspended managers but their own session remains denied", async () => {
+  const r = await adminRequest(`/report?managerId=${f.inactive._id}&period=TODAY`);
+  assert.equal(r.status, 200);
+  assert.equal(r.body.data.manager.status, "SUSPENDED");
+  await assert.rejects(analytics.scope(f.inactive), e => e.status === 403);
+  assert.equal((await adminRequest("/managers", f.inactive)).status, 403);
+});
+test("ordinary managers, Operations and Support cannot use Head Office reports even with wildcard fields", async () => {
+  assert.equal((await adminRequest("/managers", null)).status, 401);
+  for (const actor of [f.a1, f.s1, f.z1, f.c1]) assert.equal((await adminRequest("/managers", actor)).status, 403);
+  for (const role of ["OPERATIONS_MANAGER", "CUSTOMER_SUPPORT"]) {
+    const actor = user(role, { permissions: ["*"] }); await User.collection.insertOne(actor);
+    assert.equal((await adminRequest("/managers", actor)).status, 403);
+  }
+});
+test("PDF and Excel are real private report files, not HTML or public share links", async () => {
+  const before = await User.findById(f.c1._id).lean();
+  const txBefore = JSON.stringify(await Tx.find({}).sort({ _id: 1 }).lean());
+  const pdf = await adminRequest(`/export?managerId=${f.a1._id}&period=TODAY&format=pdf`);
+  assert.equal(pdf.status, 200); assert.match(pdf.type, /application\/pdf/);
+  assert.equal(pdf.body.subarray(0, 5).toString(), "%PDF-");
+  assert.ok(pdf.body.subarray(-20).toString().includes("%%EOF"));
+  assert.match(pdf.headers.get("content-disposition"), /\.pdf/);
+  const xlsx = await adminRequest(`/export?managerId=${f.a1._id}&period=TODAY&format=xlsx`);
+  assert.equal(xlsx.status, 200); assert.match(xlsx.type, /spreadsheetml/);
+  const book = new (require("exceljs").Workbook)(); await book.xlsx.load(xlsx.body);
+  const sheet = book.worksheets[0];
+  assert.equal(sheet.getCell("B2").value, f.a1.fullName);
+  const rows = sheet.getSheetValues();
+  assert.ok(!JSON.stringify(rows).includes(f.c1.phone));
+  assert.ok(!JSON.stringify(rows).includes("PRIVATE_PROVIDER_PAYLOAD"));
+  assert.equal((await adminRequest(`/export?managerId=${f.a1._id}&format=zip`)).status, 400);
+  assert.equal((await adminRequest(`/report?managerId=${f.c1._id}`)).status, 404);
+  assert.equal((await adminRequest("/report?managerId=not-an-id")).status, 400);
+  assert.equal((await User.findById(f.c1._id).lean()).walletBalance, before.walletBalance);
+  assert.equal(JSON.stringify(await Tx.find({}).sort({ _id: 1 }).lean()), txBefore);
 });

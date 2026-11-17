@@ -305,6 +305,48 @@ test("invalid ancestry, cross-zone and cross-state moves are rejected", async ()
   assert.equal(crossState.body.code, "HIERARCHY_CROSS_STATE");
   assert.equal(await Audit.countDocuments({ action: "HIERARCHY_ASSIGNMENT_UPDATED" }), 0);
 });
+test("Head Office can reassign a Customer across zones without moving financial history or referral attribution", async () => {
+  const [za, zb] = await User.create([
+    makeUser("ZONAL_MANAGER", "cross-customer-a", { zone: "NORTH" }),
+    makeUser("ZONAL_MANAGER", "cross-customer-b", { zone: "SOUTH" }),
+  ]);
+  const [sa, sb] = await User.create([
+    makeUser("STATE_MANAGER", "cross-customer-a", { zone: "NORTH", state: "KANO", zonalManagerId: za._id }),
+    makeUser("STATE_MANAGER", "cross-customer-b", { zone: "SOUTH", state: "LAGOS", zonalManagerId: zb._id }),
+  ]);
+  const [aa, ab] = await User.create([
+    makeUser("AGENT", "cross-customer-a", { zone: "NORTH", state: "KANO", stateManagerId: sa._id, zonalManagerId: za._id }),
+    makeUser("AGENT", "cross-customer-b", { zone: "SOUTH", state: "LAGOS", stateManagerId: sb._id, zonalManagerId: zb._id }),
+  ]);
+  const customer = await User.create(makeUser("CUSTOMER", "cross-customer", {
+    zone: "NORTH", state: "KANO", agentId: aa._id, stateManagerId: sa._id, zonalManagerId: za._id, walletBalance: 7500,
+  }));
+  await User.collection.updateOne({ _id: customer._id }, { $set: {
+    referralCode: "LOCAL-CROSS-REFERRAL", referredBy: aa._id,
+  } });
+  const transaction = { _id: new mongoose.Types.ObjectId(), customerId: customer._id,
+    reference: "cross-customer-history", amount: 100, status: "SUCCESSFUL",
+    agentId: aa._id, stateManagerId: sa._id, zonalManagerId: za._id, hierarchyCapturedAt: new Date() };
+  await Transaction.collection.insertOne(transaction);
+  const before = await Transaction.findById(transaction._id).lean();
+  const request = assignmentRequest(customer, ab, "cross-customer-safe");
+  request.body.expectedParentId = String(aa._id);
+  const moved = await invoke(assignment.assign, request);
+  assert.equal(moved.body.success, true);
+  const after = await User.findById(customer._id).lean();
+  assert.equal(String(after.agentId), String(ab._id));
+  assert.equal(after.zone, "SOUTH"); assert.equal(after.state, "LAGOS");
+  assert.equal(after.walletBalance, 7500);
+  assert.equal(after.referralCode, "LOCAL-CROSS-REFERRAL");
+  assert.equal(String(after.referredBy), String(aa._id));
+  assert.deepEqual(await Transaction.findById(transaction._id).lean(), before);
+  const audit = await Audit.findOne({ "metadata.hierarchyRequestId": "cross-customer-safe" }).lean();
+  assert.equal(audit.previousData.hierarchy.zone, "NORTH");
+  assert.equal(audit.newData.hierarchy.zone, "SOUTH");
+  const retry = await invoke(assignment.assign, request);
+  assert.equal(retry.body.duplicate, true);
+  assert.equal(await Audit.countDocuments({ "metadata.hierarchyRequestId": "cross-customer-safe" }), 1);
+});
 
 test("concurrent customer moves with one expected parent commit only one winner", async () => {
   const zonal = await User.create(makeUser("ZONAL_MANAGER", "A", { zone: "NORTH" }));

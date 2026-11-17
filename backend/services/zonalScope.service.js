@@ -14,8 +14,12 @@ const oid = (value) => mongoose.Types.ObjectId.isValid(value) ? value : null;
  * from a single $or query.  This prevents a stale/conflicting reference from
  * leaking a user from another zone.
  */
-async function getZonalScope(user) {
-  const actor = user && await User.findOne({ _id: oid(user._id || user.id), ...ACTIVE }).lean();
+async function getZonalScope(user, { includeInactiveRoot = false } = {}) {
+  // Read-only Head Office reports may inspect suspended managers. Existing
+  // callers continue requiring an active scope root by default.
+  const actor = user && await User.findOne({
+    _id: oid(user._id || user.id), ...(includeInactiveRoot ? ASSIGNED : ACTIVE),
+  }).lean();
   if (!actor || !actor.zone) return { stateManagerIds: [], agentIds: [], customerIds: [] };
   const role = String(actor.role || "").toUpperCase();
   if (!["ZONAL_MANAGER", "STATE_MANAGER", "AGENT"].includes(role)) {

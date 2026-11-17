@@ -129,10 +129,13 @@ const loadAssignment = async (req, session) => {
   if (!expected || parent.role !== expected) throw error(400, `An ${target.role} must be assigned to an active ${expected || "valid parent"}.`);
   await verifiedDestination(parent, session);
   if (target.role === "STATE_MANAGER" && (!target.state || !target.state.trim())) throw error(409, "The State Manager has no verified state lineage.");
-  if (target.zone && target.zone.trim().toUpperCase() !== parent.zone.trim().toUpperCase()) {
+  // Head Office may move a CUSTOMER to any verified active Aggregator.
+  // Staff moves retain their existing geographical restrictions. Snapshot
+  // verification, concurrency fences and explicit permission checks remain.
+  if (target.role !== "CUSTOMER" && target.zone && target.zone.trim().toUpperCase() !== parent.zone.trim().toUpperCase()) {
     throw error(409, "The destination is outside this user's assigned zone.", "HIERARCHY_CROSS_ZONE");
   }
-  if (target.role !== "STATE_MANAGER" && target.state && target.state.trim().toUpperCase() !== parent.state.trim().toUpperCase()) {
+  if (!["STATE_MANAGER", "CUSTOMER"].includes(target.role) && target.state && target.state.trim().toUpperCase() !== parent.state.trim().toUpperCase()) {
     throw error(409, "The destination is outside this user's assigned state.", "HIERARCHY_CROSS_STATE");
   }
   return { target, parent };
@@ -286,8 +289,10 @@ exports.assign = async (req, res) => {
       await AdminAuditLog.create([{
         actorId: req.user._id, actorRole: req.user.role, actorName: req.user.fullName || "",
         targetUserId: target._id, targetUserName: target.fullName, action: "HIERARCHY_ASSIGNMENT_UPDATED",
-        reason, previousData: { parentId: previousParentId, parentName: oldParent?.fullName || null, role: target.role },
-        newData: { parentId: parent._id, parentName: parent.fullName, role: target.role },
+        reason, previousData: { parentId: previousParentId, parentName: oldParent?.fullName || null, role: target.role,
+          hierarchy: { zone: target.zone, state: target.state, agentId: target.agentId,
+            stateManagerId: target.stateManagerId, zonalManagerId: target.zonalManagerId } },
+        newData: { parentId: parent._id, parentName: parent.fullName, role: target.role, hierarchy: next },
         metadata: { hierarchyRequestId: requestId, hierarchyIntent: requestedIntent, assignmentType: previousParentId ? "REASSIGNMENT" : "ASSIGNMENT", affectedCount, affectedUserIds: movedIds.map(String) },
         requestMethod: req.method, requestPath: req.originalUrl,
       }], { session });

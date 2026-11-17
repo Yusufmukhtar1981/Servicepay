@@ -409,6 +409,7 @@ app.use('/api/admin/cards', adminCardRoutes);
 // ServicePay management routes
 app.use('/api/management', managementRoutes);
 app.use("/api/admin/hierarchy", hierarchyAssignmentRoutes);
+app.use("/api/admin/management-performance", require("./routes/adminManagementPerformance.routes"));
 
 
 /* ServicePay Rider API */

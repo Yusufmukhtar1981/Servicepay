@@ -24,12 +24,13 @@ function safeCustomer(row, s) {
 }
 const successful = { status: "SUCCESSFUL", reversalReference: { $in: ["", null] }, reversalTransactionId: null };
 const opts = query => query.option({ maxTimeMS: 15000, allowDiskUse: false });
-async function scope(actor, teamId) {
-  const current = await User.findOne({ _id: objectId(actor?._id || actor?.id), status: "ACTIVE", isDeleted: { $ne: true } })
+async function scope(actor, teamId, { includeInactiveRoot = false } = {}) {
+  const current = await User.findOne({ _id: objectId(actor?._id || actor?.id),
+    ...(!includeInactiveRoot ? { status: "ACTIVE" } : {}), isDeleted: { $ne: true } })
     .select("_id fullName role zone state zonalManagerId stateManagerId agentId").lean();
   if (!current || !ROLES.includes(current.role)) throw fail("This workspace is restricted to assigned managers and Aggregators.", 403);
   let root = current;
-  let ids = await getZonalScope(current);
+  let ids = await getZonalScope(current, { includeInactiveRoot });
   const descendants = current.role === "ZONAL_MANAGER" ? [...ids.stateManagerIds, ...ids.agentIds]
     : current.role === "STATE_MANAGER" ? ids.agentIds : [];
   if (teamId && String(teamId) !== String(current._id)) {
@@ -177,8 +178,8 @@ async function leaderboard(s, match, p, dimension, sort) {
   return { items: rows.slice(0, 10).map((r, i) => ({ ...r, rank: i + 1 })), total: rows.length,
     methodology: "Transaction rankings use captured historical hierarchy only. Acquisition uses current verified assignment. Achievement is unavailable without an assigned target." };
 }
-async function overview(actor, query = {}) {
-  const s = await scope(actor, query.teamId), p = period(query);
+async function overview(actor, query = {}, reportingScope) {
+  const s = reportingScope || await scope(actor, query.teamId), p = period(query);
   const match = and(s.transactions, dateMatch(p));
   const previousMatch = and(s.transactions, dateMatch(p.previous));
   const agentIds = s.root.role === "AGENT" ? [s.root._id] : s.ids.agentIds.map(objectId);
