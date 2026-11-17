@@ -221,6 +221,9 @@ app.use("/api/webhooks/telecom-abode", telecomAbodeWebhookRoutes);
  * SecureWaveNG uses it for HMAC-SHA256
  * webhook signature verification.
  */
+// Larger screenshots are bounded to this new authenticated workspace only.
+// Existing provider webhook parsing and raw-body verification stay unchanged.
+app.use("/api/management/workspace/complaints", express.json({ limit: "800kb" }));
 app.use(
   express.json({
     // Voice has an authenticated, rate-limited and bounded parser on its route.

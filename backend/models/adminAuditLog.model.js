@@ -101,6 +101,7 @@ const adminAuditLogSchema =
            "AMANA_REQUEST_COMPLETED",
            "AMANA_REQUEST_CANCELLED",
            "FINTECH_CASE_CREATED",
+          "MANAGEMENT_CUSTOMERS_EXPORTED",
            "FINTECH_CASE_UPDATED",
            "RISK_ALERT_CREATED",
            "RISK_ALERT_UPDATED",

@@ -1,6 +1,6 @@
 "use strict";
 const DAY = 86400000, OFFSET = 3600000;
-const PRESETS = ["TODAY", "YESTERDAY", "THIS_WEEK", "LAST_WEEK", "THIS_MONTH", "LAST_MONTH", "LAST_30_DAYS", "CUSTOM"];
+const PRESETS = ["TODAY", "YESTERDAY", "THIS_WEEK", "LAST_WEEK", "THIS_MONTH", "LAST_MONTH", "LAST_7_DAYS", "LAST_30_DAYS", "CUSTOM"];
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
 function localDate(value) {
   if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) throw fail("Use YYYY-MM-DD dates.");
@@ -28,6 +28,7 @@ function period(query = {}, now = new Date()) {
     }
   }
   if (preset === "LAST_30_DAYS") from = new Date(+today - 29 * DAY);
+  if (preset === "LAST_7_DAYS") from = new Date(+today - 6 * DAY);
   if (preset === "CUSTOM") { from = localDate(query.from); to = new Date(+localDate(query.to) + DAY); }
   if (+to <= +from || +to - +from > 366 * DAY) throw fail("Select an ordered date range of at most 366 days.");
   const result = { preset, timezone: "Africa/Lagos", from: new Date(+from - OFFSET), to: new Date(+to - OFFSET) };

@@ -27,6 +27,7 @@ const managedRecords = require("./managedRecords.routes");
 const router = express.Router();
 
 router.use(protect);
+router.use("/workspace", require("./managementWorkspace.routes"));
 router.use("/analytics", require("./managementAnalytics.routes"));
 router.use("/records", managedRecords);
 // Keep hierarchy paths explicit: generic section routes would swallow zonal

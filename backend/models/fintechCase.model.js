@@ -13,6 +13,7 @@ const replySchema = new mongoose.Schema({
   authorName: { type: String, trim: true, maxlength: 200, default: "" },
   authorRole: { type: String, trim: true, uppercase: true, maxlength: 50, required: true },
   idempotencyKey: { type: String, trim: true, maxlength: 120 },
+  managementFingerprint: { type: String, maxlength: 64, default: undefined },
   createdAt: { type: Date, default: Date.now },
 }, { _id: true });
 
@@ -49,6 +50,17 @@ const fintechCaseSchema = new mongoose.Schema({
   // operational cases. IN_PROGRESS is the customer-support workflow value.
   status: { type: String, enum: ["OPEN", "IN_PROGRESS", "IN_REVIEW", "WAITING_ON_CUSTOMER", "RESOLVED", "REJECTED", "CLOSED", "ESCALATED"], default: "OPEN", index: true },
   staffRequestFingerprint: { type: String, maxlength: 64, default: undefined },
+  managementIssueCategory: { type: String, enum: Object.keys(require("../services/managementWorkspacePolicy.service").ISSUES), default: undefined },
+  managementRequestFingerprint: { type: String, maxlength: 64, default: undefined },
+  managementAttachments: { type: [{
+    _id: false,
+    id: { type: String, required: true, maxlength: 30 },
+    name: { type: String, required: true, maxlength: 100 },
+    mimeType: { type: String, required: true, enum: ["image/png", "image/jpeg", "image/webp"] },
+    dataUrl: { type: String, required: true, maxlength: 349600 },
+    addedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    createdAt: { type: Date, required: true },
+  }], default: undefined, validate: value => !value || value.length <= 8 },
   priority: { type: String, enum: ["LOW", "NORMAL", "HIGH", "URGENT"], default: "NORMAL", index: true },
   category: {
     type: String,

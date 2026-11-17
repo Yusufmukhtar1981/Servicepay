@@ -154,7 +154,7 @@ test("admin support validates updates, creates notifications, and filters ticket
   const activeStaff = await user("STAFF");
   const created = await call(support.createTicket, { user: customer, body: { subject: "Searchable issue", description: "Need help.", idempotencyKey: "support-create-2" } });
   const id = created.body.data.id;
-  assert.equal((await call(support.updateTicket, { user: headOffice, params: { id }, body: { status: "REJECTED" } })).status, 400);
+  assert.equal((await call(support.updateTicket, { user: headOffice, params: { id }, body: { status: "INVALID_STATUS" } })).status, 400);
   assert.equal((await call(support.updateTicket, { user: headOffice, params: { id }, body: { priority: "ASAP" } })).status, 400);
   assert.equal((await call(support.updateTicket, { user: headOffice, params: { id }, body: { assignedTo: inactiveStaff._id } })).status, 400);
   const updated = await call(support.updateTicket, { user: headOffice, params: { id }, body: { status: "IN_PROGRESS", priority: "URGENT", assignedTo: activeStaff._id } });
@@ -178,6 +178,10 @@ test("admin support validates updates, creates notifications, and filters ticket
     query: { status: "IN_REVIEW" },
   });
   assert.equal(customerInReview.body.data.total, 1);
+  const rejected = await call(support.updateTicket, { user: headOffice, params: { id },
+    body: { status: "REJECTED", resolution: "Synthetic complaint reviewed; no payment was changed." } });
+  assert.equal(rejected.status, 200);
+  assert.equal(rejected.body.data.status, "REJECTED");
 });
 
 test("FintechCase keeps legacy status support while adding support workflow fields", () => {

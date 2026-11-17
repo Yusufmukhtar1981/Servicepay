@@ -18,6 +18,7 @@ const SUPPORT_STATUSES = [
   "IN_REVIEW",
   "WAITING_ON_CUSTOMER",
   "RESOLVED",
+  "REJECTED",
   "CLOSED",
 ];
 const PRIORITIES = ["LOW", "NORMAL", "HIGH", "URGENT"];
@@ -74,10 +75,14 @@ const customerCase = (item, withReplies = false) => {
           ? "CLOSED"
         : item.status.replace(/_/g, " "),
     category: item.category || "OTHER", priority: item.priority,
+    issueCategory: item.managementIssueCategory,
     resolution: item.resolution || "", createdAt: item.createdAt,
     updatedAt: item.updatedAt, transactionContext: item.transactionContext || null,
   };
-  if (withReplies) data.replies = (item.publicReplies || []).map(customerReply);
+  if (withReplies) {
+    data.replies = (item.publicReplies || []).map(customerReply);
+    data.attachments = (item.managementAttachments || []).map(({ id, name, mimeType, dataUrl, createdAt }) => ({ id, name, mimeType, dataUrl, createdAt }));
+  }
   return data;
 };
 const transactionContext = (item) => ({
@@ -310,7 +315,7 @@ exports.listAdminTickets = async (req, res) => {
     const { page, limit } = pageValues(req.query);
     const filter = await addAdminCustomerSearch(ticketFilter(req.query), clean(req.query.search, 200));
     const [items, total] = await Promise.all([
-      FintechCase.find(filter).populate("customer", "fullName phone email").populate("assignedTo", "fullName phone email role").sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit),
+      FintechCase.find(filter).select("-managementAttachments.dataUrl -managementRequestFingerprint").populate("customer", "fullName phone email").populate("assignedTo", "fullName phone email role").sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit),
       FintechCase.countDocuments(filter),
     ]);
     res.json({ success: true, data: { page, limit, total, items: items.map((item) => adminCase(item, req)) } });
@@ -318,7 +323,7 @@ exports.listAdminTickets = async (req, res) => {
 };
 exports.getAdminTicket = async (req, res) => {
   try {
-    const ticket = await FintechCase.findOne({ _id: req.params.id, type: "COMPLAINT" }).populate("customer", "fullName phone email").populate("assignedTo", "fullName phone email role").populate("notes.authorId", "fullName role");
+    const ticket = await FintechCase.findOne({ _id: req.params.id, type: "COMPLAINT" }).populate("customer", "fullName phone email").populate("assignedTo", "fullName phone email role").populate("notes.authorId", "fullName role").populate("createdBy", "fullName role");
     if (!ticket) return error(res, 404, "Support ticket not found.");
     return res.json({ success: true, data: adminCase(ticket, req) });
   } catch (_) { return error(res, 404, "Support ticket not found."); }
