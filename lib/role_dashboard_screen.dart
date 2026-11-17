@@ -433,9 +433,12 @@ class _RoleDashboardScreenState extends State<RoleDashboardScreen> {
         return [
           _RoleMenuItem(
             title: 'Management Workspace',
-            subtitle: 'Scoped reporting, performance and transaction records',
+            subtitle: 'Customers, complaints, withdrawals and scoped reporting',
             icon: Icons.dashboard_customize_rounded,
-            onTap: () => openScreen(ManagementDashboardScreen(role: normalizedRole)),
+            onTap: () => openScreen(ManagementDashboardScreen(
+              role: normalizedRole,
+              initialSection: 'Overview',
+            )),
           ),
           _RoleMenuItem(
             title: 'My Customers',
@@ -483,9 +486,12 @@ class _RoleDashboardScreenState extends State<RoleDashboardScreen> {
         return [
           _RoleMenuItem(
             title: 'Management Workspace',
-            subtitle: 'Scoped analytics, performance and team reporting',
+            subtitle: 'Customer activity, complaints and scoped team reporting',
             icon: Icons.dashboard_customize_rounded,
-            onTap: () => openScreen(ManagementDashboardScreen(role: normalizedRole)),
+            onTap: () => openScreen(ManagementDashboardScreen(
+              role: normalizedRole,
+              initialSection: 'Overview',
+            )),
           ),
           _RoleMenuItem(
             title: 'Create Aggregator',
@@ -553,9 +559,12 @@ class _RoleDashboardScreenState extends State<RoleDashboardScreen> {
         return [
           _RoleMenuItem(
             title: 'Management Workspace',
-            subtitle: 'Scoped analytics, performance and team reporting',
+            subtitle: 'Customer activity, complaints and scoped team reporting',
             icon: Icons.dashboard_customize_rounded,
-            onTap: () => openScreen(ManagementDashboardScreen(role: normalizedRole)),
+            onTap: () => openScreen(ManagementDashboardScreen(
+              role: normalizedRole,
+              initialSection: 'Overview',
+            )),
           ),
           _RoleMenuItem(
             title: 'Create State Manager',
