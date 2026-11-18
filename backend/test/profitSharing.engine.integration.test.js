@@ -34,7 +34,8 @@ const adapter = {
   }),
 };
 function instance(extra = {}) {
-  return createEngine({ now: clock, adapters: { DATA: adapter, AIRTIME: adapter }, ...extra });
+  return createEngine({ now: clock, adapters: { DATA: adapter, AIRTIME: adapter },
+    withdrawalReadiness: async () => ({ ready: true }), ...extra });
 }
 async function tx(extra = {}) {
   const _id = new mongoose.Types.ObjectId();
@@ -108,6 +109,16 @@ test("production has no unverified adapters and refuses activation even with val
     confirmation: true, confirmationText: "ACTIVATE FUTURE PROFIT SHARING", reason: "Synthetic activation denied" }),
   { code: "ACTIVATION_PREREQUISITES_INCOMPLETE" });
   assert.equal(await M.Account.countDocuments(), 0);
+});
+test("activation fails closed when shared withdrawal uniqueness cannot be verified", async () => {
+  for (const withdrawalReadiness of [
+    async () => ({ ready: false }), async () => { throw Error("Synthetic unavailable metadata"); },
+  ]) {
+    const isolated = instance({ withdrawalReadiness });
+    const result = await isolated.readiness(["DATA"]);
+    assert.equal(result.ready, false);
+    assert.ok(result.storageBlockers.includes("COMMISSION_WITHDRAWAL_UNIQUE_SAFEGUARDS_REQUIRED"));
+  }
 });
 test("precise money and latest future-effective service versions are enforced", () => {
   assert.equal(kobo(12.34), 1234);

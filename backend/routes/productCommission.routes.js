@@ -47,6 +47,7 @@ router.get("/profit-sharing", loadStaffRole, profitSharing.read);
 router.post("/profit-sharing", loadStaffRole, requireExplicitPermission("commissions.manage"), profitSharing.save);
 const profitEngine = require("../controllers/profitSharingEngine.controller");
 router.get("/profit-sharing/engine", loadStaffRole, profitEngine.status);
+router.get("/profit-sharing/settlements", loadStaffRole, requireExplicitPermission("commissions.manage"), profitEngine.settlements);
 router.post("/profit-sharing/dry-run", loadStaffRole, requireExplicitPermission("commissions.manage"), profitEngine.dryRun);
 router.post("/profit-sharing/activation", loadStaffRole, requireExplicitPermission("commissions.manage"), profitEngine.activation);
 

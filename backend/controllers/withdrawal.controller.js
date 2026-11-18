@@ -48,7 +48,8 @@ const normalizeWithdrawalIntent = ({
   accountName: String(accountName || "").trim().replace(/\s+/g, " ").toUpperCase(),
 });
 
-const withdrawalIntentMatches = (item, intent) =>
+const withdrawalIntentMatches = (item, intent, source = "MAIN_WALLET") =>
+  (item.fundingSource || "MAIN_WALLET") === source &&
   normalizeWithdrawalIntent(item).amount === intent.amount &&
   normalizeWithdrawalIntent(item).bankName === intent.bankName &&
   normalizeWithdrawalIntent(item).accountNumber === intent.accountNumber &&
@@ -139,7 +140,7 @@ exports.createWithdrawal = async (
       getIdempotencyKey(req);
     await authorizeTransaction({
       userId,
-      body: req.body,
+      body: req.commissionCustodyOnly ? { transactionPin: req.body?.transactionPin } : req.body,
       operation: BIOMETRIC_OPERATIONS.WITHDRAWAL,
       idempotencyKey,
     });
@@ -251,11 +252,18 @@ exports.createWithdrawal = async (
             accountNumber,
             accountName,
           });
-          if (!withdrawalIntentMatches(existing, intent)) {
+          if (!withdrawalIntentMatches(existing, intent,
+              req.commissionCustodyOnly ? "COMMISSION_CUSTODY" : "MAIN_WALLET")) {
             const error = new Error("This idempotency key was already used for different withdrawal details.");
             error.statusCode = 409;
             error.code = "IDEMPOTENCY_INTENT_CONFLICT";
             throw error;
+          }
+          if (req.commissionCustodyOnly) {
+            result = { withdrawal: existing, duplicate: true, fundingSource: "COMMISSION_CUSTODY",
+              custodyBalance: (await require("../services/profitSharing.custody")
+                .backedAccount(existing.commissionAccountId, session)).value };
+            return;
           }
           const duplicateUser =
             await User.findById(userId)
@@ -276,6 +284,13 @@ exports.createWithdrawal = async (
           return;
         }
 
+        if (req.commissionCustodyOnly) {
+          result = await require("../services/profitSharing.custody").reserve({
+            userId, amountKobo: amountInKobo, bankName, accountNumber, accountName,
+            idempotencyKey, session,
+          });
+          return;
+        }
         const user =
           await User.findById(userId)
             .select("walletBalance withdrawalLockedBalance")
@@ -449,12 +464,19 @@ exports.createWithdrawal = async (
           accountNumber: req.body?.accountNumber,
           accountName: req.body?.accountName,
         });
-        if (!withdrawalIntentMatches(existing, intent)) {
+        if (!withdrawalIntentMatches(existing, intent,
+            req.commissionCustodyOnly ? "COMMISSION_CUSTODY" : "MAIN_WALLET")) {
           return res.status(409).json({
             success: false,
             code: "IDEMPOTENCY_INTENT_CONFLICT",
             message: "This idempotency key was already used for different withdrawal details.",
           });
+        }
+        if (req.commissionCustodyOnly) {
+          return res.status(200).json({ success: true, withdrawal: existing,
+            fundingSource: "COMMISSION_CUSTODY", duplicate: true,
+            custodyBalance: (await require("../services/profitSharing.custody")
+              .backedAccount(existing.commissionAccountId, null)).value });
         }
         const user =
           await User.findById(
@@ -666,6 +688,7 @@ exports.approveWithdrawal = async (
           await WithdrawalRequest.findOne({
             _id: req.params.id,
             status: "PENDING",
+            fundingSource: { $ne: "COMMISSION_CUSTODY" },
           }).session(session);
 
         if (!item) {
@@ -846,6 +869,7 @@ exports.rejectWithdrawal = async (
           await WithdrawalRequest.findOne({
             _id: req.params.id,
             status: "PENDING",
+            fundingSource: { $ne: "COMMISSION_CUSTODY" },
           }).session(session);
 
         if (!item) {

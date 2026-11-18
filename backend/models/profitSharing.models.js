@@ -29,7 +29,8 @@ admission.pre("validate", function () {
 const event = new Schema({
   _id: { type: String, required: true },
   transaction: { type: Schema.Types.ObjectId },
-  kind: { type: String, enum: ["ACCRUAL", "REVERSAL", "DRY_RUN", "BLOCKED", "PROVIDER_DEBIT_EVIDENCE"], required: true },
+  kind: { type: String, enum: ["ACCRUAL", "REVERSAL", "DRY_RUN", "BLOCKED", "PROVIDER_DEBIT_EVIDENCE",
+    "WITHDRAWAL_RESERVED", "WITHDRAWAL_PAID", "WITHDRAWAL_RELEASED"], required: true },
   admissionId: String,
   originalEventId: String,
   data: { type: Schema.Types.Mixed, required: true },
@@ -37,6 +38,8 @@ const event = new Schema({
 const account = new Schema({
   _id: { type: String, required: true },
   availableKobo: { ...money, default: 0 },
+  reservedKobo: { ...money, default: 0 },
+  withdrawnKobo: { ...money, default: 0 },
   earnedKobo: { ...money, default: 0 },
   reversedKobo: { ...money, default: 0 },
   recoveryDebtKobo: { ...money, default: 0 },

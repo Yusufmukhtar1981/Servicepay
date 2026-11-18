@@ -38,12 +38,13 @@ router.get("/customers/export", wrap(async (req, res) => {
 router.get("/customers/:id/transactions", wrap(async (req, res) => ok(res, await workspace.customerTransactions(req.user, req.params.id, req.query))));
 router.get("/customers/:id", wrap(async (req, res) => ok(res, await workspace.customerDetail(req.user, req.params.id, req.query))));
 router.get("/withdrawals", wrap(async (req, res) => ok(res, await workspace.withdrawals(req.user, req.query))));
-// No configurable bypass: custody must be established and the implementation
-// separately reviewed before any commission payout admission can be enabled.
-router.post("/withdrawals", wrap(async (req, res) => {
-  await analytics.scope(req.user);
-  throw fail(WITHDRAWAL_BLOCKER.message, 503, WITHDRAWAL_BLOCKER.code);
-}));
+router.post("/withdrawals",
+  require("../middleware/accountRestriction.middleware").requireNoRestriction("BLOCK_WITHDRAWALS", "BLOCK_WALLET_DEBIT"),
+  wrap(async (req, res) => {
+    await analytics.scope(req.user);
+    req.commissionCustodyOnly = true;
+    return require("../controllers/withdrawal.controller").createWithdrawal(req, res);
+  }));
 router.get("/complaints", wrap(async (req, res) => ok(res, await complaints.list(req.user, req.query))));
 router.post("/complaints", wrap(async (req, res) => {
   const data = await complaints.create(req.user, req.body || {});

@@ -102,6 +102,15 @@ const withdrawalRequestSchema =
         type: Number,
         default: null,
       },
+      fundingSource: {
+        type: String, enum: ["MAIN_WALLET", "COMMISSION_CUSTODY"],
+        default: "MAIN_WALLET", immutable: true,
+      },
+      commissionAccountId: { type: String, immutable: true },
+      commissionAmountKobo: {
+        type: Number, immutable: true, min: 1,
+        validate: { validator: Number.isSafeInteger, message: "Exact commission kobo required." },
+      },
 
       debitLedgerEntry: {
         type: mongoose.Schema.Types.ObjectId,

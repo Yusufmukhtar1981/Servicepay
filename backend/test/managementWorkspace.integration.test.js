@@ -198,7 +198,7 @@ test("simultaneous duplicate or excess commission payout attempts fail closed wi
   const before = await Withdrawal.countDocuments();
   const attempts = await Promise.all(Array.from({ length: 8 }, () => request("/workspace/withdrawals", f.agent,
     { amount: 999999, bankName: "Test", accountNumber: "0000000000", idempotencyKey: "same-request-key" })));
-  attempts.forEach(r => { assert.equal(r.status, 503); assert.equal(r.body.code, "COMMISSION_CUSTODY_UNVERIFIED"); });
+  attempts.forEach(r => { assert.equal(r.status, 503); assert.equal(r.body.code, "WITHDRAWAL_INDEXES_NOT_READY"); });
   assert.equal(await Withdrawal.countDocuments(), before);
 });
 test("manager complaint creation records actual transaction context, audit and existing Support integration", async () => {
@@ -277,6 +277,38 @@ test("required existing Support indexes are inspected, never silently created", 
   assert.equal(r.status, 503); assert.equal(r.body.code, "SUPPORT_INDEXES_NOT_READY");
   assert.equal(await Case.countDocuments(), 2);
   await Case.createIndexes(); // Disposable test database only.
+});
+test("manager workspace exposes only backed future custody and submits through the existing PIN withdrawal flow", async () => {
+  const M = load("models/profitSharing.models"), N = load("models/businessNetwork.models");
+  const Claim = load("models/withdrawalPayoutClaim.model");
+  for (const model of [M.Account, M.Event, N.Audit, Claim]) await model.createCollection();
+  await Withdrawal.createIndexes(); await Claim.createIndexes();
+  load("services/withdrawalIndexReadiness.service").clearWithdrawalIndexReadinessCache();
+  const actor = await User.findById(f.agent._id);
+  actor.setTransactionPin("2468"); await actor.save({ validateBeforeSave: false });
+  const accountId = `beneficiary:${actor._id}`;
+  await M.Account.create({ _id: accountId, earnedKobo: 10000, availableKobo: 10000 });
+  await M.Event.create({ _id: `accrual:${f.txActive._id}`, kind: "ACCRUAL", transaction: f.txActive._id,
+    data: { source: "ISOLATED_TEST_FIXTURE", plan: { netProfitKobo: 10000, poolKobo: 10000 },
+      entries: [{ accountId, role: "AGGREGATOR", amountKobo: 10000 }] } });
+  const before = await request("/workspace/withdrawals?limit=1", f.agent);
+  assert.equal(before.status, 200); assert.equal(before.body.data.summary.availableCommission, 100);
+  assert.equal(before.body.data.summary.totalCommissionEarned, 23);
+  assert.equal(before.body.data.summary.futureSettledCommissionEarned, 100);
+  assert.equal(before.body.data.readiness.canRequest, true);
+  assert.equal(before.body.data.commissionHistory[0].amountKobo, 10000);
+  const body = { amount: 100, bankName: "Synthetic Bank", accountNumber: "0000000001",
+    accountName: "Synthetic Account", transactionPin: "2468", idempotencyKey: "manager-backed-custody" };
+  const submitted = await request("/workspace/withdrawals", f.agent, body);
+  assert.equal(submitted.status, 201);
+  assert.equal(submitted.body.withdrawal.fundingSource, "COMMISSION_CUSTODY");
+  const duplicate = await request("/workspace/withdrawals", f.agent, body);
+  assert.equal(duplicate.status, 200); assert.equal(duplicate.body.duplicate, true);
+  const after = await request("/workspace/withdrawals?limit=1", f.agent);
+  assert.equal(after.body.data.summary.availableCommission, 0);
+  assert.equal(after.body.data.summary.pendingWithdrawals, 100);
+  assert.equal(after.body.data.items[0].reference, submitted.body.withdrawal.reference);
+  assert.equal((await User.findById(actor._id)).walletBalance, 4321);
 });
 test("all customer balances and financial transaction records remain intact", async () => {
   const after = await User.find().select("_id walletBalance commissionBalance").sort({ _id: 1 }).lean();

@@ -31,6 +31,18 @@ const requireHeadOffice = (req, res, next) => {
 
 
 router.use(protect);
+const { loadStaffRole, requireExplicitPermission } = require("../middleware/staffPermission.middleware");
+const commissionCustody = require("../controllers/profitSharingCustody.controller");
+router.post("/commission/request",
+  requireNoRestriction("BLOCK_WITHDRAWALS", "BLOCK_WALLET_DEBIT"),
+  (req, res) => {
+    req.commissionCustodyOnly = true;
+    return controller.createWithdrawal(req, res);
+  });
+router.post("/commission/admin/:id/approve", requireHeadOffice, loadStaffRole,
+  requireExplicitPermission("commissions.manage"), commissionCustody.approve);
+router.post("/commission/admin/:id/reject", requireHeadOffice, loadStaffRole,
+  requireExplicitPermission("commissions.manage"), commissionCustody.reject);
 
 router.post(
   "/request",

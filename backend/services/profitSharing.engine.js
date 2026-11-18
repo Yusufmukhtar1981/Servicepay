@@ -29,6 +29,7 @@ function createEngine({
   M = Models, N = Network, transactionModel = Transaction, userModel = User,
   commissionModel = Commission, adapters = Adapters.adapters,
   startSession = () => mongoose.startSession(), now = () => new Date(),
+  withdrawalReadiness = require("./withdrawalIndexReadiness.service").getWithdrawalIndexReadiness,
 } = {}) {
   async function atomic(fn, existingSession) {
     if (existingSession) {
@@ -62,6 +63,9 @@ function createEngine({
         new Set(services).size !== services.length) fail("INVALID_SERVICES", 400);
     const settings = await N.Settings.findById("profit-sharing").lean();
     const storage = await storageBlockers();
+    try {
+      if (!(await withdrawalReadiness()).ready) storage.push("COMMISSION_WITHDRAWAL_UNIQUE_SAFEGUARDS_REQUIRED");
+    } catch (_) { storage.push("COMMISSION_WITHDRAWAL_UNIQUE_SAFEGUARDS_REQUIRED"); }
     return {
       ready: storage.length === 0 && services.every(service => {
         const rule = ruleAt(settings, service, now());
@@ -321,6 +325,13 @@ function createEngine({
         amount: tx.amount, user: tx.customerId, status: "POSTED",
         reversalOf: tx.debitLedgerEntryId }).session(active).lean();
       if (!debit || !refund || !tx.debitLedgerEntryId) fail("CANONICAL_REFUND_EVIDENCE_REQUIRED");
+      // Mixed provider metadata is nullable. Normalize only a genuinely empty
+      // envelope inside this same transaction; never replace a saved response.
+      // Otherwise MongoDB cannot increment the nested settlement fence.
+      if (tx.providerResponse == null) {
+        await transactionModel.updateOne({ _id: tx._id, status: "REFUNDED", providerResponse: null },
+          { $set: { providerResponse: {} } }, { session: active });
+      }
       // Serialize with settlement and subsequent refund handlers.
       await transactionModel.updateOne({ _id: tx._id, status: "REFUNDED" },
         { $inc: { "providerResponse.profitSharingFence": 1 } }, { session: active });

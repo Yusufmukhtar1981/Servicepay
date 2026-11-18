@@ -89,23 +89,57 @@ async function withdrawalSummary(actor) {
   const records = await Commission.aggregate([{ $match: { beneficiaryId: s.actor._id, beneficiaryRole: s.actor.role } },
     { $group: { _id: "$status", amount: { $sum: "$commissionAmount" } } }]).option({ maxTimeMS: 15000, allowDiskUse: false });
   const amount = status => records.find(r => r._id === status)?.amount || 0;
+  let custody;
+  try { custody = (await require("./profitSharing.custody").backedAccount(`beneficiary:${s.actor._id}`, null)).value; }
+  catch (error) {
+    if (typeof error.code !== "string") throw error;
+    return {
+      totalCommissionEarned: amount("AVAILABLE") + amount("WITHDRAWN"),
+      recordedAvailableCommission: amount("AVAILABLE"), recordedWithdrawnCommission: amount("WITHDRAWN"),
+      availableCommission: null, totalWithdrawn: null, pendingWithdrawals: null,
+      custodyError: error.code, custodyReady: false,
+    };
+  }
   return {
     totalCommissionEarned: amount("AVAILABLE") + amount("WITHDRAWN"),
+    futureSettledCommissionEarned: custody.earnedKobo / 100,
+    futureReversedCommission: custody.reversedKobo / 100,
     recordedAvailableCommission: amount("AVAILABLE"), recordedWithdrawnCommission: amount("WITHDRAWN"),
-    availableCommission: null, totalWithdrawn: null, pendingWithdrawals: null,
+    availableCommission: custody.availableKobo / 100, totalWithdrawn: custody.withdrawnKobo / 100,
+    pendingWithdrawals: custody.reservedKobo / 100, commissionRecoveryDebt: custody.recoveryDebtKobo / 100,
+    custodyReady: true,
   };
 }
 async function withdrawals(actor, query = {}) {
   const s = await a.scope(actor), { page, limit } = pagination(query);
-  const filter = { user: s.actor._id };
+  const filter = { user: s.actor._id, fundingSource: { $ne: "COMMISSION_CUSTODY" } };
   const [summary, legacy, total] = await Promise.all([
     withdrawalSummary(actor), Withdrawal.find(filter).select("_id reference amount status createdAt adminNote payoutReference")
       .sort({ createdAt: -1, _id: -1 }).skip((page - 1) * limit).limit(limit).lean().maxTimeMS(15000),
     Withdrawal.countDocuments(filter).maxTimeMS(15000),
   ]);
-  return { summary, readiness: WITHDRAWAL_BLOCKER, items: [], legacyWalletWithdrawals: legacy.map(({ _id, ...r }) => ({
+  const commissionFilter = { user: s.actor._id, fundingSource: "COMMISSION_CUSTODY" };
+  const items = await Withdrawal.find(commissionFilter).select("_id reference amount status createdAt adminNote payoutReference")
+    .sort({ createdAt: -1, _id: -1 }).skip((page - 1) * limit).limit(limit).lean().maxTimeMS(15000);
+  const ownHistory = summary.custodyReady
+    ? await require("./profitSharing.reporting").own(s.actor, query) : { items: [] };
+  const indexes = await require("./withdrawalIndexReadiness.service").getWithdrawalIndexReadiness();
+  const readiness = summary.custodyReady && indexes.ready ? {
+    ready: true, canRequest: summary.availableCommission > 0 && summary.commissionRecoveryDebt === 0,
+    code: summary.commissionRecoveryDebt > 0 ? "COMMISSION_RECOVERY_DEBT_OUTSTANDING" : "FUTURE_CUSTODY_ONLY",
+    message: "Only newly settled commission custody is withdrawable. Historical main-wallet earnings are not included.",
+  } : { ...WITHDRAWAL_BLOCKER, ready: false, canRequest: false,
+    ...(summary.custodyReady && !indexes.ready ? { code: "WITHDRAWAL_INDEXES_NOT_READY",
+      message: "Withdrawal safeguards are temporarily unavailable. No funds have been moved." } : {}) };
+  const commissionTotal = await Withdrawal.countDocuments(commissionFilter).maxTimeMS(15000);
+  return { summary, readiness, items: items.map(({ _id, ...r }) => ({
+    id: String(_id), ...r, source: "COMMISSION_CUSTODY",
+  })), commissionHistory: ownHistory.items, custodySource: "FUTURE_PROFIT_SHARING_ONLY",
+  legacyWalletWithdrawals: legacy.map(({ _id, ...r }) => ({
     id: String(_id), ...r, source: "LEGACY_MAIN_WALLET",
-  })), page, limit, total, totalPages: Math.ceil(total / limit) };
+  })), page, limit, total: commissionTotal + total + (ownHistory.total || 0),
+    commissionTotal, commissionHistoryTotal: ownHistory.total || 0, legacyTotal: total,
+    totalPages: Math.max(1, Math.ceil(Math.max(commissionTotal, total, ownHistory.total || 0) / limit)) };
 }
 async function overview(actor, query = {}) {
   const s = await a.scope(actor, query.teamId);
@@ -122,7 +156,8 @@ async function overview(actor, query = {}) {
   return { ...base, kpis: { ...base.kpis, activeCustomers: counts.ACTIVE, inactiveCustomers: counts.INACTIVE,
     decliningCustomers: counts.DECLINING, newCustomersWithoutTransactions: counts.NEW, unclassifiedCustomers: counts.UNKNOWN,
     newCustomersToday: within("TODAY"), newCustomersThisWeek: within("THIS_WEEK"), newCustomersThisMonth: within("THIS_MONTH"),
-    totalCommissionEarned: commission.totalCommissionEarned, availableCommission: null, pendingWithdrawals: null, openCustomerComplaints: open },
+    totalCommissionEarned: commission.totalCommissionEarned, availableCommission: commission.availableCommission,
+    pendingWithdrawals: commission.pendingWithdrawals, openCustomerComplaints: open },
     withdrawalReadiness: WITHDRAWAL_BLOCKER,
     definitions: { ...base.definitions, active: "Successful activity within 30 days; declining at 31 through 60 complete days; inactive after 60 days. Account restrictions are a separate status. Registration date is used when captured successful activity is absent; newly registered customers remain NEW for 30 days.",
       commission: "Recorded earnings only. Available commission custody and past payout allocation are not yet verified; null does not mean zero." } };

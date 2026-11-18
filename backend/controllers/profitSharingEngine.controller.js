@@ -13,6 +13,7 @@ const route = fn => async (req, res) => {
   }
 };
 exports.status = route(() => engine.status());
+exports.settlements = route(req => require("../services/profitSharing.reporting").headOffice(req.query));
 exports.dryRun = route(req => {
   if (typeof req.body?.transactionId !== "string" || !/^[a-f\d]{24}$/i.test(req.body.transactionId) ||
       Object.keys(req.body).some(k => k !== "transactionId")) {
