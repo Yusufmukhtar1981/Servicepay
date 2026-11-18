@@ -23,6 +23,8 @@ import 'customer_leaderboard_privacy_preference.dart';
 import 'services/customer_leaderboard_api.dart';
 import 'customer_profile_edit_sheet.dart';
 import 'services/customer_account_recovery.dart';
+import 'customer_notification_settings_screen.dart';
+import 'services/customer_alert_media.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key, this.client, this.urlLauncher});
@@ -829,6 +831,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     if (!mounted) return;
 
+    await CustomerAlertMediaService.shared.stopAll();
     setState(() {
       isLoggingOut = true;
     });
@@ -1103,6 +1106,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                           if (user['role']?.toString().trim().toUpperCase() ==
                               'CUSTOMER') ...[
+                            _ProfileActionTile(
+                              icon: Icons.notifications_active_outlined,
+                              title: 'Dashboard & alerts',
+                              subtitle:
+                                  'Background, sound and voice preferences',
+                              onTap: () => Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) =>
+                                      const CustomerNotificationSettingsScreen(),
+                                ),
+                              ),
+                            ),
                             if (_pendingPhoneEntry != null)
                               _ProfileActionTile(
                                 icon: Icons.open_in_browser_outlined,
@@ -2108,8 +2123,7 @@ class _ProfileActionTile extends StatelessWidget {
               width: 41,
               height: 41,
               decoration: BoxDecoration(
-                color: (iconColor ?? ServicePayColors.brand)
-                    .withValues(
+                color: (iconColor ?? ServicePayColors.brand).withValues(
                   alpha: 0.10,
                 ),
                 borderRadius: BorderRadius.circular(

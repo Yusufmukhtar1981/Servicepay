@@ -45,6 +45,7 @@ dependencies:
 
   # Incoming ride ringing while Rider screen is open.
   audioplayers: ^6.4.0
+  flutter_tts: ^4.2.5
   image_picker: ^1.1.2
   flutter_native_contact_picker: 0.0.11
   mobile_scanner: ^7.4.0

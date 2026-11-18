@@ -60,6 +60,11 @@ import 'edupay/edupay_screen.dart';
 import 'school_portal_handoff_client.dart';
 import 'business_network/business_hub_screen.dart';
 import 'widgets/customer_dashboard_visuals.dart';
+import 'services/customer_notification_settings.dart';
+import 'services/customer_alert_media.dart';
+import 'services/customer_wallet_alert_poller.dart';
+import 'services/customer_settings_events.dart';
+import 'widgets/customer_wallet_credit_notice.dart';
 
 List<ServicePayAnnouncement> mergeAnnouncementSessionState({
   required List<ServicePayAnnouncement> loaded,
@@ -111,6 +116,11 @@ class _DashboardScreenState extends State<DashboardScreen>
   late final AnimationController _refreshController;
   late final http.Client _client;
   late final bool _ownsClient;
+  late final CustomerNotificationSettingsApi _customerSettingsApi;
+  final CustomerAlertMediaService _alertMedia =
+      CustomerAlertMediaService.shared;
+  CustomerWalletAlertPoller? _walletAlertPoller;
+  String? _walletAlertSessionToken;
 
   String profilePhotoUrl = '';
   bool isUploadingProfilePhoto = false;
@@ -136,6 +146,11 @@ class _DashboardScreenState extends State<DashboardScreen>
   bool isLoading = true;
   bool isRefreshing = false;
   bool hideBalance = false;
+  CustomerNotificationSettings _customerSettings =
+      const CustomerNotificationSettings();
+  WalletCreditAlert? _activeWalletAlert;
+  WalletCreditAlert? _pendingAlertMediaAlert;
+  CustomerNotificationSettings? _pendingAlertMediaSettings;
   bool isLoadingRecentActivity = true;
   bool isLoadingServiceStatuses = false;
   int _championsRefreshVersion = 0;
@@ -186,6 +201,11 @@ class _DashboardScreenState extends State<DashboardScreen>
     WidgetsBinding.instance.addObserver(this);
     _ownsClient = widget.client == null;
     _client = widget.client ?? http.Client();
+    _customerSettingsApi = CustomerNotificationSettingsApi(
+      client: _client,
+      baseUrl: baseUrl,
+    );
+    CustomerSettingsEvents.changes.addListener(_applyCustomerSettingsEvent);
     _motionController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 3600),
@@ -214,6 +234,9 @@ class _DashboardScreenState extends State<DashboardScreen>
     WidgetsBinding.instance.removeObserver(this);
     _motionController.dispose();
     _refreshController.dispose();
+    _walletAlertPoller?.dispose();
+    unawaited(_alertMedia.stopAll());
+    CustomerSettingsEvents.changes.removeListener(_applyCustomerSettingsEvent);
     searchController.dispose();
     if (_ownsClient) {
       _client.close();
@@ -226,6 +249,8 @@ class _DashboardScreenState extends State<DashboardScreen>
     if (state == AppLifecycleState.resumed && mounted) {
       _loadServiceAvailability();
       unawaited(_checkAppUpdate());
+    } else {
+      unawaited(_alertMedia.stopAll());
     }
   }
 
@@ -340,6 +365,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       final String? token = await getSavedAuthToken(preferences);
 
       if (token == null || token.isEmpty) {
+        _walletAlertPoller?.stop();
         if (mounted) {
           setState(() {
             _referralLoadGeneration++;
@@ -355,6 +381,8 @@ class _DashboardScreenState extends State<DashboardScreen>
         return false;
       }
 
+      unawaited(_loadCustomerNotificationSettings(token));
+      _startWalletAlertPolling(token);
       // Secondary services have their own state and cannot delay the dashboard.
       unawaited(_loadRecentTransactions(token));
       unawaited(_loadNotificationSummary(token));
@@ -383,24 +411,144 @@ class _DashboardScreenState extends State<DashboardScreen>
     return receivedFreshWalletBalance;
   }
 
+  Future<void> _loadCustomerNotificationSettings(String sessionToken) async {
+    try {
+      final settings = await _customerSettingsApi.load();
+      if (await SessionStore.readToken() != sessionToken) return;
+      if (mounted) setState(() => _customerSettings = settings);
+    } catch (_) {
+      // Preference failure does not block wallet access; safe defaults remain.
+    }
+  }
+
+  void _applyCustomerSettingsEvent() {
+    final event = CustomerSettingsEvents.changes.value;
+    if (!mounted ||
+        event == null ||
+        event.sessionToken != _walletAlertSessionToken) {
+      return;
+    }
+    if (_customerSettings.soundNotifications &&
+        !event.settings.soundNotifications) {
+      unawaited(_alertMedia.stopSound());
+    }
+    if (_customerSettings.voiceAnnouncements &&
+        !event.settings.voiceAnnouncements) {
+      unawaited(_alertMedia.stopSpeech());
+    }
+    if (_pendingAlertMediaSettings != null) {
+      _pendingAlertMediaSettings = event.settings;
+    }
+    setState(() => _customerSettings = event.settings);
+  }
+
+  Future<bool> _isAlertSessionValid(String sessionToken) async {
+    final valid = await SessionStore.readToken() == sessionToken;
+    if (!valid) {
+      unawaited(_alertMedia.stopAll());
+      if (mounted &&
+          (_activeWalletAlert != null || _pendingAlertMediaAlert != null)) {
+        setState(() {
+          _activeWalletAlert = null;
+          _pendingAlertMediaAlert = null;
+          _pendingAlertMediaSettings = null;
+        });
+      }
+    }
+    return valid;
+  }
+
+  void _toggleWalletBalanceVisibility() {
+    final hideNow = !hideBalance;
+    setState(() => hideBalance = hideNow);
+    if (hideNow) unawaited(_alertMedia.stopSpeech());
+  }
+
+  Future<void> _playPendingAlertMedia(String sessionToken) async {
+    final alert = _pendingAlertMediaAlert;
+    final settings = _pendingAlertMediaSettings;
+    if (!mounted ||
+        alert == null ||
+        settings == null ||
+        !(ModalRoute.of(context)?.isCurrent ?? true)) {
+      return;
+    }
+    final messenger = ScaffoldMessenger.of(context);
+    if (!await _isAlertSessionValid(sessionToken) || !mounted) return;
+    _pendingAlertMediaAlert = null;
+    _pendingAlertMediaSettings = null;
+    final result = await _alertMedia.playIncomingAlert(
+      alert,
+      settings,
+      walletBalanceHidden: hideBalance,
+    );
+    if (!mounted || !await _isAlertSessionValid(sessionToken)) return;
+    if (settings.soundNotifications && result.soundAvailable == false) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text(
+              'Sound is blocked or unavailable. The visual wallet notice is shown.'),
+        ),
+      );
+    }
+    if (settings.voiceAnnouncements &&
+        !hideBalance &&
+        result.voiceAvailable == false) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text(
+              'No English device voice is available or playback was blocked. The visual wallet notice is shown.'),
+        ),
+      );
+    }
+  }
+
+  void _startWalletAlertPolling(String sessionToken) {
+    if (_walletAlertSessionToken != null &&
+        _walletAlertSessionToken != sessionToken) {
+      _walletAlertPoller?.dispose();
+      _walletAlertPoller = null;
+    }
+    _walletAlertSessionToken = sessionToken;
+    _walletAlertPoller ??= CustomerWalletAlertPoller(
+      api: _customerSettingsApi,
+      isSessionValid: () => _isAlertSessionValid(sessionToken),
+      isRouteVisible: () =>
+          mounted && (ModalRoute.of(context)?.isCurrent ?? true),
+      onRouteVisible: () => _playPendingAlertMedia(sessionToken),
+      onAlert: (alert, settings) async {
+        if (!mounted || !await _isAlertSessionValid(sessionToken)) return;
+        _pendingAlertMediaAlert = alert;
+        _pendingAlertMediaSettings = settings;
+        setState(() {
+          _activeWalletAlert = alert;
+          _customerSettings = settings;
+          walletBalance = alert.balance;
+          walletBalanceAvailable = true;
+          walletBalanceRefreshFailed = false;
+        });
+        await _playPendingAlertMedia(sessionToken);
+      },
+    );
+    _walletAlertPoller!.start();
+  }
+
   Future<void> _loadReferralPresentation(String token) async {
     final int generation = ++_referralLoadGeneration;
     if (mounted) setState(() => _referralPresentationPolicy = null);
     try {
-      final http.Response response = await _client
-          .get(
-            Uri.parse('$baseUrl/auth/referral').replace(
-              queryParameters: const <String, String>{
-                'historyPage': '1',
-                'historyLimit': '1',
-              },
-            ),
-            headers: <String, String>{
-              'Authorization': 'Bearer $token',
-              'Accept': 'application/json',
-            },
-          )
-          .timeout(const Duration(seconds: 20));
+      final http.Response response = await _client.get(
+        Uri.parse('$baseUrl/auth/referral').replace(
+          queryParameters: const <String, String>{
+            'historyPage': '1',
+            'historyLimit': '1',
+          },
+        ),
+        headers: <String, String>{
+          'Authorization': 'Bearer $token',
+          'Accept': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 20));
       if (response.statusCode < 200 || response.statusCode >= 300) return;
       final ReferralPresentationPolicy? policy =
           ReferralPresentationPolicy.parse(
@@ -1953,7 +2101,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: CustomerDashboardPalette.paleBlue,
-                    border: Border.all(color: CustomerDashboardPalette.border, width: 2),
+                    border: Border.all(
+                        color: CustomerDashboardPalette.border, width: 2),
                     boxShadow: const <BoxShadow>[
                       BoxShadow(
                         color: Color(0x1A087A45),
@@ -2239,7 +2388,7 @@ class _DashboardScreenState extends State<DashboardScreen>
               IconButton(
                 key: const Key('dashboard-balance-visibility'),
                 tooltip: hideBalance ? 'Show balance' : 'Hide balance',
-                onPressed: () => setState(() => hideBalance = !hideBalance),
+                onPressed: _toggleWalletBalanceVisibility,
                 visualDensity: VisualDensity.compact,
                 icon: Icon(
                   hideBalance
@@ -2341,7 +2490,7 @@ class _DashboardScreenState extends State<DashboardScreen>
               Icon(
                 icon,
                 size: 18,
-                 color: filled ? const Color(0xFF064120) : Colors.white,
+                color: filled ? const Color(0xFF064120) : Colors.white,
               ),
               const SizedBox(height: 3),
               FittedBox(
@@ -2576,7 +2725,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: CustomerDashboardPalette.success.withValues(alpha: 0.09),
+                    color: CustomerDashboardPalette.success
+                        .withValues(alpha: 0.09),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Text(
@@ -3325,11 +3475,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                         const SizedBox(width: 5),
                         InkWell(
                           borderRadius: BorderRadius.circular(20),
-                          onTap: () {
-                            setState(() {
-                              hideBalance = !hideBalance;
-                            });
-                          },
+                          onTap: _toggleWalletBalanceVisibility,
                           child: Padding(
                             padding: const EdgeInsets.all(4),
                             child: Icon(
@@ -4213,7 +4359,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                                 errorBuilder: (context, error, stackTrace) {
                                   return Text(
                                     initial,
-                                    key: const Key('customer-header-avatar-initial'),
+                                    key: const Key(
+                                        'customer-header-avatar-initial'),
                                     style: const TextStyle(
                                       color: CustomerDashboardPalette.text,
                                       fontSize: 17,
@@ -4224,7 +4371,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                               )
                             : Text(
                                 initial,
-                                key: const Key('customer-header-avatar-initial'),
+                                key:
+                                    const Key('customer-header-avatar-initial'),
                                 style: const TextStyle(
                                   color: CustomerDashboardPalette.text,
                                   fontSize: 17,
@@ -5751,123 +5899,145 @@ class _DashboardScreenState extends State<DashboardScreen>
   Widget build(
     BuildContext context,
   ) {
+    final Color dashboardBackground =
+        _customerSettings.dashboardBackground == 'default'
+            ? ServicePayColors.canvas
+            : CustomerDashboardPalette.canvas;
     return Scaffold(
-      backgroundColor: CustomerDashboardPalette.canvas,
-      body: SafeArea(
-        child: RefreshIndicator(
-          color: CustomerDashboardPalette.royalBlue,
-          onRefresh: _refreshDashboard,
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 700),
-              child: ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 34),
-                children: <Widget>[
-                  buildHeader(),
-                  const SizedBox(height: 14),
-                  if (isLoading)
-                    const LinearProgressIndicator(
-                      color: CustomerDashboardPalette.royalBlue,
-                      backgroundColor: CustomerDashboardPalette.paleBlue,
-                      minHeight: 2,
-                    ),
-                  if (isLoading) const SizedBox(height: 10),
-                  buildPremiumBalanceCard(),
-                  const SizedBox(height: 14),
-                  if (_announcementsLoading ||
-                      _announcementsError != null ||
-                      announcements.isNotEmpty ||
-                      _announcementResponseEmpty ||
-                      _referralPresentationPolicy != null) ...[
-                    CustomerCampaignFrame(
-                      key: const Key('customer-announcement-surface'),
-                      child: _announcementService != null &&
-                              (announcements.isNotEmpty ||
-                                  _referralPresentationPolicy != null)
-                          ? AnnouncementSurface(
-                              announcements: announcements,
-                              service: _announcementService!,
-                              rewardProgressService: _rewardProgressService,
-                              referralPolicy: _referralPresentationPolicy,
-                              onReferralAction: () =>
-                                  openScreen(const ReferralScreen()),
-                              onPopupCompleted: (item) {
-                                _sessionPopupCompletedBanners[item.id] = item;
-                              },
-                              onBannerRemoved: (item) {
-                                setState(() {
-                                  _sessionHiddenBannerIds.add(item.id);
-                                  _sessionPopupCompletedBanners.remove(item.id);
-                                  announcements = announcements
-                                      .where((value) => value.id != item.id)
-                                      .toList();
-                                });
-                              },
-                            )
-                          : _referralPresentationPolicy != null
-                              ? AnnouncementPromotionCarousel(
-                                  announcements: const <ServicePayAnnouncement>[],
-                                  onDismiss: (_) {},
-                                  onAcknowledge: (_) {},
-                                  onAction: (_) {},
+      backgroundColor: dashboardBackground,
+      body: Stack(
+        children: <Widget>[
+          SafeArea(
+            child: RefreshIndicator(
+              color: CustomerDashboardPalette.royalBlue,
+              onRefresh: _refreshDashboard,
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 700),
+                  child: ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 34),
+                    children: <Widget>[
+                      buildHeader(),
+                      const SizedBox(height: 14),
+                      if (isLoading)
+                        const LinearProgressIndicator(
+                          color: CustomerDashboardPalette.royalBlue,
+                          backgroundColor: CustomerDashboardPalette.paleBlue,
+                          minHeight: 2,
+                        ),
+                      if (isLoading) const SizedBox(height: 10),
+                      buildPremiumBalanceCard(),
+                      const SizedBox(height: 14),
+                      if (_announcementsLoading ||
+                          _announcementsError != null ||
+                          announcements.isNotEmpty ||
+                          _announcementResponseEmpty ||
+                          _referralPresentationPolicy != null) ...[
+                        CustomerCampaignFrame(
+                          key: const Key('customer-announcement-surface'),
+                          child: _announcementService != null &&
+                                  (announcements.isNotEmpty ||
+                                      _referralPresentationPolicy != null)
+                              ? AnnouncementSurface(
+                                  announcements: announcements,
+                                  service: _announcementService!,
+                                  rewardProgressService: _rewardProgressService,
                                   referralPolicy: _referralPresentationPolicy,
                                   onReferralAction: () =>
                                       openScreen(const ReferralScreen()),
+                                  onPopupCompleted: (item) {
+                                    _sessionPopupCompletedBanners[item.id] =
+                                        item;
+                                  },
+                                  onBannerRemoved: (item) {
+                                    setState(() {
+                                      _sessionHiddenBannerIds.add(item.id);
+                                      _sessionPopupCompletedBanners
+                                          .remove(item.id);
+                                      announcements = announcements
+                                          .where((value) => value.id != item.id)
+                                          .toList();
+                                    });
+                                  },
                                 )
-                              : AnnouncementLoadPlaceholder(
-                                  loading: _announcementsLoading,
-                                  error: _announcementsError,
-                                  onRetry: _refreshDashboard,
-                                ),
-                    ),
-                    const SizedBox(height: 14),
-                  ],
-                  buildFundingAccountCard(),
-                  if (fundingAccountNumber.isNotEmpty)
-                    const SizedBox(height: 15),
-                  CustomerChampionsDashboardEntry(
-                    key: _championsEntryKey,
-                    refreshVersion: _championsRefreshVersion,
-                  ),
-                  const SizedBox(height: 12),
-                  buildCustomerQuickServices(),
-                  const SizedBox(height: 14),
-                  if (isLoadingServiceStatuses ||
-                      activeServiceStatuses.isNotEmpty) ...[
-                    const SizedBox(height: 14),
-                    buildActiveServiceStatuses(),
-                    const SizedBox(height: 14),
-                  ],
-                  _buildBusinessHubEntry(),
-                  if (schoolPortalMemberships.isNotEmpty) ...[
-                    const SizedBox(height: 14),
-                    buildSchoolPortalCard(),
-                  ],
-                  buildRecentActivity(),
-                  if (isLoadingServiceStatuses ||
-                      activeServiceStatuses.isNotEmpty)
-                    const SizedBox(height: 4),
-                  if (isRefreshing)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 18),
-                      child: Center(
-                        child: Text(
-                          'Refreshing dashboard…',
-                          style: TextStyle(
-                            color: ServicePayColors.muted,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
+                              : _referralPresentationPolicy != null
+                                  ? AnnouncementPromotionCarousel(
+                                      announcements: const <ServicePayAnnouncement>[],
+                                      onDismiss: (_) {},
+                                      onAcknowledge: (_) {},
+                                      onAction: (_) {},
+                                      referralPolicy:
+                                          _referralPresentationPolicy,
+                                      onReferralAction: () =>
+                                          openScreen(const ReferralScreen()),
+                                    )
+                                  : AnnouncementLoadPlaceholder(
+                                      loading: _announcementsLoading,
+                                      error: _announcementsError,
+                                      onRetry: _refreshDashboard,
+                                    ),
+                        ),
+                        const SizedBox(height: 14),
+                      ],
+                      buildFundingAccountCard(),
+                      if (fundingAccountNumber.isNotEmpty)
+                        const SizedBox(height: 15),
+                      CustomerChampionsDashboardEntry(
+                        key: _championsEntryKey,
+                        refreshVersion: _championsRefreshVersion,
+                      ),
+                      const SizedBox(height: 12),
+                      buildCustomerQuickServices(),
+                      const SizedBox(height: 14),
+                      if (isLoadingServiceStatuses ||
+                          activeServiceStatuses.isNotEmpty) ...[
+                        const SizedBox(height: 14),
+                        buildActiveServiceStatuses(),
+                        const SizedBox(height: 14),
+                      ],
+                      _buildBusinessHubEntry(),
+                      if (schoolPortalMemberships.isNotEmpty) ...[
+                        const SizedBox(height: 14),
+                        buildSchoolPortalCard(),
+                      ],
+                      buildRecentActivity(),
+                      if (isLoadingServiceStatuses ||
+                          activeServiceStatuses.isNotEmpty)
+                        const SizedBox(height: 4),
+                      if (isRefreshing)
+                        const Padding(
+                          padding: EdgeInsets.only(top: 18),
+                          child: Center(
+                            child: Text(
+                              'Refreshing dashboard…',
+                              style: TextStyle(
+                                color: ServicePayColors.muted,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                    ),
-                  const SizedBox(height: 22),
-                ],
+                      const SizedBox(height: 22),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
-        ),
+          if (_activeWalletAlert != null)
+            Positioned(
+              top: MediaQuery.paddingOf(context).top + 10,
+              left: 16,
+              right: 16,
+              child: CustomerWalletCreditNotice(
+                alert: _activeWalletAlert!,
+                hideAmount: hideBalance,
+                onDismiss: () => setState(() => _activeWalletAlert = null),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -6532,7 +6702,8 @@ class _ServicePayAllServicesScreenState
                 },
                 decoration: InputDecoration(
                   hintText: 'Search ServicePay services',
-                  hintStyle: const TextStyle(color: CustomerDashboardPalette.muted),
+                  hintStyle:
+                      const TextStyle(color: CustomerDashboardPalette.muted),
                   prefixIcon: const Icon(Icons.search_rounded, color: _green),
                   suffixIcon: query.isEmpty
                       ? null
@@ -6655,65 +6826,65 @@ class _ServicePayAllServicesScreenState
               ),
               clipBehavior: Clip.antiAlias,
               child: InkWell(
-              borderRadius: BorderRadius.circular(14),
-              onTap: service.onTap,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 2,
-                  vertical: 4,
-                ),
-                child: Column(
-                  children: [
-                    Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: _softGreen,
-                        borderRadius: BorderRadius.circular(15),
-                      ),
-                      child: Center(
-                        child: Icon(
-                          service.icon,
-                          size: 24,
-                          color: _green,
+                borderRadius: BorderRadius.circular(14),
+                onTap: service.onTap,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 2,
+                    vertical: 4,
+                  ),
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: _softGreen,
+                          borderRadius: BorderRadius.circular(15),
+                        ),
+                        child: Center(
+                          child: Icon(
+                            service.icon,
+                            size: 24,
+                            color: _green,
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 7),
-                    Expanded(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: <Widget>[
-                          Text(
-                            service.title,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              fontSize: 10.8,
-                              height: 1.08,
-                              fontWeight: FontWeight.w700,
-                              color: CustomerDashboardPalette.text,
-                            ),
-                          ),
-                          if (service.unavailable)
-                            const Text(
-                              'Temporarily unavailable',
-                              maxLines: 1,
+                      const SizedBox(height: 7),
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: <Widget>[
+                            Text(
+                              service.title,
+                              maxLines: 2,
                               overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: CustomerDashboardPalette.warning,
-                                fontSize: 7.5,
-                                fontWeight: FontWeight.w800,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                fontSize: 10.8,
+                                height: 1.08,
+                                fontWeight: FontWeight.w700,
+                                color: CustomerDashboardPalette.text,
                               ),
                             ),
-                        ],
+                            if (service.unavailable)
+                              const Text(
+                                'Temporarily unavailable',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: CustomerDashboardPalette.warning,
+                                  fontSize: 7.5,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
             );
           },
         ),
