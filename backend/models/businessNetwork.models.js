@@ -93,6 +93,9 @@ const settingsSchema = new Schema({
   _id: { type: String, default: "network" },
   categories: { type: [String], default: ["Retail", "Food and hospitality", "Professional services", "Other"] },
   premium: { type: Schema.Types.Mixed, default: undefined },
+  // Stored only in the separate "profit-sharing" settings document. No
+  // application defaults or automatic financial activation.
+  profitSharing: { type: Schema.Types.Mixed, default: undefined },
   revision: { type: Number, default: 0 },
   loyaltyFence: { type: Number, default: 0 },
 }, options);

@@ -39,6 +39,13 @@ const headOfficeOnly = (
 router.use(protect);
 router.use(headOfficeOnly);
 
+// Reuse the existing Head Office commission endpoint and its established named
+// permission. The wildcard alone never authorizes changing future profit rules.
+const { loadStaffRole, requireExplicitPermission } = require("../middleware/staffPermission.middleware");
+const profitSharing = require("../controllers/profitSharing.controller");
+router.get("/profit-sharing", loadStaffRole, profitSharing.read);
+router.post("/profit-sharing", loadStaffRole, requireExplicitPermission("commissions.manage"), profitSharing.save);
+
 router.get(
   "/",
   getProductCommissions
