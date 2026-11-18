@@ -29,7 +29,7 @@ admission.pre("validate", function () {
 const event = new Schema({
   _id: { type: String, required: true },
   transaction: { type: Schema.Types.ObjectId },
-  kind: { type: String, enum: ["ACCRUAL", "REVERSAL", "DRY_RUN", "BLOCKED"], required: true },
+  kind: { type: String, enum: ["ACCRUAL", "REVERSAL", "DRY_RUN", "BLOCKED", "PROVIDER_DEBIT_EVIDENCE"], required: true },
   admissionId: String,
   originalEventId: String,
   data: { type: Schema.Types.Mixed, required: true },

@@ -1026,7 +1026,7 @@ const createTelecomAbodeService = ({
       servicepayReference: normalizedRequestId,
       configuredKey: configuredApiKey(),
     });
-    return {
+    const result = {
       ...normalized,
       ...(response.httpStatus === 202 ? {
         status: "PENDING",
@@ -1036,6 +1036,9 @@ const createTelecomAbodeService = ({
       } : {}),
       httpStatus: response.httpStatus,
     };
+    return require("./profitSharing.providerDebitEvidence").attachAuthenticatedPurchase(result, {
+      body: response.body, requestId: normalizedRequestId, httpStatus: response.httpStatus,
+    });
   };
 
   const getTransactionByRequestId = async (requestId) => {

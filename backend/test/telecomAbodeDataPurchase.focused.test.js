@@ -643,6 +643,60 @@ test("an unresolved different recipient does not impose an account-wide lock", a
   assert.equal(dispatchCalls, 1);
 });
 
+test("confirmed supplier debits are recorded privately without extra wallet debits or duplicate receipts", async () => {
+  const Evidence = require("../services/profitSharing.providerDebitEvidence");
+  const { Event } = require("../models/profitSharing.models");
+  await Event.createCollection();
+  const previousPurchase = telecomAbode.purchaseData;
+  telecomAbode.purchaseData = async request => {
+    const value = await previousPurchase(request);
+    return Evidence.attachAuthenticatedPurchase(value, {
+      body: { "request-id": request.request_id, amount: String(PROVIDER_COST),
+        old_balance: "1000.004603467313",
+        new_balance: String(1000 - PROVIDER_COST) + ".004603467313" },
+      requestId: request.request_id, httpStatus: 200,
+    });
+  };
+  const user = await makeUser();
+  await addCanonicalPrice();
+  const first = await purchase(user, { key: "private-supplier-debit-evidence" });
+  const repeat = await purchase(user, { key: "private-supplier-debit-evidence" });
+  assert.equal(first.status, 200);
+  assert.equal(first.body.status, "SUCCESSFUL");
+  assert.equal(repeat.body.reference, first.body.reference);
+  const transaction = await Transaction.findOne({ reference: first.body.reference }).lean();
+  const receipt = await Event.findById(`provider-debit:${transaction._id}`).lean();
+  assert.equal(receipt.kind, "PROVIDER_DEBIT_EVIDENCE");
+  assert.equal(receipt.data.supplierDebitKobo, PROVIDER_COST * 100);
+  assert.equal(receipt.data.expensesVerified, false);
+  assert.equal(await Event.countDocuments({ transaction: transaction._id }), 1);
+  assert.equal((await User.findById(user._id)).walletBalance, 1000 - SERVICEPAY_PRICE);
+  assert.equal(await LedgerEntry.countDocuments({ user: user._id, direction: "DEBIT" }), 1);
+  assert.equal(await LedgerEntry.countDocuments({ user: user._id, direction: "CREDIT" }), 0);
+  assert.equal(JSON.stringify(first.body).includes("supplierDebitKobo"), false);
+  assert.equal(JSON.stringify(transaction.providerResponse).includes("supplierDebitKobo"), false);
+  assert.equal(dispatchCalls, 1);
+});
+
+test("unavailable optional commission evidence never rolls back a confirmed DATA purchase", async () => {
+  const Evidence = require("../services/profitSharing.providerDebitEvidence");
+  const previousStore = Evidence.createStore;
+  Evidence.createStore = () => ({ record: async () => { throw Error("synthetic receipt storage failure"); } });
+  try {
+    const user = await makeUser();
+    await addCanonicalPrice();
+    const response = await purchase(user, { key: "optional-commission-evidence-unavailable" });
+    assert.equal(response.status, 200);
+    assert.equal(response.body.status, "SUCCESSFUL");
+    assert.equal((await User.findById(user._id)).walletBalance, 1000 - SERVICEPAY_PRICE);
+    assert.equal(await LedgerEntry.countDocuments({ user: user._id, direction: "DEBIT" }), 1);
+    assert.equal(await LedgerEntry.countDocuments({ user: user._id, direction: "CREDIT" }), 0);
+    assert.equal(dispatchCalls, 1);
+  } finally {
+    Evidence.createStore = previousStore;
+  }
+});
+
 test("activated referral programme preserves real purchase admission and exactly-once source debit", async () => {
   const AppSettings = require("../models/appSettings.model");
   const Outbox = require("../models/referralRewardReconciliation.model");

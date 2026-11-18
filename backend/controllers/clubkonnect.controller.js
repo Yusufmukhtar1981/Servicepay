@@ -1498,6 +1498,16 @@ exports.buyData = async (req, res) => {
             ? "FAILED"
             : "UNKNOWN"
       : "UNKNOWN";
+    if (selectedProvider === "TELECOM_ABODE" && outcome === "SUCCESS") {
+      try {
+        await require("../services/profitSharing.providerDebitEvidence")
+          .createStore().record(transaction, providerResponse);
+      } catch (error) {
+        // Optional commission evidence must never undo a confirmed customer
+        // purchase. Missing evidence blocks commissions, never fabricates cost.
+        console.error("PROFIT_SHARING_PROVIDER_DEBIT_EVIDENCE_DEFERRED");
+      }
+    }
     if (outcome !== "SUCCESS") {
       if (outcome === "FAILED") {
         if (selectedProvider === "TELECOM_ABODE") {
