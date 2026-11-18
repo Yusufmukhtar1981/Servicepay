@@ -36,7 +36,15 @@ function createWorker({ engine = createEngine(), admissionModel = M.Admission,
   return { runBatch };
 }
 let timer;
+let companyTimer;
 function start() {
+  if (!companyTimer) {
+    const companyWorker = require("./profitSharing.companyWorker").createWorker();
+    companyTimer = setInterval(() => companyWorker.runBatch().catch(() => {
+      console.error("COMPANY_PROFIT_SHARING: reconciliation deferred.");
+    }), 60_000);
+    companyTimer.unref?.();
+  }
   if (timer) return;
   // No background workload at all until at least one real service contract has
   // been implemented and reviewed. Synthetic test adapters never register here.

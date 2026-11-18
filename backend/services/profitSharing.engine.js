@@ -405,6 +405,9 @@ function createEngine({
         metadata: { eventId: id, transaction: String(transactionId), code } }], { session });
     });
   }
-  return { readiness, status, dryRun, changeMode, admit, settle, reverse, recordBlocked };
+  // Internal company settlement reuses the same transactional custody writer.
+  // These functions are not exposed by any HTTP route.
+  return { readiness, status, dryRun, changeMode, admit, settle, reverse, recordBlocked,
+    atomic, storageBlockers, beneficiaries, updateAccount };
 }
 module.exports = { createEngine, kobo, ruleAt, CONTROL_ID };

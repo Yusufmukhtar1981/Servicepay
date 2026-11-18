@@ -189,3 +189,35 @@ test("unallocated custody is reported as held, never as a beneficiary credit", a
   assert.equal(after.summary.heldKobo, before.summary.heldKobo + 1000);
   assert.equal(after.summary.companyProfitKobo, before.summary.companyProfitKobo + 1000);
 });
+test("company HTTP controls require Head Office, explicit permission and fresh authentication", async () => {
+  const path = "/commissions/profit-sharing/company";
+  const before = await User.findById(manager._id).lean();
+  assert.equal((await call(null, path)).status, 401);
+  assert.equal((await call(manager, path)).status, 403);
+  const body = { revision: 0, confirmation: true, reason: "Isolated company HTTP security test",
+    idempotencyKey: "company-http-test", currentPassword: password,
+    percentages: { HEAD_OFFICE: 31, ZONAL_MANAGER: 29, STATE_MANAGER: 23, AGGREGATOR: 17 } };
+  assert.equal((await call(wildcard, path, body)).status, 403);
+  assert.equal((await call(head, path, { ...body, currentPassword: "wrong-password" })).status, 401);
+  const state = await call(head, path);
+  assert.equal(state.status, 200);
+  assert.equal(state.body.data.canManage, true);
+  assert.equal(state.body.data.enabled, false);
+  const invalid = await call(head, path, { ...body, percentages: { ...body.percentages, HEAD_OFFICE: 32 } });
+  assert.equal(invalid.status, 409);
+  assert.equal(invalid.body.code, "PERCENTAGES_MUST_TOTAL_100");
+  assert.equal(await N.Settings.findById("company-profit-sharing").lean(), null);
+  const saved = await call(head, path, body);
+  assert.equal(saved.status, 200);
+  assert.deepEqual(saved.body.data.currentRule.percentages, body.percentages);
+  const enabled = await call(head, `${path}/activation`, { revision: saved.body.data.revision,
+    enabled: true, confirmation: true, reason: "Isolated explicit company activation",
+    currentPassword: password });
+  assert.equal(enabled.status, 200);
+  assert.equal(enabled.body.data.enabled, true);
+  const forbiddenProof = await call(head, path, { ...body, revision: enabled.body.data.revision,
+    idempotencyKey: "forged-company-proof", costs: { verified: true } });
+  assert.equal(forbiddenProof.status, 400);
+  assert.equal(await M.Event.countDocuments({ kind: "ACCRUAL" }), 0);
+  assert.equal((await User.findById(manager._id).lean()).walletBalance, before.walletBalance);
+});

@@ -106,7 +106,8 @@ async function reconcileActivity(activityId) {
     await require("./businessNetwork.premium").loyalty(activity, profile, tx, session);
     // Retail loyalty/referral effects above are preserved. A prospectively
     // admitted profit-sharing transaction cannot earn a second retail commission.
-    if (tx.providerResponse?.profitSharingAdmissionId === String(tx._id)) return;
+    if (tx.providerResponse?.profitSharingAdmissionId === String(tx._id) ||
+        await require("./profitSharing.company").ownsTransaction(tx, session)) return;
     const accrual = await M.Ledger.findOne({ eventKey: `earn:${tx._id}` }).session(session);
     if (accrual && P.refunded(tx)) {
       if (!await M.Ledger.exists({ eventKey: `reverse:${tx._id}` }).session(session)) {

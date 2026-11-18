@@ -235,7 +235,8 @@ const buildTelecomAbodeDataCommissionRecords = async ({
   if (!transaction?._id || normalizeText(transaction.status) !== "SUCCESSFUL") {
     return { configured: false, records: [] };
   }
-  if (transaction.providerResponse?.profitSharingAdmissionId === String(transaction._id)) {
+  if (transaction.providerResponse?.profitSharingAdmissionId === String(transaction._id) ||
+      await require("./profitSharing.company").ownsTransaction(transaction, session)) {
     return { configured: false, records: [], custody: "PROFIT_SHARING" };
   }
   const setting = await getProductCommissionSetting({
@@ -420,7 +421,8 @@ const distributeCommission = async ({
       "A saved transaction is required."
     );
   }
-  if (transaction.providerResponse?.profitSharingAdmissionId === String(transaction._id)) {
+  if (transaction.providerResponse?.profitSharingAdmissionId === String(transaction._id) ||
+      await require("./profitSharing.company").ownsTransaction(transaction)) {
     return { success: true, distributed: false, commissions: [], custody: "PROFIT_SHARING" };
   }
 
