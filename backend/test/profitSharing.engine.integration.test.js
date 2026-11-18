@@ -374,3 +374,107 @@ test("old accrual entries and company custody remain intact and reversible by th
   const old = await M.Account.findById("company").lean();
   assert.equal(old.availableKobo, 0); assert.equal(old.reversedKobo, 17);
 });
+test("service-scoped activation preserves other services, their admission cutoffs and immutable rules", async () => {
+  const airtimeRule = { ...dataRule, id: "synthetic-airtime-rule", serviceType: "AIRTIME" };
+  await N.Settings.updateOne({ _id: "profit-sharing" }, { $set: {
+    "profitSharing.services.AIRTIME": { revision: 1, versions: [airtimeRule] } } });
+  const activate = async service => {
+    const row = await tx({ serviceType: service, status: "SUCCESSFUL" });
+    const receipt = await engine.dryRun(actor, String(row._id));
+    const control = await engine.status();
+    return engine.changeMode(actor, { mode: "LIVE", serviceAction: "ENABLE",
+      services: [service], revision: control.revision, confirmation: true,
+      confirmationText: "ACTIVATE FUTURE PROFIT SHARING", reason: "Synthetic per-service enable",
+      dryRunIds: { [service]: receipt.id } });
+  };
+  await activate("DATA");
+  const before = await N.Settings.findById("profit-sharing-engine").lean();
+  await activate("AIRTIME");
+  const after = await N.Settings.findById("profit-sharing-engine").lean();
+  assert.deepEqual(after.profitSharing.services, ["DATA", "AIRTIME"]);
+  assert.deepEqual(after.profitSharing.serviceActivations.DATA, before.profitSharing.serviceActivations.DATA);
+  assert.equal(after.profitSharing.ruleIds.DATA, dataRule.id);
+  const check = await engine.status();
+  assert.equal(check.ready, false, "Unconfigured services may remain blocked.");
+  assert.equal(check.distributionLive, true);
+  assert.deepEqual(check.activeServices, ["AIRTIME", "DATA"]);
+  assert.equal(check.services.find(s => s.serviceType === "ELECTRICITY").live, false);
+  assert.equal(check.services.find(s => s.serviceType === "DATA").ready, true);
+});
+test("one changed service cannot stop another ready service or new admissions to it", async () => {
+  const changed = { ...dataRule, id: "synthetic-changed-data", createdAt: clock().toISOString() };
+  await N.Settings.updateOne({ _id: "profit-sharing" }, { $push: {
+    "profitSharing.services.DATA.versions": changed } });
+  const check = await engine.status();
+  assert.equal(check.mode, "LIVE");
+  assert.equal(check.distributionLive, true);
+  assert.deepEqual(check.activeServices, ["AIRTIME"]);
+  assert.deepEqual(check.configuredServices, ["DATA", "AIRTIME"]);
+  assert.ok(check.services.find(s => s.serviceType === "DATA").blockers.includes("ACTIVATION_RULE_CHANGED"));
+  const row = await tx({ serviceType: "AIRTIME" });
+  assert.equal((await admission(row)).serviceType, "AIRTIME");
+  await successful(row);
+  assert.equal((await engine.settle(row._id)).status, "SETTLED");
+  await assert.rejects(admission(await tx()), { code: "ACTIVATION_RULE_CHANGED" });
+  await N.Settings.updateOne({ _id: "profit-sharing" }, { $pull: {
+    "profitSharing.services.DATA.versions": { id: changed.id } } });
+});
+test("disabling only one service keeps another enabled without needing global readiness or a dry-run", async () => {
+  const before = await N.Settings.findById("profit-sharing-engine").lean();
+  const disabled = await engine.changeMode(actor, { mode: "PAUSED", serviceAction: "DISABLE",
+    services: ["DATA"], revision: before.revision, confirmation: true, reason: "Synthetic disable DATA only" });
+  assert.equal(disabled.mode, "LIVE");
+  assert.equal(disabled.serviceType, "DATA");
+  const after = await N.Settings.findById("profit-sharing-engine").lean();
+  assert.deepEqual(after.profitSharing.services, ["AIRTIME"]);
+  assert.deepEqual(after.profitSharing.serviceActivations.AIRTIME, before.profitSharing.serviceActivations.AIRTIME);
+  assert.equal(after.profitSharing.ruleIds.DATA, undefined);
+  assert.equal(await admission(await tx()), null);
+  const check = await engine.status();
+  assert.equal(check.services.find(s => s.serviceType === "DATA").enabled, false);
+  assert.equal(check.services.find(s => s.serviceType === "AIRTIME").live, true);
+  await assert.rejects(engine.changeMode(actor, { mode: "PAUSED", serviceAction: "DISABLE",
+    services: ["AIRTIME"], revision: before.revision, confirmation: true, reason: "Synthetic stale revision" }),
+  { code: "ACTIVATION_REVISION_CHANGED" });
+  await engine.changeMode(actor, { mode: "PAUSED", serviceAction: "DISABLE",
+    services: ["AIRTIME"], revision: disabled.revision, confirmation: true, reason: "Synthetic disable last service" });
+  assert.equal((await engine.status()).mode, "PAUSED");
+});
+test("scoped controls cannot bypass matching financial dry-run evidence, service validation or actor confirmation", async () => {
+  const check = await engine.status();
+  const body = { mode: "LIVE", serviceAction: "ENABLE", services: ["DATA"],
+    revision: check.revision, confirmation: true, confirmationText: "ACTIVATE FUTURE PROFIT SHARING",
+    reason: "Synthetic denied unsafe enable" };
+  await assert.rejects(engine.changeMode(actor, body), { code: "FRESH_MATCHING_DRY_RUN_REQUIRED" });
+  for (const patch of [{ serviceAction: "OTHER" }, { services: ["DATA", "AIRTIME"] },
+    { services: ["UNKNOWN"] }, { serviceAction: "DISABLE" }]) {
+    await assert.rejects(engine.changeMode(actor, { ...body, ...patch }), { code: "INVALID_SERVICE_ACTIVATION" });
+  }
+  assert.equal((await engine.status()).mode, "PAUSED");
+  assert.deepEqual(await User.collection.find().sort({ _id: 1 }).toArray(), usersBefore);
+});
+test("enabling a service alongside a legacy activation preserves the older service admission boundary", async () => {
+  const originalDate = new Date(clock().getTime() - 60_000);
+  await N.Settings.updateOne({ _id: "profit-sharing" }, { $set: {
+    "profitSharing.services.AIRTIME": { revision: 1, versions: [
+      { ...dataRule, id: "synthetic-legacy-airtime-rule", serviceType: "AIRTIME" },
+    ] } } });
+  await N.Settings.updateOne({ _id: "profit-sharing-engine" }, { $set: {
+    profitSharing: { mode: "LIVE", services: ["DATA"], ruleIds: { DATA: dataRule.id },
+      activatedAt: originalDate, activationId: "synthetic-legacy-activation", actorId: String(actor._id) },
+  } }, { upsert: true });
+  const control = await N.Settings.findById("profit-sharing-engine").lean();
+  const row = await tx({ serviceType: "AIRTIME", status: "SUCCESSFUL" });
+  const receipt = await engine.dryRun(actor, String(row._id));
+  await engine.changeMode(actor, { mode: "LIVE", serviceAction: "ENABLE",
+    services: ["AIRTIME"], revision: control.revision, confirmation: true,
+    confirmationText: "ACTIVATE FUTURE PROFIT SHARING", reason: "Synthetic preserve legacy boundary",
+    dryRunIds: { AIRTIME: receipt.id } });
+  const preserved = await N.Settings.findById("profit-sharing-engine").lean();
+  assert.equal(new Date(preserved.profitSharing.serviceActivations.DATA.activatedAt).getTime(), originalDate.getTime());
+  const earlier = await tx({ createdAt: new Date(clock().getTime() - 1_000) });
+  const admitted = await admission(earlier);
+  assert.equal(admitted.activationId, "synthetic-legacy-activation");
+  assert.equal(await admission(await tx({ serviceType: "AIRTIME",
+    createdAt: new Date(clock().getTime() - 1_000) })), null);
+});

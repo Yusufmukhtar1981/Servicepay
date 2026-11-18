@@ -23,7 +23,7 @@ exports.dryRun = route(req => {
   return engine.dryRun(req.user, req.body.transactionId);
 });
 exports.activation = route(async req => {
-  const allowed = ["mode", "revision", "services", "confirmation", "confirmationText", "reason", "currentPassword", "dryRunIds"];
+  const allowed = ["mode", "revision", "services", "serviceAction", "confirmation", "confirmationText", "reason", "currentPassword", "dryRunIds"];
   if (!req.body || Object.keys(req.body).some(k => !allowed.includes(k))) {
     throw Object.assign(new Error("Invalid activation fields."), { statusCode: 400, code: "INVALID_ACTIVATION_FIELDS" });
   }

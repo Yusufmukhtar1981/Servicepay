@@ -81,7 +81,8 @@ function createEngine({
         try { Policy.validateDistributionRule(rule); }
         catch (error) { blockers.push(error.code); }
         if (rule?.enabled !== true) blockers.push("EFFECTIVE_ENABLED_RULE_REQUIRED");
-        return { serviceType: service, ruleId: rule?.id || null, blockers };
+        return { serviceType: service, ruleId: rule?.id || null,
+          ready: storage.length === 0 && blockers.length === 0, blockers };
       }),
     };
   }
@@ -100,11 +101,20 @@ function createEngine({
       }
     }
     const configuredLive = control?.profitSharing?.mode === "LIVE";
-    const activeReady = !!selected?.length && ready.storageBlockers.length === 0 &&
-      selected.every(code => ready.services.some(service => service.serviceType === code && !service.blockers.length));
+    const services = ready.services.map(service => {
+      const enabled = configuredLive && selected?.includes(service.serviceType) === true;
+      const serviceReady = ready.storageBlockers.length === 0 && service.blockers.length === 0;
+      return { ...service, ready: serviceReady, enabled, live: enabled && serviceReady };
+    });
+    // A blocked service must not hide or stop another independently ready one.
+    // LIVE means at least one activated service is actually ready, not that all
+    // supported services (including those never configured) are enabled.
+    const activeServices = services.filter(service => service.live).map(service => service.serviceType);
+    const activeReady = activeServices.length > 0;
     return { ...ready, mode: configuredLive && activeReady ? "LIVE" : configuredLive ? "BLOCKED" :
       control?.profitSharing?.mode || "PAUSED", distributionLive: configuredLive && activeReady,
-    activeServices: configuredLive ? selected || [] : [], revision: control?.revision || 0 };
+    services, activeServices, configuredServices: configuredLive ? selected || [] : [],
+    revision: control?.revision || 0 };
   }
   async function beneficiaries(tx, session) {
     // Transaction snapshots, not today's customer assignment, are authority.
@@ -163,23 +173,43 @@ function createEngine({
     if (!["LIVE", "PAUSED"].includes(body?.mode) || body.confirmation !== true ||
         typeof body.reason !== "string" || body.reason.trim().length < 10 || body.reason.length > 500 ||
         !Number.isSafeInteger(body.revision) || body.revision < 0) fail("INVALID_ACTIVATION_CONFIRMATION", 400);
+    const scoped = body.serviceAction !== undefined;
+    if (scoped && (!["ENABLE", "DISABLE"].includes(body.serviceAction) ||
+        !Array.isArray(body.services) || body.services.length !== 1 ||
+        !SERVICES.includes(body.services[0]) ||
+        body.mode !== (body.serviceAction === "ENABLE" ? "LIVE" : "PAUSED"))) {
+      fail("INVALID_SERVICE_ACTIVATION", 400);
+    }
     // An emergency pause must remain possible when optional custody storage
     // fails. Its settings and audit writes still commit atomically or not at all.
     if (body.mode === "LIVE" && (await storageBlockers()).length) fail("STORAGE_NOT_READY", 503);
     return atomic(async session => {
       const control = await N.Settings.findById(CONTROL_ID).session(session).lean();
       if ((control?.revision || 0) !== body.revision) fail("ACTIVATION_REVISION_CHANGED");
-      let services = control?.profitSharing?.services || [];
-      let ruleIds = control?.profitSharing?.ruleIds || {};
+      const oldControl = control?.profitSharing;
+      const previousServices = oldControl?.mode === "LIVE" ? oldControl.services || [] : [];
+      let services = [...previousServices];
+      let ruleIds = { ...(oldControl?.ruleIds || {}) };
+      // Preserve admission cutoffs for already enabled services when another
+      // service is enabled or disabled. Never reset their future-only boundary.
+      let serviceActivations = Object.fromEntries(previousServices.map(service => [
+        service, oldControl?.serviceActivations?.[service] || {
+          activatedAt: oldControl.activatedAt, activationId: oldControl.activationId,
+          actorId: oldControl.actorId,
+        },
+      ]));
+      const activatedAt = now(), activationId = crypto.randomUUID();
       if (body.mode === "LIVE") {
         const check = await readiness(body.services);
         if (!check.ready) fail("ACTIVATION_PREREQUISITES_INCOMPLETE");
-        services = body.services;
+        services = scoped ? [...new Set([...previousServices, ...body.services])] : [...body.services];
         if (body.confirmationText !== "ACTIVATE FUTURE PROFIT SHARING") fail("ACTIVATION_PHRASE_REQUIRED", 400);
-        ruleIds = Object.fromEntries(check.services.map(s => [s.serviceType, s.ruleId]));
+        const selectedRuleIds = Object.fromEntries(check.services.map(s => [s.serviceType, s.ruleId]));
+        ruleIds = scoped ? { ...ruleIds, ...selectedRuleIds } : selectedRuleIds;
+        if (!scoped) serviceActivations = {};
         // Fence percentage edits and concurrent activation/admission operations.
         const settings = await N.Settings.findById("profit-sharing").session(session).lean();
-        for (const service of services) {
+        for (const service of body.services) {
           const rule = ruleAt(settings, service, now());
           if (!rule?.enabled || rule.id !== ruleIds[service]) fail("RULE_CHANGED_DURING_ACTIVATION");
           Policy.validateDistributionRule(rule);
@@ -189,13 +219,24 @@ function createEngine({
               receipt.data.actorId !== String(actor._id) || new Date(receipt.data.at) < new Date(now().getTime() - 86400000)) {
             fail("FRESH_MATCHING_DRY_RUN_REQUIRED");
           }
+          serviceActivations[service] = { activatedAt, activationId, actorId: String(actor._id) };
         }
         const fenced = await N.Settings.updateOne({ _id: "profit-sharing", revision: settings.revision },
           { $inc: { loyaltyFence: 1 } }, { session });
         if (fenced.modifiedCount !== 1) fail("RULE_CHANGED_DURING_ACTIVATION");
+      } else if (scoped) {
+        const selected = body.services[0];
+        services = services.filter(service => service !== selected);
+        delete ruleIds[selected];
+        delete serviceActivations[selected];
+      } else {
+        services = [];
+        ruleIds = {};
+        serviceActivations = {};
       }
-      const value = { mode: body.mode, services, ruleIds, activatedAt: now(),
-        activationId: crypto.randomUUID(), actorId: String(actor._id) };
+      const mode = body.mode === "LIVE" || (scoped && services.length) ? "LIVE" : "PAUSED";
+      const value = { mode, services, ruleIds, serviceActivations, activatedAt,
+        activationId, actorId: String(actor._id) };
       if (control) {
         const changed = await N.Settings.updateOne({ _id: CONTROL_ID, revision: body.revision },
           { $set: { profitSharing: value }, $inc: { revision: 1 } }, { session });
@@ -203,7 +244,9 @@ function createEngine({
       } else await N.Settings.create([{ _id: CONTROL_ID, revision: 1, profitSharing: value }], { session });
       await N.Audit.create([{ actor: actor._id, action: "PROFIT_SHARING_MODE_CHANGED",
         reason: body.reason.trim(), metadata: { ...value, revision: body.revision + 1 } }], { session });
-      return { mode: body.mode, revision: body.revision + 1, productionPayoutsTriggered: false };
+      return { mode, activeServices: services, revision: body.revision + 1,
+        ...(scoped ? { serviceAction: body.serviceAction, serviceType: body.services[0] } : {}),
+        productionPayoutsTriggered: false };
     });
   }
   async function admit(transactionId, session) {
@@ -216,7 +259,9 @@ function createEngine({
     if (control?.profitSharing?.mode !== "LIVE") return null;
     const tx = await transactionModel.findById(transactionId).session(session).lean();
     if (!tx || !control.profitSharing.services.includes(tx.serviceType)) return null;
-    if (new Date(tx.createdAt) < new Date(control.profitSharing.activatedAt)) return null;
+    const activation = control.profitSharing.serviceActivations?.[tx.serviceType] || control.profitSharing;
+    if (!activation.activatedAt || !activation.activationId) fail("SERVICE_ACTIVATION_EVIDENCE_REQUIRED");
+    if (new Date(tx.createdAt) < new Date(activation.activatedAt)) return null;
     if (tx.status !== "PENDING") fail("ADMISSION_REQUIRES_NEW_PENDING_TRANSACTION");
     if (Adapters.blockers(adapters[tx.serviceType]).length) fail("VERIFIED_SERVICE_ADAPTER_REQUIRED", 503);
     const settings = await N.Settings.findById("profit-sharing").session(session).lean();
@@ -227,7 +272,7 @@ function createEngine({
     const data = { _id: String(tx._id), transaction: tx._id, reference: tx.reference,
       serviceType: tx.serviceType, amountKobo: kobo(tx.amount), rule, beneficiaries: hierarchy,
       adapterVersion: adapters[tx.serviceType].version, admittedAt: now(),
-      activationId: control.profitSharing.activationId };
+      activationId: activation.activationId };
     const controlFence = await N.Settings.updateOne({ _id: CONTROL_ID, revision: control.revision },
       { $inc: { loyaltyFence: 1 } }, { session });
     const ruleFence = await N.Settings.updateOne({ _id: "profit-sharing", revision: settings.revision },
