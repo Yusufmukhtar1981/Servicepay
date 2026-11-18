@@ -154,17 +154,18 @@ class CustomerAlertMediaService {
       return const WalletAlertMediaResult(
           soundAvailable: false, voiceAvailable: false);
     }
+    final soundGeneration = ++_soundGeneration;
+    final speechGeneration = ++_speechGeneration;
     if (!settings.soundNotifications) await stopSound();
     if (!settings.voiceAnnouncements || walletBalanceHidden) {
       await stopSpeech();
     }
-    final soundGeneration = ++_soundGeneration;
-    final speechGeneration = ++_speechGeneration;
     bool? soundAvailable;
     bool? voiceAvailable;
     String? voiceLanguage;
 
-    if (settings.soundNotifications) {
+    if (settings.soundNotifications &&
+        !_disposed && soundGeneration == _soundGeneration) {
       try {
         _soundStarted = true;
         await _bounded(_sound.play());
@@ -175,7 +176,8 @@ class CustomerAlertMediaService {
       }
     }
 
-    if (settings.voiceAnnouncements && !walletBalanceHidden) {
+    if (settings.voiceAnnouncements && !walletBalanceHidden &&
+        !_disposed && speechGeneration == _speechGeneration) {
       try {
         _speechStarted = true;
         voiceLanguage = await _bounded(_speech.availableEnglishLanguage());
@@ -261,6 +263,8 @@ class AudioplayersWalletAlertSound implements WalletAlertSoundAdapter {
   }) : _instance = player;
 
   AudioPlayer? _instance;
+  int _generation = 0;
+  bool _disposed = false;
   AudioPlayer get _player => _instance ??= AudioPlayer();
   final Duration operationTimeout;
   Uint8List? _tone;
@@ -306,22 +310,31 @@ class AudioplayersWalletAlertSound implements WalletAlertSoundAdapter {
 
   @override
   Future<void> play() async {
+    if (_disposed) return;
+    final generation = ++_generation;
     await _player.stop().timeout(operationTimeout);
+    if (_disposed || generation != _generation) return;
+    await _player.setVolume(0.72).timeout(operationTimeout);
+    if (_disposed || generation != _generation) return;
     await _player
-        .play(
-          BytesSource(_buildTone(), mimeType: 'audio/wav'),
-          volume: 0.72,
-        )
+        .setSource(BytesSource(_buildTone(), mimeType: 'audio/wav'))
         .timeout(operationTimeout);
+    if (_disposed || generation != _generation) return;
+    await _player.resume().timeout(operationTimeout);
   }
 
   @override
-  Future<void> stop() =>
-      _instance?.stop().timeout(operationTimeout) ?? Future<void>.value();
+  Future<void> stop() {
+    _generation++;
+    return _instance?.stop().timeout(operationTimeout) ?? Future<void>.value();
+  }
 
   @override
-  Future<void> dispose() =>
-      _instance?.dispose().timeout(operationTimeout) ?? Future<void>.value();
+  Future<void> dispose() {
+    _disposed = true;
+    _generation++;
+    return _instance?.dispose().timeout(operationTimeout) ?? Future<void>.value();
+  }
 }
 
 class FlutterTtsWalletAlertSpeech implements WalletAlertSpeechAdapter {
@@ -331,6 +344,8 @@ class FlutterTtsWalletAlertSpeech implements WalletAlertSpeechAdapter {
   }) : _instance = tts;
 
   FlutterTts? _instance;
+  int _generation = 0;
+  bool _disposed = false;
   FlutterTts get _tts => _instance ??= FlutterTts();
   final Duration operationTimeout;
   String? _englishLocale;
@@ -375,19 +390,27 @@ class FlutterTtsWalletAlertSpeech implements WalletAlertSpeechAdapter {
 
   @override
   Future<String?> availableEnglishLanguage() async {
+    if (_disposed) return null;
     if (_englishLocale != null) return _englishLocale;
+    final generation = ++_generation;
     final voice = selectOfflineEnglishVoice(await _installedVoiceMetadata());
+    if (_disposed || generation != _generation) return null;
     if (voice == null) return null;
     final dynamic available =
         await _call(_tts.isLanguageAvailable(voice.locale));
+    if (_disposed || generation != _generation) return null;
     if (available != true && available != 1) return null;
     // Set language first; on web that call may choose a default voice. Apply
     // the verified local voice last so it cannot silently switch to a remote one.
     await _call(_tts.setLanguage(voice.locale));
+    if (_disposed || generation != _generation) return null;
     final dynamic voiceSet = await _call(_tts.setVoice(voice.toPluginVoice()));
+    if (_disposed || generation != _generation) return null;
     if (!kIsWeb && voiceSet != true && voiceSet != 1) return null;
     await _call(_tts.setSpeechRate(0.46));
+    if (_disposed || generation != _generation) return null;
     await _call(_tts.awaitSpeakCompletion(true));
+    if (_disposed || generation != _generation) return null;
     _selectedVoice = voice;
     _englishLocale = voice.locale;
     return voice.locale;
@@ -395,11 +418,14 @@ class FlutterTtsWalletAlertSpeech implements WalletAlertSpeechAdapter {
 
   @override
   Future<void> speak(String text) async {
+    if (_disposed) return;
+    final generation = ++_generation;
     final voice = _selectedVoice;
     if (voice == null) {
       throw StateError('No explicitly local English voice is selected.');
     }
     final currentVoices = await _installedVoiceMetadata();
+    if (_disposed || generation != _generation) return;
     final stillLocal = currentVoices.any(
       (candidate) =>
           candidate['name'] == voice.name &&
@@ -410,6 +436,7 @@ class FlutterTtsWalletAlertSpeech implements WalletAlertSpeechAdapter {
       throw StateError('The selected English voice is no longer local.');
     }
     final dynamic voiceSet = await _call(_tts.setVoice(voice.toPluginVoice()));
+    if (_disposed || generation != _generation) return;
     if (!kIsWeb && voiceSet != true && voiceSet != 1) {
       throw StateError('The selected local English voice is unavailable.');
     }
@@ -421,12 +448,14 @@ class FlutterTtsWalletAlertSpeech implements WalletAlertSpeechAdapter {
 
   @override
   Future<void> stop() async {
+    _generation++;
     final tts = _instance;
     if (tts != null) await _call(tts.stop());
   }
 
   @override
   Future<void> dispose() async {
+    _disposed = true;
     await stop();
   }
 }

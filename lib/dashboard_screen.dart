@@ -65,6 +65,7 @@ import 'services/customer_alert_media.dart';
 import 'services/customer_wallet_alert_poller.dart';
 import 'services/customer_settings_events.dart';
 import 'widgets/customer_wallet_credit_notice.dart';
+import 'widgets/customer_dashboard_visibility.dart';
 
 List<ServicePayAnnouncement> mergeAnnouncementSessionState({
   required List<ServicePayAnnouncement> loaded,
@@ -224,12 +225,22 @@ class _DashboardScreenState extends State<DashboardScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _dashboardTabVisible = CustomerDashboardVisibility.of(context);
+    if (!_walletAlertsVisible) unawaited(_alertMedia.stopAll());
     if (MediaQuery.disableAnimationsOf(context)) {
       _motionController.stop();
     } else if (!_motionController.isAnimating) {
       _motionController.repeat(reverse: true);
     }
   }
+
+  bool _dashboardTabVisible = true;
+
+  bool get _walletAlertsVisible =>
+      mounted &&
+      _dashboardTabVisible &&
+      (ModalRoute.of(context)?.isCurrent ?? true) &&
+      WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
 
   @override
   void dispose() {
@@ -480,11 +491,11 @@ class _DashboardScreenState extends State<DashboardScreen>
     if (!mounted ||
         alert == null ||
         settings == null ||
-        !(ModalRoute.of(context)?.isCurrent ?? true)) {
+        !_walletAlertsVisible) {
       return;
     }
     final messenger = ScaffoldMessenger.of(context);
-    if (!await _isAlertSessionValid(sessionToken) || !mounted) return;
+    if (!await _isAlertSessionValid(sessionToken) || !_walletAlertsVisible) return;
     _pendingAlertMediaAlert = null;
     _pendingAlertMediaSettings = null;
     final result = await _alertMedia.playIncomingAlert(
@@ -523,8 +534,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     _walletAlertPoller ??= CustomerWalletAlertPoller(
       api: _customerSettingsApi,
       isSessionValid: () => _isAlertSessionValid(sessionToken),
-      isRouteVisible: () =>
-          mounted && (ModalRoute.of(context)?.isCurrent ?? true),
+      isRouteVisible: () => _walletAlertsVisible,
       onRouteVisible: () async {
         await _playPendingAlertMedia(sessionToken);
         _walletAlertSettingsAtClaim = _customerSettingsGeneration;

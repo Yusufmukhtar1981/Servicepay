@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'dashboard_screen.dart';
+import 'widgets/customer_dashboard_visibility.dart';
 import 'keke_driver_screen.dart';
 import 'profile_screen.dart';
 import 'transactions_screen.dart';
@@ -177,7 +178,10 @@ class _MainNavigationState extends State<MainNavigation> {
       extendBody: false,
       body: IndexedStack(index: currentIndex, children: [
         for (int i = 0; i < pages.length; i++)
-          _visitedPages.contains(i) ? pages[i] : const SizedBox.shrink(),
+          CustomerDashboardVisibility(
+            visible: currentIndex == i,
+            child: _visitedPages.contains(i) ? pages[i] : const SizedBox.shrink(),
+          ),
       ]),
       bottomNavigationBar: SafeArea(
         top: false,
