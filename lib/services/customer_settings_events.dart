@@ -3,6 +3,14 @@ import 'package:flutter/foundation.dart';
 import 'customer_notification_settings.dart';
 import 'session_store.dart';
 
+CustomerNotificationSettings settingsForWalletAlert({
+  required int requestGeneration,
+  required int currentGeneration,
+  required CustomerNotificationSettings received,
+  required CustomerNotificationSettings current,
+}) =>
+    requestGeneration == currentGeneration ? received : current;
+
 @immutable
 class CustomerSettingsEvent {
   const CustomerSettingsEvent(

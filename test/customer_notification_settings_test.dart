@@ -4,8 +4,34 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:servicepay_app/services/customer_notification_settings.dart';
+import 'package:servicepay_app/services/customer_settings_events.dart';
 
 void main() {
+  test('in-flight alerts cannot undo a newer sound or voice opt-out', () {
+    const old = CustomerNotificationSettings(
+      soundNotifications: true,
+      voiceAnnouncements: true,
+    );
+    const current = CustomerNotificationSettings(dashboardBackground: 'default');
+    expect(
+      settingsForWalletAlert(
+        requestGeneration: 1,
+        currentGeneration: 2,
+        received: old,
+        current: current,
+      ),
+      same(current),
+    );
+    expect(
+      settingsForWalletAlert(
+        requestGeneration: 2,
+        currentGeneration: 2,
+        received: old,
+        current: current,
+      ),
+      same(old),
+    );
+  });
   group('customer notification settings contract', () {
     test('GET and PATCH use only the documented settings fields', () async {
       final requests = <http.Request>[];

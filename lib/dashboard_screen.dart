@@ -149,6 +149,8 @@ class _DashboardScreenState extends State<DashboardScreen>
   CustomerNotificationSettings _customerSettings =
       const CustomerNotificationSettings();
   WalletCreditAlert? _activeWalletAlert;
+  int _customerSettingsGeneration = 0;
+  int _walletAlertSettingsAtClaim = 0;
   WalletCreditAlert? _pendingAlertMediaAlert;
   CustomerNotificationSettings? _pendingAlertMediaSettings;
   bool isLoadingRecentActivity = true;
@@ -412,10 +414,15 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   Future<void> _loadCustomerNotificationSettings(String sessionToken) async {
+    final generation = _customerSettingsGeneration;
     try {
       final settings = await _customerSettingsApi.load();
       if (await SessionStore.readToken() != sessionToken) return;
-      if (mounted) setState(() => _customerSettings = settings);
+      if (!mounted || generation != _customerSettingsGeneration) return;
+      setState(() {
+        _customerSettings = settings;
+        _customerSettingsGeneration++;
+      });
     } catch (_) {
       // Preference failure does not block wallet access; safe defaults remain.
     }
@@ -439,7 +446,10 @@ class _DashboardScreenState extends State<DashboardScreen>
     if (_pendingAlertMediaSettings != null) {
       _pendingAlertMediaSettings = event.settings;
     }
-    setState(() => _customerSettings = event.settings);
+    setState(() {
+      _customerSettings = event.settings;
+      _customerSettingsGeneration++;
+    });
   }
 
   Future<bool> _isAlertSessionValid(String sessionToken) async {
@@ -515,14 +525,24 @@ class _DashboardScreenState extends State<DashboardScreen>
       isSessionValid: () => _isAlertSessionValid(sessionToken),
       isRouteVisible: () =>
           mounted && (ModalRoute.of(context)?.isCurrent ?? true),
-      onRouteVisible: () => _playPendingAlertMedia(sessionToken),
+      onRouteVisible: () async {
+        await _playPendingAlertMedia(sessionToken);
+        _walletAlertSettingsAtClaim = _customerSettingsGeneration;
+      },
       onAlert: (alert, settings) async {
         if (!mounted || !await _isAlertSessionValid(sessionToken)) return;
+        final effectiveSettings = settingsForWalletAlert(
+          requestGeneration: _walletAlertSettingsAtClaim,
+          currentGeneration: _customerSettingsGeneration,
+          received: settings,
+          current: _customerSettings,
+        );
         _pendingAlertMediaAlert = alert;
-        _pendingAlertMediaSettings = settings;
+        _pendingAlertMediaSettings = effectiveSettings;
         setState(() {
           _activeWalletAlert = alert;
-          _customerSettings = settings;
+          _customerSettings = effectiveSettings;
+          _customerSettingsGeneration++;
           walletBalance = alert.balance;
           walletBalanceAvailable = true;
           walletBalanceRefreshFailed = false;
