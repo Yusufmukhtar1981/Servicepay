@@ -12,6 +12,10 @@ class _FixtureManagementApi extends ManagementApi {
 
   String requestedActivity = '';
   int payoutRequests = 0;
+  bool commissionCanRequest = false;
+  bool failNextCommissionRequest = false;
+  Map<String, dynamic>? lastCommissionWithdrawalPayload;
+  final List<int> requestedWithdrawalPages = [];
   bool failCustomerSearch = false;
   bool complaintCreated = false;
   int complaintCreateCount = 0;
@@ -117,23 +121,64 @@ class _FixtureManagementApi extends ManagementApi {
       };
 
   @override
-  Future<Map<String, dynamic>> workspaceWithdrawals() async => {
+  Future<Map<String, dynamic>> workspaceWithdrawals({
+    int page = 1,
+    int limit = 25,
+  }) async {
+    requestedWithdrawalPages.add(page);
+    return {
         'summary': {
           'totalCommissionEarned': 1500,
+          'futureSettledCommissionEarned': 95.75,
+          'futureReversedCommission': 4.25,
           'recordedAvailableCommission': 300,
           'recordedWithdrawnCommission': 0,
-          'availableCommission': null,
-          'totalWithdrawn': null,
-          'pendingWithdrawals': null,
+          'availableCommission': 810.25,
+          'totalWithdrawn': 200,
+          'pendingWithdrawals': 1,
+          'commissionRecoveryDebt': 12.50,
         },
         'readiness': {
-          'enabled': false,
-          'code': 'COMMISSION_CUSTODY_UNVERIFIED',
-          'message': 'Fixture payouts remain disabled pending reconciliation.',
+          'ready': commissionCanRequest,
+          'canRequest': commissionCanRequest,
+          'code': commissionCanRequest ? 'READY' : 'COMMISSION_CUSTODY_UNVERIFIED',
+          'message': commissionCanRequest
+              ? 'Fixture commission custody is ready.'
+              : 'Fixture payouts remain disabled pending reconciliation.',
         },
-        'items': [],
+        'items': [
+          {
+            'id': 'fixture-commission-withdrawal-1',
+            'reference': 'COM-FIXTURE-1',
+            'amount': 75,
+            'status': 'PENDING',
+            'createdAt': '2025-02-12T08:00:00Z',
+            'source': 'COMMISSION_CUSTODY',
+          }
+        ],
+        'commissionHistory': [
+          {
+            'id': 'fixture-commission-journal-1',
+            'kind': 'ACCRUAL',
+            'reference': 'JRN-FIXTURE-1',
+            'serviceType': 'AIRTIME',
+            'createdAt': '2025-02-12T08:00:00Z',
+            'amountKobo': 12345,
+            'entries': [
+              {'amountKobo': 12345, 'accountId': 'own-custody-account'}
+            ],
+          }
+        ],
+        'custodySource': 'FUTURE_PROFIT_SHARING_ONLY',
         'legacyWalletWithdrawals': [],
+        'commissionTotal': 8,
+        'legacyTotal': 17,
+        'commissionHistoryTotal': 31,
+        'page': page,
+        'limit': limit,
+        'totalPages': 2,
       };
+  }
 
   @override
   Future<Map<String, dynamic>> workspaceComplaints({
@@ -229,6 +274,11 @@ class _FixtureManagementApi extends ManagementApi {
   Future<Map<String, dynamic>> requestCommissionWithdrawal(
       Map<String, dynamic> payload) async {
     payoutRequests++;
+    lastCommissionWithdrawalPayload = Map<String, dynamic>.from(payload);
+    if (failNextCommissionRequest) {
+      failNextCommissionRequest = false;
+      throw Exception('Fixture network timeout.');
+    }
     return {};
   }
 }
@@ -279,8 +329,234 @@ void main() {
       find.widgetWithText(FilledButton, 'Submit request'),
     );
     expect(button.onPressed, isNull);
-    expect(find.text('Not verified'), findsWidgets);
+    expect(find.text('₦810.25'), findsOneWidget);
     expect(api.payoutRequests, 0);
+    expect(find.textContaining('Legacy main-wallet commissions are not withdrawable here.'),
+        findsNothing);
+    expect(find.textContaining('Legacy main-wallet commissions are excluded.'),
+        findsOneWidget);
+    expect(find.textContaining('₦123.45'), findsWidgets);
+    expect(find.text('Commission custody · 2025-02-12'), findsOneWidget);
+  });
+
+  testWidgets('commission withdrawal requires server readiness, fresh PIN and reuses retry key',
+      (tester) async {
+    final payload = base64Url
+        .encode(utf8.encode(jsonEncode({'actorId': 'commission-manager-9'})))
+        .replaceAll('=', '');
+    final token = 'e30.$payload.signature';
+    SharedPreferences.setMockInitialValues({'auth_token': token});
+    FlutterSecureStorage.setMockInitialValues({});
+    final api = _FixtureManagementApi()
+      ..commissionCanRequest = true
+      ..failNextCommissionRequest = true;
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: ManagementWorkspacePanel(api: api, section: 'Withdrawals'),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('₦12.50'), findsOneWidget);
+    expect(find.text('Future profit-sharing commission earned'), findsOneWidget);
+    expect(find.text('Future profit-sharing commission reversed'), findsOneWidget);
+    expect(find.text('Legacy commission earned · recorded lifetime'), findsOneWidget);
+    expect(find.textContaining('Legacy main-wallet commissions are not withdrawable here.'),
+        findsOneWidget);
+    final amountField = find.widgetWithText(TextField, 'Amount (₦)');
+    final bankField = find.widgetWithText(TextField, 'Bank');
+    final accountNameField = find.widgetWithText(TextField, 'Account name');
+    final accountNumberField = find.widgetWithText(TextField, 'Account number');
+    await tester.ensureVisible(amountField);
+    await tester.enterText(amountField, '125.50');
+    await tester.ensureVisible(bankField);
+    await tester.enterText(bankField, 'Fixture Bank');
+    await tester.ensureVisible(accountNameField);
+    await tester.enterText(accountNameField, 'Synthetic Manager');
+    await tester.ensureVisible(accountNumberField);
+    await tester.enterText(accountNumberField, '0123456789');
+    await tester.ensureVisible(find.text('Submit request'));
+    await tester.tap(find.text('Submit request'));
+    await tester.pumpAndSettle();
+    expect(find.text('Confirm commission withdrawal'), findsOneWidget);
+    final pinField = tester.widget<TextField>(
+      find.widgetWithText(TextField, 'Transaction PIN'),
+    );
+    expect(pinField.obscureText, isTrue);
+    final submitPin = find.text('Submit withdrawal request');
+    expect(
+      tester.widget<FilledButton>(
+        find.ancestor(of: submitPin, matching: find.byType(FilledButton)).first,
+      ).onPressed,
+      isNull,
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Transaction PIN'),
+      '1234',
+    );
+    await tester.pump();
+    await tester.ensureVisible(submitPin);
+    await tester.tap(submitPin);
+    await tester.pumpAndSettle();
+    expect(api.payoutRequests, 1);
+    final firstPayload = api.lastCommissionWithdrawalPayload!;
+    expect(firstPayload['amount'], 125.5);
+    expect(firstPayload['bankName'], 'Fixture Bank');
+    expect(firstPayload['accountName'], 'Synthetic Manager');
+    expect(firstPayload['accountNumber'], '0123456789');
+    expect(firstPayload['transactionPin'], '1234');
+    expect(firstPayload['idempotencyKey'], isNotEmpty);
+    expect(find.text('Retry same request'), findsOneWidget);
+    final prefs = await SharedPreferences.getInstance();
+    final intentKey = prefs
+        .getKeys()
+        .singleWhere((key) => key.startsWith('management_workspace_intent_'));
+    final savedIntent = jsonDecode(prefs.getString(intentKey)!) as Map;
+    expect(savedIntent.containsKey('transactionPin'), isFalse);
+    expect(savedIntent.values, isNot(contains('1234')));
+
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: ManagementWorkspacePanel(api: api, section: 'Withdrawals'),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(find.widgetWithText(TextField, 'Amount (₦)'))
+        .controller!
+        .text, '125.50');
+    await tester.ensureVisible(find.text('Retry same request'));
+    await tester.tap(find.text('Retry same request'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Transaction PIN'),
+      '5678',
+    );
+    final pinSubmit = find.text('Submit withdrawal request');
+    await tester.pump();
+    await tester.ensureVisible(pinSubmit);
+    await tester.tap(pinSubmit);
+    await tester.pumpAndSettle();
+    expect(api.payoutRequests, 2);
+    expect(api.lastCommissionWithdrawalPayload!['idempotencyKey'],
+        firstPayload['idempotencyKey']);
+    expect(api.lastCommissionWithdrawalPayload!['transactionPin'], '5678');
+    expect(prefs.getKeys().where((key) => key.contains('commission_withdrawal')),
+        isEmpty);
+  });
+
+  testWidgets('failed intent persistence blocks POST and retries the same saved key',
+      (tester) async {
+    final payload = base64Url
+        .encode(utf8.encode(jsonEncode({'actorId': 'commission-manager-write-3'})))
+        .replaceAll('=', '');
+    SharedPreferences.setMockInitialValues({
+      'auth_token': 'e30.$payload.signature',
+    });
+    FlutterSecureStorage.setMockInitialValues({});
+    final api = _FixtureManagementApi()
+      ..commissionCanRequest = true
+      ..failNextCommissionRequest = true;
+    final List<String> storedIntents = [];
+    var writeCount = 0;
+
+    Future<bool> writeIntent(String key, String value) async {
+      writeCount++;
+      storedIntents.add(value);
+      if (writeCount == 1) return false;
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.setString(key, value);
+    }
+
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: ManagementWorkspacePanel(
+            api: api,
+            section: 'Withdrawals',
+            commissionIntentWriter: writeIntent,
+          ),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    final amountField = find.widgetWithText(TextField, 'Amount (₦)');
+    final bankField = find.widgetWithText(TextField, 'Bank');
+    final nameField = find.widgetWithText(TextField, 'Account name');
+    final accountField = find.widgetWithText(TextField, 'Account number');
+    await tester.ensureVisible(amountField);
+    await tester.enterText(amountField, '90');
+    await tester.ensureVisible(bankField);
+    await tester.enterText(bankField, 'Fixture Bank');
+    await tester.ensureVisible(nameField);
+    await tester.enterText(nameField, 'Manager');
+    await tester.ensureVisible(accountField);
+    await tester.enterText(accountField, '0123456789');
+
+    Future<void> submitPinAttempt(String pin) async {
+      final Finder submit =
+          find.text(writeCount == 0 ? 'Submit request' : 'Retry same request');
+      await tester.ensureVisible(submit);
+      await tester.tap(submit);
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Transaction PIN'),
+        pin,
+      );
+      final pinSubmit = find.text('Submit withdrawal request');
+      await tester.pump();
+      await tester.ensureVisible(pinSubmit);
+      await tester.tap(pinSubmit);
+      await tester.pumpAndSettle();
+    }
+
+    await submitPinAttempt('1111');
+    expect(api.payoutRequests, 0, reason: 'A failed durable write must block POST.');
+    expect(writeCount, 1);
+    expect(find.text('Retry same request'), findsOneWidget);
+
+    await submitPinAttempt('2222');
+    expect(api.payoutRequests, 1);
+    expect(writeCount, 2);
+    final firstKey =
+        (jsonDecode(storedIntents.first) as Map)['idempotencyKey'];
+    expect((jsonDecode(storedIntents[1]) as Map)['idempotencyKey'], firstKey);
+
+    await submitPinAttempt('3333');
+    expect(api.payoutRequests, 2);
+    expect(writeCount, 3);
+    expect(
+      (jsonDecode(storedIntents[2]) as Map)['idempotencyKey'],
+      firstKey,
+    );
+    expect(api.lastCommissionWithdrawalPayload!['idempotencyKey'], firstKey);
+  });
+
+  testWidgets('withdrawal pager browses the combined commission, legacy and journal pages',
+      (tester) async {
+    final api = _FixtureManagementApi();
+    await tester.pumpWidget(MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: ManagementWorkspacePanel(api: api, section: 'Withdrawals'),
+        ),
+      ),
+    ));
+    await tester.pumpAndSettle();
+    expect(find.text('Commission-custody withdrawal requests · 8 records'),
+        findsOneWidget);
+    expect(find.text('Future profit-sharing custody history · 31 records'),
+        findsOneWidget);
+    expect(find.textContaining('17 records'), findsOneWidget);
+    expect(find.text('Page 1 of 2'), findsOneWidget);
+    await tester.ensureVisible(find.byTooltip('Next page'));
+    await tester.tap(find.byTooltip('Next page'));
+    await tester.pumpAndSettle();
+    expect(api.requestedWithdrawalPages, [1, 2]);
+    expect(find.text('Page 2 of 2'), findsOneWidget);
   });
 
   testWidgets(

@@ -160,18 +160,36 @@ void main() {
               'data': {
                 'summary': {
                   'totalCommissionEarned': 1800,
+                  'futureSettledCommissionEarned': 125.50,
+                  'futureReversedCommission': 25.25,
                   'recordedAvailableCommission': 450,
                   'recordedWithdrawnCommission': 0,
                   'availableCommission': null,
                   'totalWithdrawn': null,
                   'pendingWithdrawals': null,
+                  'commissionRecoveryDebt': null,
                 },
                 'readiness': {
-                  'enabled': false,
+                  'ready': false,
+                  'canRequest': false,
                   'code': 'COMMISSION_CUSTODY_UNVERIFIED',
                   'message': 'Fixture custody is not verified.',
                 },
                 'items': [],
+                'commissionHistory': [
+                  {
+                    'id': 'fixture-journal-3',
+                    'kind': 'REVERSAL',
+                    'reference': 'JRN-3',
+                    'serviceType': 'DATA',
+                    'createdAt': '2025-02-12T08:00:00Z',
+                    'amountKobo': 2500,
+                    'entries': [
+                      {'accountId': 'own-account', 'amountKobo': 2500}
+                    ],
+                  }
+                ],
+                'custodySource': 'FUTURE_PROFIT_SHARING_ONLY',
                 'legacyWalletWithdrawals': [],
               },
             }),
@@ -180,8 +198,65 @@ void main() {
 
       final result = await api.workspaceWithdrawals();
       expect(result['summary']['availableCommission'], isNull);
-      expect(result['readiness']['enabled'], isFalse);
+      expect(result['summary']['futureSettledCommissionEarned'], 125.50);
+      expect(result['summary']['futureReversedCommission'], 25.25);
+      expect(result['readiness']['canRequest'], isFalse);
       expect(result['readiness']['code'], 'COMMISSION_CUSTODY_UNVERIFIED');
+      expect(result['custodySource'], 'FUTURE_PROFIT_SHARING_ONLY');
+      expect((result['commissionHistory'] as List).single['entries'], isNotEmpty);
+    });
+
+    test('posts commission withdrawal PIN, immutable details and idempotency key',
+        () async {
+      late http.Request captured;
+      final api = ManagementApi(
+        tokenReader: () async => 'fixture-session-token',
+        client: MockClient((request) async {
+          captured = request;
+          return http.Response(
+            jsonEncode({'success': true, 'data': {'id': 'fixture-request-8'}}),
+            201,
+          );
+        }),
+      );
+      await api.requestCommissionWithdrawal({
+        'amount': 175.25,
+        'bankName': 'Fixture Bank',
+        'accountName': 'Fixture Manager',
+        'accountNumber': '0123456789',
+        'transactionPin': '4826',
+        'idempotencyKey': 'durable-fixture-retry-key',
+      });
+      expect(captured.method, 'POST');
+      expect(captured.url.path, endsWith('/management/workspace/withdrawals'));
+      expect(captured.headers['authorization'], 'Bearer fixture-session-token');
+      expect(jsonDecode(captured.body), {
+        'amount': 175.25,
+        'bankName': 'Fixture Bank',
+        'accountName': 'Fixture Manager',
+        'accountNumber': '0123456789',
+        'transactionPin': '4826',
+        'idempotencyKey': 'durable-fixture-retry-key',
+      });
+    });
+
+    test('pages combined commission withdrawal history',
+        () async {
+      late http.Request captured;
+      final api = ManagementApi(
+        tokenReader: () async => 'fixture-session-token',
+        client: MockClient((request) async {
+          captured = request;
+          return http.Response(
+            jsonEncode({'success': true, 'data': {'items': [], 'page': 3}}),
+            200,
+          );
+        }),
+      );
+      await api.workspaceWithdrawals(page: 3, limit: 25);
+      expect(captured.url.path, endsWith('/management/workspace/withdrawals'));
+      expect(captured.url.queryParameters, containsPair('page', '3'));
+      expect(captured.url.queryParameters, containsPair('limit', '25'));
     });
   });
 }

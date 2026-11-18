@@ -198,8 +198,14 @@ class ManagementApi {
           Map<String, String> query) =>
       get('workspace/performance', query);
 
-  Future<Map<String, dynamic>> workspaceWithdrawals() =>
-      get('workspace/withdrawals');
+  Future<Map<String, dynamic>> workspaceWithdrawals({
+    int page = 1,
+    int limit = 25,
+  }) =>
+      get('workspace/withdrawals', {
+        'page': '$page',
+        'limit': '$limit',
+      });
 
   Future<Map<String, dynamic>> requestCommissionWithdrawal(
           Map<String, dynamic> payload) =>

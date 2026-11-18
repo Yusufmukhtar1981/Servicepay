@@ -35,10 +35,13 @@ class ManagementWorkspacePanel extends StatefulWidget {
     super.key,
     required this.api,
     required this.section,
+    this.commissionIntentWriter,
   });
 
   final ManagementApi api;
   final String section;
+  final Future<bool> Function(String key, String value)?
+      commissionIntentWriter;
 
   @override
   State<ManagementWorkspacePanel> createState() =>
@@ -82,6 +85,7 @@ class _ManagementWorkspacePanelState extends State<ManagementWorkspacePanel> {
   String? _error;
   Timer? _searchTimer;
   int _loadVersion = 0;
+  Map<String, dynamic>? _pendingCommissionWithdrawal;
 
   @override
   void initState() {
@@ -135,6 +139,18 @@ class _ManagementWorkspacePanelState extends State<ManagementWorkspacePanel> {
   String _value(dynamic value, [String fallback = '—']) =>
       value == null || '$value'.trim().isEmpty ? fallback : '$value';
 
+  String _koboNaira(dynamic value) {
+    if (value is! int) return 'Unavailable';
+    final negative = value < 0;
+    final digits = value.abs().toString().padLeft(3, '0');
+    final whole = digits.substring(0, digits.length - 2);
+    final grouped = whole.replaceAllMapped(
+      RegExp(r'\B(?=(\d{3})+(?!\d))'),
+      (_) => ',',
+    );
+    return '${negative ? '-' : ''}₦$grouped.${digits.substring(digits.length - 2)}';
+  }
+
   Future<void> _load() async {
     final requestVersion = ++_loadVersion;
     setState(() {
@@ -157,7 +173,7 @@ class _ManagementWorkspacePanelState extends State<ManagementWorkspacePanel> {
           page: _page,
         );
       } else if (widget.section == 'Withdrawals') {
-        result = await widget.api.workspaceWithdrawals();
+        result = await widget.api.workspaceWithdrawals(page: _page);
       } else {
         result = await widget.api.workspaceComplaints(
           status: _complaintStatus,
@@ -172,6 +188,9 @@ class _ManagementWorkspacePanelState extends State<ManagementWorkspacePanel> {
         _totalPages = (result['totalPages'] as num?)?.toInt() ?? 1;
         _loading = false;
       });
+      if (widget.section == 'Withdrawals') {
+        await _restoreCommissionWithdrawalIntent();
+      }
     } catch (error) {
       if (!mounted || requestVersion != _loadVersion) return;
       setState(() {
@@ -348,6 +367,255 @@ class _ManagementWorkspacePanelState extends State<ManagementWorkspacePanel> {
     await prefs.remove(
       'management_workspace_key_${Uri.encodeComponent(actorId)}_${Uri.encodeComponent(namespace)}',
     );
+  }
+
+  Future<String> _commissionIntentStorageKey() async {
+    final token = await SessionStore.readToken();
+    if (token == null || token.trim().isEmpty) {
+      throw const ManagementApiException(
+        'Your session is unavailable. Sign in again before submitting.',
+        401,
+      );
+    }
+    final actorId = _actorIdForStorage(token);
+    return 'management_workspace_intent_${Uri.encodeComponent(actorId)}_commission_withdrawal';
+  }
+
+  Future<void> _restoreCommissionWithdrawalIntent() async {
+    if (_pendingCommissionWithdrawal != null) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final encoded = prefs.getString(await _commissionIntentStorageKey());
+      if (encoded == null || encoded.isEmpty) return;
+      final decoded = jsonDecode(encoded);
+      if (decoded is! Map ||
+          decoded['idempotencyKey'] is! String ||
+          decoded['bankName'] is! String ||
+          decoded['accountName'] is! String ||
+          decoded['accountNumber'] is! String ||
+          decoded['amount'] is! num) {
+        return;
+      }
+      final intent = Map<String, dynamic>.from(decoded);
+      if (!mounted) return;
+      setState(() {
+        _pendingCommissionWithdrawal = intent;
+        _withdrawAmount.text = (intent['amount'] as num).toStringAsFixed(2);
+        _bank.text = intent['bankName'] as String;
+        _accountName.text = intent['accountName'] as String;
+        _accountNumber.text = intent['accountNumber'] as String;
+      });
+    } catch (_) {
+      // A missing session or unreadable local retry record never enables a request.
+    }
+  }
+
+  Future<String> _persistCommissionWithdrawalIntent({
+    required double amount,
+    required String bankName,
+    required String accountName,
+    required String accountNumber,
+    String? existingKey,
+  }) async {
+    final String key;
+    if (existingKey != null) {
+      if (existingKey.trim().isEmpty) {
+        throw const ManagementApiException(
+          'The saved retry key is invalid. No withdrawal was submitted.',
+        );
+      }
+      key = existingKey;
+    } else {
+      final random = math.Random.secure();
+      key = List<String>.generate(
+        32,
+        (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'),
+      ).join();
+    }
+    final intent = <String, dynamic>{
+      'idempotencyKey': key,
+      'amount': amount,
+      'bankName': bankName,
+      'accountName': accountName,
+      'accountNumber': accountNumber,
+    };
+    final prefs = await SharedPreferences.getInstance();
+    final storageKey = await _commissionIntentStorageKey();
+    if (mounted) setState(() => _pendingCommissionWithdrawal = intent);
+    final writer = widget.commissionIntentWriter;
+    final bool persisted = writer == null
+        ? await prefs.setString(storageKey, jsonEncode(intent))
+        : await writer(storageKey, jsonEncode(intent));
+    if (!persisted) {
+      throw const ManagementApiException(
+        'Could not save a safe retry record. No withdrawal was submitted.',
+      );
+    }
+    return key;
+  }
+
+  Future<void> _clearCommissionWithdrawalIntent() async {
+    final prefs = await SharedPreferences.getInstance();
+    final storageKey = await _commissionIntentStorageKey();
+    bool removed = false;
+    try {
+      removed = await prefs.remove(storageKey);
+    } catch (_) {
+      removed = false;
+    }
+    if (!removed) {
+      throw const ManagementApiException(
+        'Request was submitted, but its retry record could not be cleared. Refresh the request history and retry only with the same details and saved key.',
+      );
+    }
+    if (mounted) setState(() => _pendingCommissionWithdrawal = null);
+  }
+
+  Future<String?> _askForCommissionWithdrawalPin({
+    required double amount,
+    required String bankName,
+    required String accountName,
+    required String accountNumber,
+  }) {
+    var pin = '';
+    return showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('Confirm commission withdrawal'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Request ₦${amount.toStringAsFixed(2)} to $bankName · '
+                '$accountName · $accountNumber.',
+              ),
+              const SizedBox(height: 14),
+              TextField(
+                autofocus: true,
+                obscureText: true,
+                maxLength: 4,
+                keyboardType: TextInputType.number,
+                onChanged: (value) => setDialogState(
+                  () => pin = value.replaceAll(RegExp(r'\D'), ''),
+                ),
+                decoration: const InputDecoration(
+                  labelText: 'Transaction PIN',
+                  helperText: 'Enter your current 4-digit PIN.',
+                  counterText: '',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: RegExp(r'^\d{4}$').hasMatch(pin)
+                  ? () => Navigator.pop(dialogContext, pin)
+                  : null,
+              child: const Text('Submit withdrawal request'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _submitCommissionWithdrawal() async {
+    final readiness = _map(_data['readiness']);
+    if (readiness['canRequest'] != true || _busy) return;
+    final amountText = _withdrawAmount.text.replaceAll(',', '').trim();
+    final amount = double.tryParse(amountText);
+    final bankName = _bank.text.trim();
+    final accountName = _accountName.text.trim();
+    final accountNumber = _accountNumber.text.trim();
+    if (amount == null ||
+        !amount.isFinite ||
+        amount <= 0 ||
+        bankName.isEmpty ||
+        accountName.isEmpty ||
+        !RegExp(r'^\d{10}$').hasMatch(accountNumber)) {
+      _message('Enter a positive amount, bank, account name and 10-digit account number.');
+      return;
+    }
+    final pending = _pendingCommissionWithdrawal;
+    if (pending != null &&
+        ((pending['amount'] as num).toDouble() != amount ||
+            pending['bankName'] != bankName ||
+            pending['accountName'] != accountName ||
+            pending['accountNumber'] != accountNumber)) {
+      _message('A previous request is unresolved. Retry only with its original details.');
+      return;
+    }
+    final String? existingKey =
+        pending == null ? null : pending['idempotencyKey'] as String?;
+    if (pending != null && (existingKey == null || existingKey.trim().isEmpty)) {
+      _message('The saved retry key is unavailable. Refresh before submitting.');
+      return;
+    }
+    final pin = await _askForCommissionWithdrawalPin(
+      amount: amount,
+      bankName: bankName,
+      accountName: accountName,
+      accountNumber: accountNumber,
+    );
+    if (pin == null || !mounted) return;
+    setState(() => _busy = true);
+    bool submitted = false;
+    try {
+      final key = await _persistCommissionWithdrawalIntent(
+        amount: amount,
+        bankName: bankName,
+        accountName: accountName,
+        accountNumber: accountNumber,
+        existingKey: existingKey,
+      );
+      await widget.api.requestCommissionWithdrawal({
+        'amount': amount,
+        'bankName': bankName,
+        'accountName': accountName,
+        'accountNumber': accountNumber,
+        'transactionPin': pin,
+        'idempotencyKey': key,
+      });
+      submitted = true;
+      await _clearCommissionWithdrawalIntent();
+      _withdrawAmount.clear();
+      _bank.clear();
+      _accountName.clear();
+      _accountNumber.clear();
+      if (!mounted) return;
+      _message('Commission withdrawal request submitted.');
+      setState(() => _page = 1);
+      await _load();
+    } catch (error) {
+      if (mounted) {
+        if (submitted &&
+            error is ManagementApiException &&
+            error.message.startsWith('Request was submitted,')) {
+          await _load();
+          if (mounted) {
+            _message(
+              '${error.message} The same request key remains locked for any retry.',
+            );
+          }
+        } else {
+          _message(
+            error is ManagementApiException
+                ? '${error.message} Retry with the same details; the request key is retained.'
+                : 'The request outcome is uncertain. Retry with the same details; the request key is retained.',
+          );
+        }
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   @override
@@ -1478,15 +1746,24 @@ class _ManagementWorkspacePanelState extends State<ManagementWorkspacePanel> {
   Widget _withdrawals() {
     final summary = _map(_data['summary']);
     final readiness = _map(_data['readiness']);
-    const enabled = false;
-    final items = _rows(_data['legacyWalletWithdrawals']);
+    final canRequest = readiness['canRequest'] == true;
+    final legacyItems = _rows(_data['legacyWalletWithdrawals']);
+    final commissionItems = _rows(_data['items'])
+        .where((item) => item['source'] == 'COMMISSION_CUSTODY')
+        .toList();
+    final commissionHistory = _rows(_data['commissionHistory']);
+    final formEnabled = canRequest && !_busy && _pendingCommissionWithdrawal == null;
+    String naira(dynamic value) {
+      if (value is! num || !value.isFinite) return 'Unavailable';
+      return '₦${value.toStringAsFixed(2)}';
+    }
     Widget metric(String title, dynamic value) => Container(
           width: 190,
           padding: const EdgeInsets.all(14),
           decoration: _box(),
           child:
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(value == null ? 'Not verified' : '₦$value',
+            Text(naira(value),
                 style: const TextStyle(
                     color: _ink, fontWeight: FontWeight.w800, fontSize: 18)),
             const SizedBox(height: 4),
@@ -1514,19 +1791,30 @@ class _ManagementWorkspacePanelState extends State<ManagementWorkspacePanel> {
                     _value(readiness['message'],
                         'Commission custody has not been verified. Commission payouts are unavailable.'),
                     style: const TextStyle(color: _ink, height: 1.45)),
+                if (readiness['code'] != null) ...[
+                  const SizedBox(height: 4),
+                  Text('Readiness: ${readiness['code']}',
+                      style: const TextStyle(color: _muted, fontSize: 11)),
+                ],
               ])),
         ]),
       ),
       const SizedBox(height: 12),
       Wrap(spacing: 9, runSpacing: 9, children: [
-        metric('Total commission earned', summary['totalCommissionEarned']),
-        metric('Recorded available commission',
+        metric('Legacy commission earned · recorded lifetime',
+            summary['totalCommissionEarned']),
+        metric('Future profit-sharing commission earned',
+            summary['futureSettledCommissionEarned']),
+        metric('Future profit-sharing commission reversed',
+            summary['futureReversedCommission']),
+        metric('Legacy recorded available · not certified custody',
             summary['recordedAvailableCommission']),
-        metric('Recorded withdrawal records · not verified payouts',
+        metric('Legacy recorded withdrawals · not certified payouts',
             summary['recordedWithdrawnCommission']),
-        metric('Available commission', summary['availableCommission']),
-        metric('Total withdrawn', summary['totalWithdrawn']),
+        metric('Available commission custody', summary['availableCommission']),
+        metric('Commission custody withdrawn', summary['totalWithdrawn']),
         metric('Pending withdrawals', summary['pendingWithdrawals']),
+        metric('Commission recovery debt', summary['commissionRecoveryDebt']),
       ]),
       const SizedBox(height: 14),
       Container(
@@ -1536,58 +1824,166 @@ class _ManagementWorkspacePanelState extends State<ManagementWorkspacePanel> {
           const Text('Request commission withdrawal',
               style: TextStyle(color: _ink, fontWeight: FontWeight.w800)),
           const SizedBox(height: 7),
-          const Text(
-              'Commission custody is not verified. Requests cannot be submitted from this workspace.',
-              style: TextStyle(color: _muted)),
+          Text(
+              canRequest
+                  ? 'Requests are submitted from commission custody only. Legacy main-wallet commissions are not withdrawable here.'
+                  : 'Commission custody is not ready. Requests cannot be submitted from this workspace.',
+              style: const TextStyle(color: _muted)),
+          if (_pendingCommissionWithdrawal != null) ...[
+            const SizedBox(height: 7),
+            const Text(
+              'This request intent is retained. Its amount and beneficiary are locked; enter your PIN again for each safe retry.',
+              style: TextStyle(color: Color(0xFF8D6A18), fontSize: 12),
+            ),
+          ],
           const SizedBox(height: 11),
           Wrap(spacing: 9, runSpacing: 9, children: [
             SizedBox(
                 width: 150,
                 child: TextField(
                     controller: _withdrawAmount,
-                    enabled: enabled,
-                    keyboardType: TextInputType.number,
+                    enabled: formEnabled,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
                     decoration: _input('Amount (₦)', Icons.payments_outlined))),
             SizedBox(
                 width: 190,
                 child: TextField(
                     controller: _bank,
-                    enabled: enabled,
+                    enabled: formEnabled,
                     decoration:
                         _input('Bank', Icons.account_balance_outlined))),
             SizedBox(
                 width: 190,
                 child: TextField(
                     controller: _accountName,
-                    enabled: enabled,
+                    enabled: formEnabled,
                     decoration: _input('Account name', Icons.person_outline))),
             SizedBox(
                 width: 170,
                 child: TextField(
                     controller: _accountNumber,
-                    enabled: enabled,
+                    enabled: formEnabled,
                     keyboardType: TextInputType.number,
                     decoration: _input('Account number', Icons.numbers))),
-            const FilledButton(onPressed: null, child: Text('Submit request')),
+            FilledButton(
+              onPressed: !canRequest || _busy ? null : _submitCommissionWithdrawal,
+              child: Text(
+                _busy
+                    ? 'Submitting…'
+                    : _pendingCommissionWithdrawal == null
+                        ? 'Submit request'
+                        : 'Retry same request',
+              ),
+            ),
           ]),
         ]),
       ),
       const SizedBox(height: 14),
+      Text(
+          'Commission-custody withdrawal requests · ${_value(_data['commissionTotal'], '—')} records',
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+      const SizedBox(height: 7),
       const Text(
-          'General wallet withdrawal history · not commission payout evidence',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+          'These are your commission-source requests. They are separate from legacy main-wallet withdrawal history.',
+          style: TextStyle(color: Colors.white70, fontSize: 11)),
+      const SizedBox(height: 7),
+      if (commissionItems.isEmpty)
+        _emptyPanel(
+            'No commission-custody requests',
+            'No commission-source withdrawal requests were returned for your account.',
+            Icons.account_balance_wallet_outlined)
+      else
+        ...commissionItems.map((item) => Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(13),
+              decoration: _box(),
+              child: Row(children: [
+                Expanded(
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                      Text(_value(item['reference'], _value(item['id'])),
+                          style: const TextStyle(
+                              color: _ink, fontWeight: FontWeight.w700)),
+                      Text(
+                          'Commission custody · ${_date(item['createdAt'])}',
+                          style: const TextStyle(color: _muted, fontSize: 11)),
+                    ])),
+                Text(naira(item['amount']),
+                    style: const TextStyle(
+                        color: _ink, fontWeight: FontWeight.w800)),
+                const SizedBox(width: 8),
+                _status(item['status']),
+              ]),
+            )),
+      const SizedBox(height: 14),
+      Text(
+          'Future profit-sharing custody history · ${_value(_data['commissionHistoryTotal'], '—')} records',
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
+      const SizedBox(height: 7),
+      Text(
+          _data['custodySource'] == 'FUTURE_PROFIT_SHARING_ONLY'
+              ? 'Future profit-sharing accrual and reversal journals only. Legacy main-wallet commissions are excluded.'
+              : 'Custody source is unavailable; these records are not certified.',
+          style: const TextStyle(color: Colors.white70, fontSize: 11)),
+      const SizedBox(height: 7),
+      if (commissionHistory.isEmpty)
+        _emptyPanel(
+            'No future custody history',
+            'No future profit-sharing journal entries were returned for your account.',
+            Icons.receipt_long_outlined)
+      else
+        ...commissionHistory.map((entry) {
+          final rows = _rows(entry['entries']);
+          final ownEntries = rows;
+          return Container(
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.all(13),
+            decoration: _box(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                    '${_value(entry['kind'], 'Journal')} · ${_value(entry['serviceType'], 'Service unavailable')}',
+                    style: const TextStyle(
+                        color: _ink, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 4),
+                Text(
+                    '${_value(entry['reference'], _value(entry['id']))} · ${_date(entry['createdAt'])}',
+                    style: const TextStyle(color: _muted, fontSize: 11)),
+                const SizedBox(height: 5),
+                Text('Amount ${_koboNaira(entry['amountKobo'])}',
+                    style: const TextStyle(
+                        color: _ink, fontWeight: FontWeight.w700)),
+                if (ownEntries.isEmpty)
+                  const Text('No account allocation evidence returned.',
+                      style: TextStyle(color: _muted, fontSize: 11))
+                else
+                  ...ownEntries.map((allocation) => Text(
+                        'Your account · ${_koboNaira(allocation['amountKobo'])}',
+                        style: const TextStyle(color: _muted, fontSize: 11),
+                      )),
+              ],
+            ),
+          );
+        }),
+      const SizedBox(height: 14),
+      Text(
+          'General wallet withdrawal history · not commission payout evidence · ${_value(_data['legacyTotal'], '—')} records',
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800)),
       const SizedBox(height: 7),
       const Text(
           'These records are shown for context only. Their statuses do not establish that individual commissions were paid.',
           style: TextStyle(color: Colors.white70, fontSize: 11)),
       const SizedBox(height: 7),
-      if (items.isEmpty)
+      if (legacyItems.isEmpty)
         _emptyPanel(
             'No historical withdrawal records',
             'No legacy records were returned for your account.',
             Icons.receipt_long_outlined)
       else
-        ...items.map((item) => Container(
+        ...legacyItems.map((item) => Container(
               margin: const EdgeInsets.only(bottom: 8),
               padding: const EdgeInsets.all(13),
               decoration: _box(),
@@ -1614,6 +2010,7 @@ class _ManagementWorkspacePanelState extends State<ManagementWorkspacePanel> {
                 _status(item['status']),
               ]),
             )),
+      _pager(),
     ]);
   }
 
