@@ -80,6 +80,34 @@ test.after(async () => {
   await mongoose.disconnect();
   if (mongo) await mongo.stop();
 });
+test("engine readiness and activation enforce existing Head Office boundaries and fresh authentication", async () => {
+  async function engineRequest(actor, suffix, body) {
+    const token = actor && jwt.sign({ id: String(actor._id), tokenVersion: 0 },
+      process.env.JWT_SECRET, { expiresIn: "1h" });
+    const response = await fetch(base + suffix, {
+      method: body ? "POST" : "GET", headers: { "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+    return { status: response.status, body: await response.json() };
+  }
+  assert.equal((await engineRequest(null, "/engine")).status, 401);
+  for (const name of ["customer", "aggregator", "state", "zone", "support"]) {
+    assert.equal((await engineRequest(actors[name], "/engine")).status, 403);
+    assert.equal((await engineRequest(actors[name], "/activation", { mode: "LIVE" })).status, 403);
+  }
+  assert.equal((await engineRequest(actors.wildcard, "/activation", { mode: "LIVE" })).status, 403);
+  const ready = await engineRequest(actors.authorized, "/engine");
+  assert.equal(ready.status, 200); assert.equal(ready.body.data.distributionLive, false);
+  assert.ok(ready.body.data.storageBlockers.length > 0);
+  assert.equal((await engineRequest(actors.authorized, "/activation", {
+    mode: "LIVE", currentPassword: "", confirmation: true,
+  })).status, 401);
+  assert.equal((await engineRequest(actors.authorized, "/dry-run", {
+    transactionId: "a".repeat(24), costs: { verified: true },
+  })).status, 400);
+  assert.equal(await M.Settings.countDocuments({ _id: "profit-sharing-engine" }), 0);
+});
 test("no runtime defaults: initial rules are empty and financial distribution is inactive", async () => {
   const result = await request(actors.authorized);
   assert.equal(result.status, 200);

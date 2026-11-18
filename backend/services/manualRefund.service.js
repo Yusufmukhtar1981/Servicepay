@@ -192,6 +192,9 @@ const createRefundService = () => {
           idempotencyKey: `manual-refund:${t._id}`, transactionId: refundId, reversalOf: s.debit._id,
           narration: `Refund of ${t.reference}`, metadata: { originalTransactionId: t._id, actorId: actor._id, manualRefund: true },
         }], { session });
+        if (t.providerResponse?.profitSharingAdmissionId === String(t._id)) {
+          await require("./profitSharing.engine").createEngine().reverse(t._id, session);
+        }
         const [audit] = await Audit.create([{
           _id: claimId, actorId: actor._id, actorRole: authorizedOperations ? "OPERATIONS_MANAGER" : "HEAD_OFFICE",
           actorName: actor.fullName || actor.name || "", targetUserId: t.customerId,

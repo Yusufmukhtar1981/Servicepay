@@ -38,8 +38,12 @@ function createSettingsService({
   };
   async function read() {
     const doc = await settingsModel.findById(SETTINGS_ID).lean();
+    const engine = await require("./profitSharing.engine").createEngine().status();
     return {
-      distributionLive: false, readinessMessage: READINESS_MESSAGE,
+      distributionLive: engine.distributionLive,
+      readinessMessage: engine.distributionLive
+        ? "Backend profit-sharing settlement is active for explicitly activated services only. Existing historical commissions and customer wallets are unchanged."
+        : READINESS_MESSAGE,
       services: [...SERVICES], roles: [...P.ROLES],
       items: SERVICES.map(service => publicItem(service, doc?.profitSharing?.services?.[service])),
     };

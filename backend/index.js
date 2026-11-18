@@ -523,6 +523,7 @@ async function startServer() {
   require("./services/pendingResolutionMonitor.service").start();
   require("./services/marketingPerformance.service").startNotifications();
   require("./services/businessNetwork.service").start();
+  require("./services/profitSharing.worker").start();
   require("./services/telecomAbodeReconciliationWorker.service").startTelecomAbodeReconciliationWorker();
   logFirebaseConfigurationStatus();
 
