@@ -17,6 +17,15 @@ const admission = new Schema({
   admittedAt: { type: Date, required: true },
   activationId: { type: String, required: true },
 }, options);
+admission.pre("validate", function () {
+  if (!this.isNew) return;
+  const policy = require("../services/profitSharing.policy");
+  policy.validateDistributionRule(this.rule);
+  if (!this.beneficiaries || Object.keys(this.beneficiaries).length !== policy.ROLES.length ||
+      Object.keys(this.beneficiaries).some(role => !policy.ROLES.includes(role))) {
+    throw new Error("Only the three supported hierarchy beneficiaries may be admitted.");
+  }
+});
 const event = new Schema({
   _id: { type: String, required: true },
   transaction: { type: Schema.Types.ObjectId },

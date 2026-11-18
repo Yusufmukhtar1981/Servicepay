@@ -45,6 +45,7 @@ function createSettingsService({
         ? "Backend profit-sharing settlement is active for explicitly activated services only. Existing historical commissions and customer wallets are unchanged."
         : READINESS_MESSAGE,
       services: [...SERVICES], roles: [...P.ROLES],
+      policyVersion: P.POLICY_VERSION, allocationSuggestion: { ...P.ALLOCATION_SUGGESTION },
       items: SERVICES.map(service => publicItem(service, doc?.profitSharing?.services?.[service])),
     };
   }
@@ -54,7 +55,7 @@ function createSettingsService({
       fail(400, "INVALID_SETTINGS", "Invalid commission settings.");
     }
     const allowed = ["serviceType", "revision", "idempotencyKey", "confirmation",
-      "reason", "effectiveAt", "enabled", "percentages"];
+      "reason", "effectiveAt", "enabled", "percentages", "poolPercentage"];
     if (Object.keys(body).some(key => !allowed.includes(key))) {
       fail(400, "UNSUPPORTED_SETTINGS_FIELD", "Only commission rule settings can be changed here.");
     }
@@ -76,7 +77,11 @@ function createSettingsService({
       const bps = P.percentageBasisPoints(body.percentages);
       percentages = Object.fromEntries(P.ROLES.map(role => [role, bps[role] / 100]));
     } catch (error) {
-      fail(400, error.code, "Enter five valid percentages, with at most two decimal places, totaling exactly 100%.");
+      fail(400, error.code, "Enter three valid percentages, with at most two decimal places, totaling exactly 100%.");
+    }
+    try { P.poolBasisPoints(body.poolPercentage); }
+    catch (error) {
+      fail(400, error.code, "Head Office must explicitly set the service's commission pool percentage, from 0 to 100 with at most two decimal places.");
     }
     if (typeof body.effectiveAt !== "string" || !Number.isFinite(Date.parse(body.effectiveAt))) {
       fail(400, "INVALID_EFFECTIVE_DATE", "Choose a valid future effective date and time.");
@@ -85,6 +90,7 @@ function createSettingsService({
     const rule = {
       id: eventId, serviceType: body.serviceType, enabled: body.enabled,
       effectiveAt: new Date(body.effectiveAt).toISOString(), percentages,
+      policyVersion: P.POLICY_VERSION, poolPercentage: body.poolPercentage,
     };
     const reason = body.reason.trim();
     const requestHash = sha(JSON.stringify({ rule, reason, revision: body.revision }));

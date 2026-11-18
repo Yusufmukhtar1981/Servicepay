@@ -20,7 +20,8 @@ const body = (extra = {}) => ({
   serviceType: "DATA", revision: 0, idempotencyKey: `synthetic-request-${++counter}`,
   confirmation: true, reason: "Synthetic approved allocation test",
   effectiveAt: future, enabled: true,
-  percentages: { BUSINESS_NETWORK_AGENT: 51, AGGREGATOR: 19, STATE_MANAGER: 13, ZONAL_MANAGER: 9, HEAD_OFFICE: 8 },
+  poolPercentage: 30,
+  percentages: { AGGREGATOR: 47, STATE_MANAGER: 33, ZONAL_MANAGER: 20 },
   ...extra,
 });
 const person = (role, extra = {}) => ({
@@ -138,6 +139,8 @@ test("administrator-entered percentages persist atomically with a complete audit
   assert.equal(result.status, 200, JSON.stringify(result.body));
   assert.equal(result.body.data.revision, 1);
   assert.deepEqual(result.body.data.versions[0].percentages, input.percentages);
+  assert.equal(result.body.data.versions[0].poolPercentage, 30);
+  assert.equal(result.body.data.versions[0].policyVersion, 2);
   assert.equal(result.body.data.versions[0].requestHash, undefined);
   assert.equal(result.body.data.versions[0].reason, input.reason);
   const audit = await M.Audit.findOne({ action: "PROFIT_SHARING_RULE_SAVED" }).lean();
@@ -145,10 +148,30 @@ test("administrator-entered percentages persist atomically with a complete audit
   assert.deepEqual(audit.metadata.rule.percentages, input.percentages);
   assert.equal(audit.metadata.distributionLive, false);
 });
+test("Head Office reads only the new beneficiary contract while old rule history is preserved exactly", async () => {
+  const legacy = { id: "historical-five-role-rule", enabled: false, serviceType: "NIN_VERIFICATION",
+    effectiveAt: "2025-01-01T00:00:00.000Z", createdAt: "2025-01-01T00:00:00.000Z",
+    percentages: { BUSINESS_NETWORK_AGENT: 40, AGGREGATOR: 20, STATE_MANAGER: 15,
+      ZONAL_MANAGER: 10, HEAD_OFFICE: 15 } };
+  await M.Settings.updateOne({ _id: "profit-sharing" }, { $set: {
+    "profitSharing.services.NIN_VERIFICATION": { revision: 1, versions: [legacy] } } });
+  const before = await M.Settings.findById("profit-sharing").lean();
+  const read = await request(actors.authorized);
+  assert.deepEqual(read.body.data.roles, ["AGGREGATOR", "STATE_MANAGER", "ZONAL_MANAGER"]);
+  assert.deepEqual(read.body.data.allocationSuggestion, { AGGREGATOR: 40, STATE_MANAGER: 35, ZONAL_MANAGER: 25 });
+  assert.equal(read.body.data.policyVersion, 2);
+  assert.deepEqual(await M.Settings.findById("profit-sharing").lean(), before);
+  const saved = await request(actors.authorized, body({
+    serviceType: "NIN_VERIFICATION", revision: 1, poolPercentage: 45,
+  }));
+  assert.equal(saved.status, 200);
+  assert.deepEqual(saved.body.data.versions[1], legacy);
+  assert.equal(saved.body.data.versions[0].poolPercentage, 45);
+});
 test("later changes append versions and do not modify historical settings", async () => {
   const before = (await request(actors.authorized)).body.data.items.find(row => row.serviceType === "DATA");
   const input = body({ revision: before.revision, enabled: false,
-    percentages: { BUSINESS_NETWORK_AGENT: 31, AGGREGATOR: 21, STATE_MANAGER: 18, ZONAL_MANAGER: 11, HEAD_OFFICE: 19 } });
+    poolPercentage: 60, percentages: { AGGREGATOR: 41, STATE_MANAGER: 39, ZONAL_MANAGER: 20 } });
   const saved = await request(actors.authorized, input);
   assert.equal(saved.status, 200);
   assert.equal(saved.body.data.revision, 2);
@@ -199,7 +222,10 @@ test("requires total 100%, explicit confirmation, future date and a reason", asy
     { effectiveAt: new Date(Date.now() - 60000).toISOString() },
     { revision: "0" }, { idempotencyKey: "x" }, { enabled: "true" },
     { percentages: {} }, { percentages: { ...body().percentages, HEAD_OFFICE: 9 } },
-    { percentages: { ...body().percentages, HEAD_OFFICE: 8.001 } },
+    { percentages: { ...body().percentages, AGGREGATOR: 47.001 } },
+    { poolPercentage: undefined }, { poolPercentage: "50" },
+    { poolPercentage: -1 }, { poolPercentage: 100.01 }, { poolPercentage: 50.001 },
+    { policyVersion: 1 },
     { walletBalance: 1000000 }, { serviceType: "$invalid.path" },
   ];
   for (const patch of invalid) {

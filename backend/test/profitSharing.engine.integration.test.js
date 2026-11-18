@@ -14,9 +14,10 @@ const { createWorker } = require("../services/profitSharing.worker");
 const { percentageBasisPoints } = require("../services/profitSharing.policy");
 let mongo, engine, actor, people, usersBefore;
 const clock = () => new Date("2030-06-01T12:00:00Z");
-const rates = { BUSINESS_NETWORK_AGENT: 40, AGGREGATOR: 20, STATE_MANAGER: 15, ZONAL_MANAGER: 10, HEAD_OFFICE: 15 };
+const rates = { AGGREGATOR: 40, STATE_MANAGER: 35, ZONAL_MANAGER: 25 };
 const dataRule = { id: "synthetic-data-rule", serviceType: "DATA", enabled: true,
-  effectiveAt: "2030-01-01T00:00:00Z", createdAt: "2029-12-01T00:00:00Z", percentages: rates };
+  effectiveAt: "2030-01-01T00:00:00Z", createdAt: "2029-12-01T00:00:00Z",
+  policyVersion: 2, poolPercentage: 50, percentages: rates };
 // TEST-ONLY adapter. No such contract or synthetic evidence reader is
 // registered in the production adapter registry.
 const adapter = {
@@ -100,6 +101,9 @@ test("production has no unverified adapters and refuses activation even with val
   const ready = await production.readiness(["DATA"]);
   assert.equal(ready.ready, false);
   assert.ok(ready.services[0].blockers.includes("VERIFIED_SERVICE_ADAPTER_REQUIRED"));
+  const everyService = await production.readiness();
+  assert.equal(everyService.services.length, 9);
+  assert.ok(everyService.services.every(s => s.blockers.includes("VERIFIED_SERVICE_ADAPTER_REQUIRED")));
   await assert.rejects(production.changeMode(actor, { mode: "LIVE", revision: 0, services: ["DATA"],
     confirmation: true, confirmationText: "ACTIVATE FUTURE PROFIT SHARING", reason: "Synthetic activation denied" }),
   { code: "ACTIVATION_PREREQUISITES_INCOMPLETE" });
@@ -108,15 +112,16 @@ test("production has no unverified adapters and refuses activation even with val
 test("precise money and latest future-effective service versions are enforced", () => {
   assert.equal(kobo(12.34), 1234);
   assert.throws(() => kobo(1.001), /EXACT_KOBO/);
-  assert.throws(() => percentageBasisPoints({ ...rates, HEAD_OFFICE: 14.99 }), /TOTAL_100/);
+  assert.throws(() => percentageBasisPoints({ ...rates, ZONAL_MANAGER: 24.99 }), /TOTAL_100/);
   const later = { ...dataRule, id: "later", effectiveAt: "2031-01-01" };
   assert.equal(ruleAt({ profitSharing: { services: { DATA: { versions: [dataRule, later] } } } }, "DATA", clock()).id, dataRule.id);
 });
 test("dry-run saves an auditable receipt but no account or earning", async () => {
   const row = await tx({ status: "SUCCESSFUL", createdAt: new Date("2030-05-01") });
   const result = await engine.dryRun(actor, String(row._id));
-  assert.equal(result.plan.poolKobo, 1800); assert.equal(result.financialWrites, 0);
-  assert.equal(result.plan.allocations.find(a => a.role === "BUSINESS_NETWORK_AGENT").beneficiaryId, String(people.retail));
+  assert.equal(result.plan.poolKobo, 900); assert.equal(result.financialWrites, 0);
+  assert.equal(result.plan.companyRetainedKobo, 900);
+  assert.deepEqual(result.plan.allocations.map(a => a.role), Object.keys(rates));
   assert.equal(result.plan.allocations.find(a => a.role === "AGGREGATOR").beneficiaryId, String(people.aggregator));
   assert.equal(await M.Account.countDocuments(), 0);
   assert.equal(await M.Event.countDocuments({ kind: "ACCRUAL" }), 0);
@@ -144,30 +149,33 @@ test("concurrent duplicate settlement credits exactly once and conserves profit"
   assert.equal(results.filter(r => r.status === "SETTLED").length, 1);
   assert.equal(await M.Event.countDocuments({ _id: `accrual:${row._id}` }), 1);
   const accounts = await M.Account.find().lean();
-  assert.equal(accounts.reduce((n, a) => n + a.availableKobo, 0), 1800);
-  assert.equal((await M.Account.findById(`beneficiary:${people.retail}`).lean()).availableKobo, 720);
+  assert.equal(accounts.reduce((n, a) => n + a.availableKobo, 0), 900);
+  assert.equal(await M.Account.findById(`beneficiary:${people.retail}`).lean(), null);
+  assert.equal(await M.Account.findById("company").lean(), null);
   assert.equal((await M.Account.findById(`beneficiary:${people.aggregator}`).lean()).availableKobo, 360);
 });
 test("different concurrent transactions sharing new accounts retain every credit", async () => {
-  const before = (await M.Account.findById("company").lean()).availableKobo;
+  const before = (await M.Account.findById(`beneficiary:${people.aggregator}`).lean()).availableKobo;
   const rows = await Promise.all(Array.from({ length: 6 }, () => tx()));
   for (const row of rows) { await admission(row); await successful(row); }
   const results = await Promise.all(rows.map(row => engine.settle(row._id)));
   assert.ok(results.every(r => r.status === "SETTLED"));
-  assert.equal((await M.Account.findById("company").lean()).availableKobo - before, 6 * 270);
+  assert.equal((await M.Account.findById(`beneficiary:${people.aggregator}`).lean()).availableKobo - before, 6 * 360);
 });
 test("service-specific rules cannot use another service's percentages", async () => {
-  const airtimeRates = { BUSINESS_NETWORK_AGENT: 0, AGGREGATOR: 10, STATE_MANAGER: 20, ZONAL_MANAGER: 30, HEAD_OFFICE: 40 };
-  const rule = { ...dataRule, id: "synthetic-airtime-rule", serviceType: "AIRTIME", percentages: airtimeRates };
+  const airtimeRates = { AGGREGATOR: 10, STATE_MANAGER: 20, ZONAL_MANAGER: 70 };
+  const rule = { ...dataRule, id: "synthetic-airtime-rule", serviceType: "AIRTIME",
+    percentages: airtimeRates, poolPercentage: 20 };
   await N.Settings.updateOne({ _id: "profit-sharing" }, { $set: {
     "profitSharing.services.AIRTIME": { revision: 1, versions: [rule] } } });
   const preview = await engine.dryRun(actor, String((await tx({ serviceType: "AIRTIME", status: "SUCCESSFUL" }))._id));
-  assert.equal(preview.plan.allocations.find(a => a.role === "AGGREGATOR").amountKobo, 180);
-  assert.equal(preview.plan.companyKobo, 720);
+  assert.equal(preview.plan.allocations.find(a => a.role === "AGGREGATOR").amountKobo, 36);
+  assert.equal(preview.plan.companyRetainedKobo, 1440);
+  assert.equal(preview.plan.poolKobo, 360);
   const row = await tx({ serviceType: "AIRTIME" });
   assert.equal(await admission(row), null, "An unactivated service cannot join DATA's activation.");
 });
-test("admission freezes hierarchy, missing shares remain company custody, and duplicate beneficiaries are not paid twice", async () => {
+test("admission freezes hierarchy, missing shares remain separate commission custody, and identities cannot stack", async () => {
   const row = await tx(); await admission(row);
   await Tx.collection.updateOne({ _id: row._id }, { $set: { agentId: null, stateManagerId: null } });
   await successful(row);
@@ -178,11 +186,13 @@ test("admission freezes hierarchy, missing shares remain company custody, and du
   const missing = await tx({ agentId: null, stateManagerId: people.customer });
   await admission(missing); await successful(missing); await engine.settle(missing._id);
   const held = await M.Event.findById(`accrual:${missing._id}`).lean();
-  assert.equal(held.data.plan.unallocatedKobo, 630);
-  assert.equal(held.data.plan.companyKobo, 900);
+  assert.equal(held.data.plan.unallocatedKobo, 675);
+  assert.equal(held.data.plan.companyRetainedKobo, 900);
+  assert.equal((await M.Account.findById("unallocated-commission").lean()).availableKobo, 675);
+  assert.equal(await M.Account.findById("company").lean(), null);
   const Policy = require("../services/profitSharing.policy");
-  const duplicate = Policy.allocate(1800, rates, { BUSINESS_NETWORK_AGENT: { id: String(people.retail), eligible: true },
-    AGGREGATOR: { id: String(people.retail), eligible: true } });
+  const duplicate = Policy.allocate(900, rates, { AGGREGATOR: { id: String(people.aggregator), eligible: true },
+    STATE_MANAGER: { id: String(people.aggregator), eligible: true } });
   assert.equal(duplicate.allocations.filter(a => a.custody === "BENEFICIARY").length, 1);
 });
 test("legacy manager and retail writers do not create a second commission for admitted transactions", async () => {
@@ -228,11 +238,11 @@ test("refund without canonical ledger proof never reverses commission", async ()
 });
 test("concurrent full refunds append one immutable reversal with matching original amounts", async () => {
   const row = await tx(); await admission(row); await successful(row); await engine.settle(row._id);
-  const before = await M.Account.findById(`beneficiary:${people.retail}`).lean();
+  const before = await M.Account.findById(`beneficiary:${people.aggregator}`).lean();
   await canonicalRefund(row);
   const results = await Promise.all(Array.from({ length: 6 }, () => engine.reverse(row._id)));
   assert.equal(results.filter(r => r.status === "REVERSED").length, 1);
-  assert.equal((await M.Account.findById(`beneficiary:${people.retail}`).lean()).availableKobo, before.availableKobo - 720);
+  assert.equal((await M.Account.findById(`beneficiary:${people.aggregator}`).lean()).availableKobo, before.availableKobo - 360);
   assert.ok(await M.Event.exists({ _id: `accrual:${row._id}`, kind: "ACCRUAL" }));
   assert.ok(await M.Event.exists({ _id: `reversal:${row._id}`, kind: "REVERSAL" }));
   await assert.rejects(M.Event.updateOne({ _id: `accrual:${row._id}` }, { $set: { kind: "REVERSAL" } }), /append-only/);
@@ -257,19 +267,19 @@ test("refund racing settlement cannot leave an unreversed earning", async () => 
 });
 test("reversal records recovery debt instead of debiting a customer's main wallet", async () => {
   const row = await tx(); await admission(row); await successful(row); await engine.settle(row._id);
-  const id = `beneficiary:${people.retail}`;
+  const id = `beneficiary:${people.aggregator}`;
   const accountBefore = await M.Account.findById(id).lean();
   // TEST ONLY: emulate custody already reserved/paid by a future reviewed payout
   // component. No real payout endpoint is enabled by this implementation.
   await M.Account.updateOne({ _id: id }, { $set: { availableKobo: 0 } });
   await canonicalRefund(row); await engine.reverse(row._id);
   const debt = await M.Account.findById(id).lean();
-  assert.equal(debt.availableKobo, 0); assert.equal(debt.recoveryDebtKobo, 720);
+  assert.equal(debt.availableKobo, 0); assert.equal(debt.recoveryDebtKobo, 360);
   const next = await tx(); await admission(next); await successful(next); await engine.settle(next._id);
   const recovered = await M.Account.findById(id).lean();
   assert.equal(recovered.recoveryDebtKobo, 0); assert.equal(recovered.availableKobo, 0);
   // Restore the synthetic pre-existing custody that was temporarily reserved.
-  await M.Account.updateOne({ _id: id }, { $set: { availableKobo: accountBefore.availableKobo - 720 } });
+  await M.Account.updateOne({ _id: id }, { $set: { availableKobo: accountBefore.availableKobo - 360 } });
 });
 test("a rule change immediately blocks readiness and cannot change an admitted rule", async () => {
   const row = await tx(); await admission(row);
@@ -281,6 +291,35 @@ test("a rule change immediately blocks readiness and cannot change an admitted r
   await successful(row); await engine.settle(row._id);
   assert.equal((await M.Event.findById(`accrual:${row._id}`).lean()).data.plan.ruleId, dataRule.id);
   await N.Settings.updateOne({ _id: "profit-sharing" }, { $pull: { "profitSharing.services.DATA.versions": { id: changed.id } } });
+});
+test("missing pool, zero pool and legacy policy cannot pass readiness or alter saved rules", async () => {
+  for (const patch of [{ poolPercentage: undefined }, { poolPercentage: 0 }, { policyVersion: 1 }]) {
+    const changed = { ...dataRule, ...patch, id: "review-required-rule" };
+    await N.Settings.updateOne({ _id: "profit-sharing" }, { $set: {
+      "profitSharing.services.DATA.versions": [changed] } });
+    const before = await N.Settings.findById("profit-sharing").lean();
+    const check = await engine.readiness(["DATA"]);
+    assert.equal(check.ready, false);
+    assert.ok(check.services[0].blockers.some(b => /POOL|POLICY/.test(b)));
+    await assert.rejects(admission(await tx()));
+    assert.deepEqual(await N.Settings.findById("profit-sharing").lean(), before);
+  }
+  await N.Settings.updateOne({ _id: "profit-sharing" }, { $set: {
+    "profitSharing.services.DATA.versions": [dataRule] } });
+});
+test("new admission schema rejects unsupported beneficiaries and legacy rules without rewriting them", async () => {
+  const row = await tx();
+  const fields = { _id: String(row._id), transaction: row._id, reference: row.reference,
+    serviceType: row.serviceType, amountKobo: 10000, adapterVersion: adapter.version,
+    admittedAt: clock(), activationId: "synthetic",
+    beneficiaries: Object.fromEntries(Object.keys(rates).map(role => [role, null])) };
+  await assert.rejects(new M.Admission({ ...fields, rule: { ...dataRule, policyVersion: 1 } }).validate(),
+    /THREE_ROLE_POLICY_V2_REQUIRED/);
+  await assert.rejects(new M.Admission({ ...fields, rule: dataRule,
+    beneficiaries: { ...fields.beneficiaries, HEAD_OFFICE: { id: String(people.head) } } }).validate(),
+    /three supported/);
+  await new M.Admission({ ...fields, rule: dataRule }).validate();
+  assert.equal(await M.Admission.exists({ _id: fields._id }), null);
 });
 test("pause stops new admissions but preserves reversal and settlement of already admitted purchases", async () => {
   const row = await tx(); await admission(row);
@@ -304,4 +343,19 @@ test("all customer wallets, legacy commission counters, referral identity and ne
   assert.deepEqual(await User.collection.find().sort({ _id: 1 }).toArray(), usersBefore);
   const legacy = await N.Settings.findById("network").lean();
   assert.equal(legacy.revision, 9); assert.deepEqual(legacy.categories, ["Preserved"]);
+});
+test("old accrual entries and company custody remain intact and reversible by their original immutable entries", async () => {
+  const row = await tx();
+  const original = { _id: `accrual:${row._id}`, kind: "ACCRUAL", transaction: row._id,
+    data: { plan: { poolKobo: 17 }, entries: [
+      { accountId: "company", role: "COMPANY", amountKobo: 17 },
+    ] } };
+  await M.Event.collection.insertOne(original);
+  await M.Account.create({ _id: "company", availableKobo: 17, earnedKobo: 17 });
+  await canonicalRefund(row);
+  const before = await M.Event.findById(original._id).lean();
+  assert.equal((await engine.reverse(row._id)).status, "REVERSED");
+  assert.deepEqual(await M.Event.findById(original._id).lean(), before);
+  const old = await M.Account.findById("company").lean();
+  assert.equal(old.availableKobo, 0); assert.equal(old.reversedKobo, 17);
 });

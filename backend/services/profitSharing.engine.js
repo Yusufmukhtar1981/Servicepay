@@ -55,18 +55,6 @@ function createEngine({
         result.push(`ID_SAFEGUARD_REQUIRED:${model.collection.name}`);
       }
     }
-    // Business Network attribution requires exactly one activity per purchase
-    // and one profile per owner/kind; an arbitrary findOne is not authority.
-    for (const [model, key] of [[N.Activity, { transaction: 1 }], [N.Profile, { owner: 1, kind: 1 }]]) {
-      if (!await model.db.db.listCollections({ name: model.collection.name }, { nameOnly: true }).hasNext()) {
-        result.push(`STORAGE_REQUIRED:${model.collection.name}`); continue;
-      }
-      const indexes = await model.collection.indexes();
-      if (!indexes.some(i => i.unique === true && !i.hidden && !i.sparse && !i.partialFilterExpression &&
-          (!i.collation || i.collation.locale === "simple") && JSON.stringify(i.key) === JSON.stringify(key))) {
-        result.push(`ATTRIBUTION_SAFEGUARD_REQUIRED:${model.collection.name}`);
-      }
-    }
     return result;
   }
   async function readiness(services = SERVICES) {
@@ -77,7 +65,8 @@ function createEngine({
     return {
       ready: storage.length === 0 && services.every(service => {
         const rule = ruleAt(settings, service, now());
-        try { Policy.percentageBasisPoints(rule?.percentages); } catch { return false; }
+        try { Policy.validateDistributionRule(rule); } catch { return false; }
+        if (!rule.poolPercentage) return false;
         return rule.enabled && Adapters.blockers(adapters[service]).length === 0;
       }),
       storageBlockers: storage,
@@ -86,6 +75,10 @@ function createEngine({
         const blockers = [...Adapters.blockers(adapters[service])];
         try { Policy.percentageBasisPoints(rule?.percentages); }
         catch { blockers.push("VALID_100_PERCENT_RULE_REQUIRED"); }
+        if (rule?.policyVersion !== Policy.POLICY_VERSION) blockers.push("THREE_ROLE_POLICY_V2_REQUIRED");
+        try {
+          if (!Policy.poolBasisPoints(rule?.poolPercentage)) blockers.push("POSITIVE_COMMISSION_POOL_REQUIRED");
+        } catch (error) { blockers.push(error.code); }
         if (rule?.enabled !== true) blockers.push("EFFECTIVE_ENABLED_RULE_REQUIRED");
         return { serviceType: service, ruleId: rule?.id || null, blockers };
       }),
@@ -115,22 +108,13 @@ function createEngine({
   async function beneficiaries(tx, session) {
     // Transaction snapshots, not today's customer assignment, are authority.
     if (!tx.hierarchyCapturedAt) fail("VERIFIED_ADMISSION_HIERARCHY_REQUIRED");
-    const result = { HEAD_OFFICE: null };
-    const at = new Date(tx.createdAt);
+    const result = {};
     const ids = { AGGREGATOR: tx.agentId, STATE_MANAGER: tx.stateManagerId, ZONAL_MANAGER: tx.zonalManagerId };
     for (const [role, value] of Object.entries(ids)) {
       const user = value && await userModel.findById(value).session(session).lean();
       result[role] = { id: value ? String(value) : null, eligible: !!user &&
         user.status === "ACTIVE" && user.isDeleted !== true && user.role === (role === "AGGREGATOR" ? "AGENT" : role) };
     }
-    const activity = await N.Activity.findOne({ transaction: tx._id }).session(session).lean();
-    const profile = activity && await N.Profile.findById(activity.profile).session(session).lean();
-    const owner = profile && await userModel.findById(profile.owner).session(session).lean();
-    const covered = (profile?.approvalWindows || []).some(w => new Date(w.start) <= at &&
-      (!w.end || new Date(w.end) > at) && w.services?.includes(tx.serviceType));
-    result.BUSINESS_NETWORK_AGENT = { id: owner ? String(owner._id) : null,
-      eligible: profile?.kind === "AGENT" && profile.status === "APPROVED" && covered &&
-        owner?.status === "ACTIVE" && owner?.isDeleted !== true };
     return result;
   }
   async function inspect(tx, rule, hierarchy, session) {
@@ -196,7 +180,7 @@ function createEngine({
         for (const service of services) {
           const rule = ruleAt(settings, service, now());
           if (!rule?.enabled || rule.id !== ruleIds[service]) fail("RULE_CHANGED_DURING_ACTIVATION");
-          Policy.percentageBasisPoints(rule.percentages);
+          Policy.validateDistributionRule(rule);
           const receipt = await M.Event.findOne({ _id: body.dryRunIds?.[service], kind: "DRY_RUN" }).session(session).lean();
           if (!receipt?.data.plan?.eligible || receipt.data.serviceType !== service ||
               receipt.data.ruleId !== rule.id || receipt.data.adapterVersion !== adapters[service].version ||
@@ -236,7 +220,7 @@ function createEngine({
     const settings = await N.Settings.findById("profit-sharing").session(session).lean();
     const rule = ruleAt(settings, tx.serviceType, new Date(tx.createdAt));
     if (!rule?.enabled || rule.id !== control.profitSharing.ruleIds[tx.serviceType]) fail("ACTIVATION_RULE_CHANGED");
-    Policy.percentageBasisPoints(rule.percentages);
+    Policy.validateDistributionRule(rule);
     const hierarchy = await beneficiaries(tx, session);
     const data = { _id: String(tx._id), transaction: tx._id, reference: tx.reference,
       serviceType: tx.serviceType, amountKobo: kobo(tx.amount), rule, beneficiaries: hierarchy,
@@ -302,7 +286,12 @@ function createEngine({
       if (fenced.modifiedCount !== 1) fail("TRANSACTION_CHANGED");
       const entries = plan.allocations.filter(a => a.custody === "BENEFICIARY" && a.amountKobo > 0)
         .map(a => ({ accountId: `beneficiary:${a.beneficiaryId}`, role: a.role, amountKobo: a.amountKobo }));
-      if (plan.companyKobo) entries.push({ accountId: "company", role: "COMPANY", amountKobo: plan.companyKobo });
+      // Retained company profit is not credited into commission custody.
+      // Missing hierarchy shares and rounding stay separately identifiable.
+      if (plan.unallocatedKobo) entries.push({ accountId: "unallocated-commission",
+        role: "UNALLOCATED_COMMISSION", amountKobo: plan.unallocatedKobo });
+      if (plan.roundingKobo) entries.push({ accountId: "commission-rounding",
+        role: "COMMISSION_ROUNDING", amountKobo: plan.roundingKobo });
       for (const row of [...entries].sort((a, b) => a.accountId.localeCompare(b.accountId))) {
         await updateAccount(row.accountId, row.amountKobo, false, session);
       }
