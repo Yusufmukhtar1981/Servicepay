@@ -34,6 +34,28 @@ async function call(handler, body, role = "CUSTOMER") {
   });
   return result;
 }
+async function withNotificationApi(run) {
+  const express = require("express");
+  const jwt = require("jsonwebtoken");
+  const previous = process.env.JWT_SECRET;
+  process.env.JWT_SECRET = "local-notification-deletion-regression-only";
+  const app = express();
+  app.use(express.json());
+  app.use("/api/notifications", require("../routes/notification.routes"));
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise(resolve => server.once("listening", resolve));
+  const base = `http://127.0.0.1:${server.address().port}/api/notifications`;
+  const headers = { Authorization: `Bearer ${jwt.sign(
+    { id: String(user) }, process.env.JWT_SECRET, { expiresIn: "5m" }
+  )}` };
+  try {
+    await run((path = "", method = "GET") => fetch(base + path, { method, headers }));
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+    if (previous === undefined) delete process.env.JWT_SECRET;
+    else process.env.JWT_SECRET = previous;
+  }
+}
 test.before(async () => {
   mongo = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: "wiredTiger" } });
   await mongoose.connect(mongo.getUri(), { dbName: "customer-experience-isolated" });
@@ -244,6 +266,63 @@ test("atomic delivery deduplicates concurrent sessions even when poll throttling
   const results = await Promise.all(Array.from({ length: 6 }, () => service.nextAlert(user)));
   assert.equal(results.filter((r) => r.alert).length, 1);
   assert.equal(await Notification.countDocuments({ referenceType: "WALLET_CREDIT_ALERT" }), 1);
+});
+for (const scope of ["individual", "all"]) {
+  test(`${scope} HTTP notification deletion retains credit receipts without replaying old money`, async () => {
+    await service.nextAlert(user);
+    const receipts = [];
+    for (let i = 0; i < (scope === "all" ? 2 : 1); i++) {
+      const posted = await credit();
+      assert.equal((await next()).alert.id, String(posted._id));
+      receipts.push(await Notification.findOne({ referenceId: posted._id }).lean());
+    }
+    const oldLedger = await Ledger.collection.find({ user }).toArray();
+    const ordinary = await Notification.create({ userId: user, title: "Local ordinary notice", message: "Disposable fixture" });
+    const otherNotice = await Notification.create({ userId: other, title: "Other customer", message: "Unchanged" });
+    await withNotificationApi(async request => {
+      const path = scope === "all" ? "" : `/${receipts[0]._id}`;
+      assert.equal((await request(path, "DELETE")).status, 200);
+      const listed = await (await request()).json();
+      assert.equal(listed.count, scope === "all" ? 0 : 1);
+      assert.equal(listed.unreadCount, scope === "all" ? 0 : 1);
+      for (const receipt of receipts) {
+        assert.ok(!listed.notifications.some(n => n._id === String(receipt._id)));
+        assert.equal((await request(`/${receipt._id}`)).status, 404);
+        assert.equal((await request(`/read/${receipt._id}`, "PUT")).status, 404);
+        const retained = await Notification.collection.findOne({ _id: receipt._id });
+        assert.equal(retained.dedupeKey, receipt.dedupeKey);
+        assert.ok(retained.walletCreditAlertDeletedAt instanceof Date);
+        assert.equal(retained.isRead, true);
+      }
+      assert.equal((await (await request("/unread-count")).json()).unreadCount, scope === "all" ? 0 : 1);
+      assert.equal(Boolean(await Notification.findById(ordinary._id)), scope !== "all");
+      assert.ok(await Notification.findById(otherNotice._id));
+      // Advancing several poll periods must not replay any cleared credit.
+      assert.equal((await next()).alert, null);
+      assert.equal((await next()).alert, null);
+      const fresh = await credit();
+      assert.equal((await next()).alert.id, String(fresh._id));
+    });
+    assert.equal((await User.collection.findOne({ _id: user })).walletBalance, 500);
+    for (const row of oldLedger) {
+      assert.deepEqual(await Ledger.collection.findOne({ _id: row._id }), row);
+    }
+  });
+}
+test("HTTP deletion still removes ordinary notices and never deletes another customer's receipt", async () => {
+  const own = await Notification.create({ userId: user, title: "Ordinary", message: "Disposable" });
+  const protectedReceipt = await Notification.create({
+    userId: other, title: "Money Received", message: "Other customer receipt",
+    referenceType: "WALLET_CREDIT_ALERT", dedupeKey: `wallet-credit:${other}:${id()}`,
+  });
+  await withNotificationApi(async request => {
+    assert.equal((await request(`/${protectedReceipt._id}`, "DELETE")).status, 404);
+    assert.equal((await request(`/${own._id}`, "DELETE")).status, 200);
+    assert.equal(await Notification.findById(own._id), null);
+    const retained = await Notification.collection.findOne({ _id: protectedReceipt._id });
+    assert.equal(retained.walletCreditAlertDeletedAt, undefined);
+    assert.equal(retained.isRead, false);
+  });
 });
 test("real notification router requires valid access tokens and binds both features to the signed-in customer", async () => {
   const express = require("express");

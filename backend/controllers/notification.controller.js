@@ -11,6 +11,11 @@ const {
 const clean = (value, max = 200) =>
   String(value ?? "").trim().slice(0, max);
 
+const visibleFor = (userId) => ({
+  userId,
+  walletCreditAlertDeletedAt: { $exists: false },
+});
+
 const categoryFilter = (value) => {
   const category = clean(value, 40).toUpperCase();
   return ["TRANSACTION", "SECURITY", "ACCOUNT", "OTHER"].includes(category)
@@ -162,7 +167,7 @@ const notificationPayload = (notification) => {
 exports.getMyNotifications = async (req, res) => {
   try {
     const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
-    const filter = { userId: req.user._id };
+    const filter = visibleFor(req.user._id);
     const category = categoryFilter(req.query.category);
     if (category) {
       filter.$and = [legacyCategoryQuery(category)];
@@ -192,7 +197,7 @@ exports.getMyNotifications = async (req, res) => {
         .limit(limit + 1)
         .lean(),
       Notification.countDocuments({
-        userId: req.user._id,
+        ...visibleFor(req.user._id),
         isRead: false,
       }),
       Notification.countDocuments(filter),
@@ -228,7 +233,7 @@ exports.getMyNotifications = async (req, res) => {
 exports.getUnreadCount = async (req, res) => {
   try {
     const unreadCount = await Notification.countDocuments({
-      userId: req.user._id,
+      ...visibleFor(req.user._id),
       isRead: false,
     });
 
@@ -259,7 +264,7 @@ exports.markAsRead = async (req, res) => {
     const now = new Date();
     let notification = await Notification.findOneAndUpdate({
       _id: req.params.id,
-      userId: req.user._id,
+      ...visibleFor(req.user._id),
       isRead: false,
     }, {
       $set: { isRead: true, readAt: now },
@@ -268,7 +273,7 @@ exports.markAsRead = async (req, res) => {
     if (!notification) {
       notification = await Notification.findOne({
         _id: req.params.id,
-        userId: req.user._id,
+        ...visibleFor(req.user._id),
       });
       if (!notification) {
         return res.status(404).json({
@@ -279,7 +284,7 @@ exports.markAsRead = async (req, res) => {
     }
 
     const unreadCount = await Notification.countDocuments({
-      userId: req.user._id,
+      ...visibleFor(req.user._id),
       isRead: false,
     });
 
@@ -305,7 +310,7 @@ exports.markAllAsRead = async (req, res) => {
   try {
     const result = await Notification.updateMany(
       {
-        userId: req.user._id,
+        ...visibleFor(req.user._id),
         isRead: false,
       },
       {
@@ -316,7 +321,7 @@ exports.markAllAsRead = async (req, res) => {
       }
     );
     const unreadCount = await Notification.countDocuments({
-      userId: req.user._id,
+      ...visibleFor(req.user._id),
       isRead: false,
     });
 
@@ -347,7 +352,7 @@ exports.getNotificationDetail = async (req, res) => {
     }
     const notification = await Notification.findOne({
       _id: req.params.id,
-      userId: req.user._id,
+      ...visibleFor(req.user._id),
     }).lean();
     if (!notification) {
       return res.status(404).json({
@@ -370,9 +375,18 @@ exports.getNotificationDetail = async (req, res) => {
 // Customer ya goge notification guda daya
 exports.deleteNotification = async (req, res) => {
   try {
-    const notification = await Notification.findOneAndDelete({
+    const filter = {
       _id: req.params.id,
-      userId: req.user._id,
+      ...visibleFor(req.user._id),
+    };
+    // Keep the indexed delivery receipt even when its visible notice is removed.
+    const now = new Date();
+    const notification = await Notification.findOneAndUpdate({
+      ...filter, referenceType: "WALLET_CREDIT_ALERT",
+    }, {
+      $set: { walletCreditAlertDeletedAt: now, isRead: true, readAt: now },
+    }, { new: true, timestamps: false }) || await Notification.findOneAndDelete({
+      ...filter, referenceType: { $ne: "WALLET_CREDIT_ALERT" },
     });
 
     if (!notification) {
@@ -400,8 +414,16 @@ exports.deleteNotification = async (req, res) => {
 // Customer ya goge duk notifications dinsa
 exports.deleteAllNotifications = async (req, res) => {
   try {
+    const now = new Date();
+    await Notification.updateMany({
+      ...visibleFor(req.user._id),
+      referenceType: "WALLET_CREDIT_ALERT",
+    }, {
+      $set: { walletCreditAlertDeletedAt: now, isRead: true, readAt: now },
+    }, { timestamps: false });
     await Notification.deleteMany({
       userId: req.user._id,
+      referenceType: { $ne: "WALLET_CREDIT_ALERT" },
     });
 
     return res.status(200).json({

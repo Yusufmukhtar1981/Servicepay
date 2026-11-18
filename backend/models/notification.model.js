@@ -119,6 +119,9 @@ const notificationSchema = new mongoose.Schema(
       index: true,
     },
 
+    // Hidden delivery tombstone; retaining dedupeKey prevents credit replay.
+    walletCreditAlertDeletedAt: { type: Date, default: undefined, select: false },
+
     readAt: {
       type: Date,
       default: null,
