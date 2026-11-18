@@ -20,8 +20,7 @@ const body = (extra = {}) => ({
   serviceType: "DATA", revision: 0, idempotencyKey: `synthetic-request-${++counter}`,
   confirmation: true, reason: "Synthetic approved allocation test",
   effectiveAt: future, enabled: true,
-  poolPercentage: 30,
-  percentages: { AGGREGATOR: 47, STATE_MANAGER: 33, ZONAL_MANAGER: 20 },
+  percentages: { HEAD_OFFICE: 38, ZONAL_MANAGER: 27, STATE_MANAGER: 21, AGGREGATOR: 14 },
   ...extra,
 });
 const person = (role, extra = {}) => ({
@@ -139,8 +138,9 @@ test("administrator-entered percentages persist atomically with a complete audit
   assert.equal(result.status, 200, JSON.stringify(result.body));
   assert.equal(result.body.data.revision, 1);
   assert.deepEqual(result.body.data.versions[0].percentages, input.percentages);
-  assert.equal(result.body.data.versions[0].poolPercentage, 30);
-  assert.equal(result.body.data.versions[0].policyVersion, 2);
+  assert.equal(result.body.data.versions[0].poolPercentage, undefined);
+  assert.equal(result.body.data.versions[0].policyVersion, 3);
+  assert.equal(result.body.data.versions[0].previousPercentages, null);
   assert.equal(result.body.data.versions[0].requestHash, undefined);
   assert.equal(result.body.data.versions[0].reason, input.reason);
   const audit = await M.Audit.findOne({ action: "PROFIT_SHARING_RULE_SAVED" }).lean();
@@ -157,26 +157,31 @@ test("Head Office reads only the new beneficiary contract while old rule history
     "profitSharing.services.NIN_VERIFICATION": { revision: 1, versions: [legacy] } } });
   const before = await M.Settings.findById("profit-sharing").lean();
   const read = await request(actors.authorized);
-  assert.deepEqual(read.body.data.roles, ["AGGREGATOR", "STATE_MANAGER", "ZONAL_MANAGER"]);
-  assert.deepEqual(read.body.data.allocationSuggestion, { AGGREGATOR: 40, STATE_MANAGER: 35, ZONAL_MANAGER: 25 });
-  assert.equal(read.body.data.policyVersion, 2);
+  assert.deepEqual(read.body.data.roles, ["HEAD_OFFICE", "ZONAL_MANAGER", "STATE_MANAGER", "AGGREGATOR"]);
+  assert.equal(read.body.data.allocationSuggestion, undefined);
+  assert.equal(read.body.data.policyVersion, 3);
   assert.deepEqual(await M.Settings.findById("profit-sharing").lean(), before);
   const saved = await request(actors.authorized, body({
-    serviceType: "NIN_VERIFICATION", revision: 1, poolPercentage: 45,
+    serviceType: "NIN_VERIFICATION", revision: 1,
   }));
   assert.equal(saved.status, 200);
   assert.deepEqual(saved.body.data.versions[1], legacy);
-  assert.equal(saved.body.data.versions[0].poolPercentage, 45);
+  assert.equal(saved.body.data.versions[0].poolPercentage, undefined);
 });
 test("later changes append versions and do not modify historical settings", async () => {
   const before = (await request(actors.authorized)).body.data.items.find(row => row.serviceType === "DATA");
   const input = body({ revision: before.revision, enabled: false,
-    poolPercentage: 60, percentages: { AGGREGATOR: 41, STATE_MANAGER: 39, ZONAL_MANAGER: 20 } });
+    percentages: { HEAD_OFFICE: 11, ZONAL_MANAGER: 29, STATE_MANAGER: 32, AGGREGATOR: 28 } });
   const saved = await request(actors.authorized, input);
   assert.equal(saved.status, 200);
   assert.equal(saved.body.data.revision, 2);
   assert.equal(saved.body.data.versions[0].enabled, false);
   assert.deepEqual(saved.body.data.versions[1], before.versions[0]);
+  assert.deepEqual(saved.body.data.versions[0].previousPercentages, before.versions[0].percentages);
+  assert.deepEqual(saved.body.data.versions[0].percentages, input.percentages);
+  const audit = await M.Audit.findOne({ "metadata.eventId": saved.body.data.versions[0].id }).lean();
+  assert.deepEqual(audit.metadata.previousPercentages, before.versions[0].percentages);
+  assert.deepEqual(audit.metadata.newPercentages, input.percentages);
 });
 test("stale concurrent edits are rejected without overwriting newer rules", async () => {
   const input = body({ revision: 0 });
@@ -223,7 +228,7 @@ test("requires total 100%, explicit confirmation, future date and a reason", asy
     { revision: "0" }, { idempotencyKey: "x" }, { enabled: "true" },
     { percentages: {} }, { percentages: { ...body().percentages, HEAD_OFFICE: 9 } },
     { percentages: { ...body().percentages, AGGREGATOR: 47.001 } },
-    { poolPercentage: undefined }, { poolPercentage: "50" },
+    { percentages: { ...body().percentages, HEAD_OFFICE: undefined } }, { poolPercentage: "50" },
     { poolPercentage: -1 }, { poolPercentage: 100.01 }, { poolPercentage: 50.001 },
     { policyVersion: 1 },
     { walletBalance: 1000000 }, { serviceType: "$invalid.path" },

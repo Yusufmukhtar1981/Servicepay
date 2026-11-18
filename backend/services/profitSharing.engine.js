@@ -66,7 +66,6 @@ function createEngine({
       ready: storage.length === 0 && services.every(service => {
         const rule = ruleAt(settings, service, now());
         try { Policy.validateDistributionRule(rule); } catch { return false; }
-        if (!rule.poolPercentage) return false;
         return rule.enabled && Adapters.blockers(adapters[service]).length === 0;
       }),
       storageBlockers: storage,
@@ -75,10 +74,8 @@ function createEngine({
         const blockers = [...Adapters.blockers(adapters[service])];
         try { Policy.percentageBasisPoints(rule?.percentages); }
         catch { blockers.push("VALID_100_PERCENT_RULE_REQUIRED"); }
-        if (rule?.policyVersion !== Policy.POLICY_VERSION) blockers.push("THREE_ROLE_POLICY_V2_REQUIRED");
-        try {
-          if (!Policy.poolBasisPoints(rule?.poolPercentage)) blockers.push("POSITIVE_COMMISSION_POOL_REQUIRED");
-        } catch (error) { blockers.push(error.code); }
+        try { Policy.validateDistributionRule(rule); }
+        catch (error) { blockers.push(error.code); }
         if (rule?.enabled !== true) blockers.push("EFFECTIVE_ENABLED_RULE_REQUIRED");
         return { serviceType: service, ruleId: rule?.id || null, blockers };
       }),
@@ -108,7 +105,7 @@ function createEngine({
   async function beneficiaries(tx, session) {
     // Transaction snapshots, not today's customer assignment, are authority.
     if (!tx.hierarchyCapturedAt) fail("VERIFIED_ADMISSION_HIERARCHY_REQUIRED");
-    const result = {};
+    const result = { HEAD_OFFICE: { kind: "COMPANY", eligible: true } };
     const ids = { AGGREGATOR: tx.agentId, STATE_MANAGER: tx.stateManagerId, ZONAL_MANAGER: tx.zonalManagerId };
     for (const [role, value] of Object.entries(ids)) {
       const user = value && await userModel.findById(value).session(session).lean();
@@ -130,6 +127,7 @@ function createEngine({
         tx.reversalTransactionId || tx.reversalReference) }, rule, costs: proof.costs, beneficiaries: hierarchy });
     return { ...plan, ...(plan.eligible ? { costs: {
       customerAmountKobo: proof.costs.customerAmountKobo,
+      revenueKobo: proof.costs.revenueKobo,
       providerCostKobo: proof.costs.providerCostKobo,
       directCostsKobo: proof.costs.directCostsKobo,
       otherApprovedCostsKobo: proof.costs.otherApprovedCostsKobo,
@@ -286,8 +284,10 @@ function createEngine({
       if (fenced.modifiedCount !== 1) fail("TRANSACTION_CHANGED");
       const entries = plan.allocations.filter(a => a.custody === "BENEFICIARY" && a.amountKobo > 0)
         .map(a => ({ accountId: `beneficiary:${a.beneficiaryId}`, role: a.role, amountKobo: a.amountKobo }));
-      // Retained company profit is not credited into commission custody.
-      // Missing hierarchy shares and rounding stay separately identifiable.
+      if (plan.headOfficeKobo) entries.push({ accountId: "head-office",
+        role: "HEAD_OFFICE", amountKobo: plan.headOfficeKobo });
+      // Missing hierarchy shares and rounding are not additional Head Office
+      // earnings and must never be redistributed to another beneficiary.
       if (plan.unallocatedKobo) entries.push({ accountId: "unallocated-commission",
         role: "UNALLOCATED_COMMISSION", amountKobo: plan.unallocatedKobo });
       if (plan.roundingKobo) entries.push({ accountId: "commission-rounding",

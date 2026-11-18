@@ -45,7 +45,7 @@ function createSettingsService({
         ? "Backend profit-sharing settlement is active for explicitly activated services only. Existing historical commissions and customer wallets are unchanged."
         : READINESS_MESSAGE,
       services: [...SERVICES], roles: [...P.ROLES],
-      policyVersion: P.POLICY_VERSION, allocationSuggestion: { ...P.ALLOCATION_SUGGESTION },
+      policyVersion: P.POLICY_VERSION,
       items: SERVICES.map(service => publicItem(service, doc?.profitSharing?.services?.[service])),
     };
   }
@@ -55,7 +55,7 @@ function createSettingsService({
       fail(400, "INVALID_SETTINGS", "Invalid commission settings.");
     }
     const allowed = ["serviceType", "revision", "idempotencyKey", "confirmation",
-      "reason", "effectiveAt", "enabled", "percentages", "poolPercentage"];
+      "reason", "effectiveAt", "enabled", "percentages"];
     if (Object.keys(body).some(key => !allowed.includes(key))) {
       fail(400, "UNSUPPORTED_SETTINGS_FIELD", "Only commission rule settings can be changed here.");
     }
@@ -77,11 +77,7 @@ function createSettingsService({
       const bps = P.percentageBasisPoints(body.percentages);
       percentages = Object.fromEntries(P.ROLES.map(role => [role, bps[role] / 100]));
     } catch (error) {
-      fail(400, error.code, "Enter three valid percentages, with at most two decimal places, totaling exactly 100%.");
-    }
-    try { P.poolBasisPoints(body.poolPercentage); }
-    catch (error) {
-      fail(400, error.code, "Head Office must explicitly set the service's commission pool percentage, from 0 to 100 with at most two decimal places.");
+      fail(400, error.code, "Head Office must explicitly enter all four percentages, with at most two decimal places, totaling exactly 100%.");
     }
     if (typeof body.effectiveAt !== "string" || !Number.isFinite(Date.parse(body.effectiveAt))) {
       fail(400, "INVALID_EFFECTIVE_DATE", "Choose a valid future effective date and time.");
@@ -90,7 +86,7 @@ function createSettingsService({
     const rule = {
       id: eventId, serviceType: body.serviceType, enabled: body.enabled,
       effectiveAt: new Date(body.effectiveAt).toISOString(), percentages,
-      policyVersion: P.POLICY_VERSION, poolPercentage: body.poolPercentage,
+      policyVersion: P.POLICY_VERSION,
     };
     const reason = body.reason.trim();
     const requestHash = sha(JSON.stringify({ rule, reason, revision: body.revision }));
@@ -122,7 +118,15 @@ function createSettingsService({
         const at = now();
         try { P.validateRule(rule, at); }
         catch (error) { fail(400, error.code, "The effective date must not precede the current time."); }
-        const version = { ...rule, requestHash, reason, createdAt: at.toISOString(), createdBy: String(actor._id) };
+        const previous = current.versions.at(-1);
+        let previousPercentages = null;
+        try {
+          P.validateDistributionRule(previous);
+          previousPercentages = { ...previous.percentages };
+        } catch { /* Historical policies are preserved, never converted. */ }
+        const version = { ...rule, requestHash, reason, createdAt: at.toISOString(), createdBy: String(actor._id),
+          previousRuleId: previous?.id || null, previousPolicyVersion: previous?.policyVersion || null,
+          previousPercentages };
         const next = { revision: current.revision + 1, versions: [...current.versions, version] };
         if (existing) {
           const changed = await settingsModel.updateOne(
@@ -142,6 +146,7 @@ function createSettingsService({
           metadata: {
             serviceType: body.serviceType, revision: next.revision,
             previousRuleId: current.versions.at(-1)?.id || null,
+            previousPercentages, newPercentages: { ...percentages },
             rule: { ...rule }, eventId, distributionLive: false,
           },
         }], { session });

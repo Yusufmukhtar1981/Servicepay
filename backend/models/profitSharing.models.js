@@ -23,7 +23,7 @@ admission.pre("validate", function () {
   policy.validateDistributionRule(this.rule);
   if (!this.beneficiaries || Object.keys(this.beneficiaries).length !== policy.ROLES.length ||
       Object.keys(this.beneficiaries).some(role => !policy.ROLES.includes(role))) {
-    throw new Error("Only the three supported hierarchy beneficiaries may be admitted.");
+    throw new Error("Only the four configured company-profit beneficiaries may be admitted.");
   }
 });
 const event = new Schema({

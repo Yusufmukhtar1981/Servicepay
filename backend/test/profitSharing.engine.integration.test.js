@@ -14,21 +14,21 @@ const { createWorker } = require("../services/profitSharing.worker");
 const { percentageBasisPoints } = require("../services/profitSharing.policy");
 let mongo, engine, actor, people, usersBefore;
 const clock = () => new Date("2030-06-01T12:00:00Z");
-const rates = { AGGREGATOR: 40, STATE_MANAGER: 35, ZONAL_MANAGER: 25 };
+const rates = { HEAD_OFFICE: 38, ZONAL_MANAGER: 27, STATE_MANAGER: 21, AGGREGATOR: 14 };
 const dataRule = { id: "synthetic-data-rule", serviceType: "DATA", enabled: true,
   effectiveAt: "2030-01-01T00:00:00Z", createdAt: "2029-12-01T00:00:00Z",
-  policyVersion: 2, poolPercentage: 50, percentages: rates };
+  policyVersion: 3, percentages: rates };
 // TEST-ONLY adapter. No such contract or synthetic evidence reader is
 // registered in the production adapter registry.
 const adapter = {
   version: "synthetic-contract", contractReference: "isolated-fixture-only",
-  verifiedSettlement: true, actualProviderCost: true, approvedDirectCosts: true,
+  verifiedSettlement: true, verifiedRevenue: true, actualProviderCost: true, approvedDirectCosts: true,
   atomicAdmission: true, legacyExclusion: true, refundIntegration: true, durableRecovery: true,
   inspect: async tx => ({
     transactionId: String(tx._id), reference: tx.reference, serviceType: tx.serviceType,
     provider: tx.provider, settlementVerified: tx.providerResponse?.syntheticVerified !== false,
     costs: { verified: true, evidenceReference: `synthetic-cost:${tx._id}`,
-      customerAmountKobo: Math.round(tx.amount * 100), providerCostKobo: 8000,
+      customerAmountKobo: Math.round(tx.amount * 100), revenueKobo: 10000, providerCostKobo: 8000,
       directCostsKobo: 100, otherApprovedCostsKobo: 100,
       otherCostsApprovalReference: "synthetic-cost-approval", ...tx.providerResponse?.syntheticCosts },
   }),
@@ -112,15 +112,15 @@ test("production has no unverified adapters and refuses activation even with val
 test("precise money and latest future-effective service versions are enforced", () => {
   assert.equal(kobo(12.34), 1234);
   assert.throws(() => kobo(1.001), /EXACT_KOBO/);
-  assert.throws(() => percentageBasisPoints({ ...rates, ZONAL_MANAGER: 24.99 }), /TOTAL_100/);
+  assert.throws(() => percentageBasisPoints({ ...rates, ZONAL_MANAGER: 26.99 }), /TOTAL_100/);
   const later = { ...dataRule, id: "later", effectiveAt: "2031-01-01" };
   assert.equal(ruleAt({ profitSharing: { services: { DATA: { versions: [dataRule, later] } } } }, "DATA", clock()).id, dataRule.id);
 });
 test("dry-run saves an auditable receipt but no account or earning", async () => {
   const row = await tx({ status: "SUCCESSFUL", createdAt: new Date("2030-05-01") });
   const result = await engine.dryRun(actor, String(row._id));
-  assert.equal(result.plan.poolKobo, 900); assert.equal(result.financialWrites, 0);
-  assert.equal(result.plan.companyRetainedKobo, 900);
+  assert.equal(result.plan.poolKobo, 1800); assert.equal(result.financialWrites, 0);
+  assert.equal(result.plan.headOfficeKobo, 684);
   assert.deepEqual(result.plan.allocations.map(a => a.role), Object.keys(rates));
   assert.equal(result.plan.allocations.find(a => a.role === "AGGREGATOR").beneficiaryId, String(people.aggregator));
   assert.equal(await M.Account.countDocuments(), 0);
@@ -149,10 +149,12 @@ test("concurrent duplicate settlement credits exactly once and conserves profit"
   assert.equal(results.filter(r => r.status === "SETTLED").length, 1);
   assert.equal(await M.Event.countDocuments({ _id: `accrual:${row._id}` }), 1);
   const accounts = await M.Account.find().lean();
-  assert.equal(accounts.reduce((n, a) => n + a.availableKobo, 0), 900);
+  assert.equal(accounts.reduce((n, a) => n + a.availableKobo, 0), 1800);
   assert.equal(await M.Account.findById(`beneficiary:${people.retail}`).lean(), null);
   assert.equal(await M.Account.findById("company").lean(), null);
-  assert.equal((await M.Account.findById(`beneficiary:${people.aggregator}`).lean()).availableKobo, 360);
+  assert.equal((await M.Account.findById(`beneficiary:${people.aggregator}`).lean()).availableKobo, 252);
+  assert.equal((await M.Account.findById("head-office").lean()).availableKobo, 684);
+  assert.equal(await M.Account.findById(`beneficiary:${people.head}`).lean(), null);
 });
 test("different concurrent transactions sharing new accounts retain every credit", async () => {
   const before = (await M.Account.findById(`beneficiary:${people.aggregator}`).lean()).availableKobo;
@@ -160,18 +162,18 @@ test("different concurrent transactions sharing new accounts retain every credit
   for (const row of rows) { await admission(row); await successful(row); }
   const results = await Promise.all(rows.map(row => engine.settle(row._id)));
   assert.ok(results.every(r => r.status === "SETTLED"));
-  assert.equal((await M.Account.findById(`beneficiary:${people.aggregator}`).lean()).availableKobo - before, 6 * 360);
+  assert.equal((await M.Account.findById(`beneficiary:${people.aggregator}`).lean()).availableKobo - before, 6 * 252);
 });
 test("service-specific rules cannot use another service's percentages", async () => {
-  const airtimeRates = { AGGREGATOR: 10, STATE_MANAGER: 20, ZONAL_MANAGER: 70 };
+  const airtimeRates = { HEAD_OFFICE: 10, ZONAL_MANAGER: 70, STATE_MANAGER: 15, AGGREGATOR: 5 };
   const rule = { ...dataRule, id: "synthetic-airtime-rule", serviceType: "AIRTIME",
-    percentages: airtimeRates, poolPercentage: 20 };
+    percentages: airtimeRates };
   await N.Settings.updateOne({ _id: "profit-sharing" }, { $set: {
     "profitSharing.services.AIRTIME": { revision: 1, versions: [rule] } } });
   const preview = await engine.dryRun(actor, String((await tx({ serviceType: "AIRTIME", status: "SUCCESSFUL" }))._id));
-  assert.equal(preview.plan.allocations.find(a => a.role === "AGGREGATOR").amountKobo, 36);
-  assert.equal(preview.plan.companyRetainedKobo, 1440);
-  assert.equal(preview.plan.poolKobo, 360);
+  assert.equal(preview.plan.allocations.find(a => a.role === "AGGREGATOR").amountKobo, 90);
+  assert.equal(preview.plan.headOfficeKobo, 180);
+  assert.equal(preview.plan.poolKobo, 1800);
   const row = await tx({ serviceType: "AIRTIME" });
   assert.equal(await admission(row), null, "An unactivated service cannot join DATA's activation.");
 });
@@ -186,12 +188,12 @@ test("admission freezes hierarchy, missing shares remain separate commission cus
   const missing = await tx({ agentId: null, stateManagerId: people.customer });
   await admission(missing); await successful(missing); await engine.settle(missing._id);
   const held = await M.Event.findById(`accrual:${missing._id}`).lean();
-  assert.equal(held.data.plan.unallocatedKobo, 675);
-  assert.equal(held.data.plan.companyRetainedKobo, 900);
-  assert.equal((await M.Account.findById("unallocated-commission").lean()).availableKobo, 675);
+  assert.equal(held.data.plan.unallocatedKobo, 630);
+  assert.equal(held.data.plan.headOfficeKobo, 684);
+  assert.equal((await M.Account.findById("unallocated-commission").lean()).availableKobo, 630);
   assert.equal(await M.Account.findById("company").lean(), null);
   const Policy = require("../services/profitSharing.policy");
-  const duplicate = Policy.allocate(900, rates, { AGGREGATOR: { id: String(people.aggregator), eligible: true },
+  const duplicate = Policy.allocate(1800, rates, { AGGREGATOR: { id: String(people.aggregator), eligible: true },
     STATE_MANAGER: { id: String(people.aggregator), eligible: true } });
   assert.equal(duplicate.allocations.filter(a => a.custody === "BENEFICIARY").length, 1);
 });
@@ -208,13 +210,14 @@ test("zero/negative profit, unknown settlement, mismatched evidence and missing 
   for (const providerResponse of [
     { syntheticVerified: false },
     { syntheticCosts: { verified: false } },
+    { syntheticCosts: { revenueKobo: undefined } },
     { syntheticCosts: { providerCostKobo: 11000 } },
     { syntheticCosts: { directCostsKobo: undefined } },
   ]) {
     const row = await tx({ providerResponse }); await admission(row); await successful(row);
     const before = await M.Account.find().sort({ _id: 1 }).lean();
     try { assert.equal((await engine.settle(row._id)).status, "NOT_ELIGIBLE"); }
-    catch (error) { assert.match(error.code || "", /VERIFIED_COST|INVALID_DIRECT/); }
+    catch (error) { assert.match(error.code || "", /VERIFIED_COST|INVALID_DIRECT|INVALID_VERIFIED_REVENUE/); }
     assert.deepEqual(await M.Account.find().sort({ _id: 1 }).lean(), before);
   }
   const row = await tx(); await admission(row); await successful(row);
@@ -242,7 +245,7 @@ test("concurrent full refunds append one immutable reversal with matching origin
   await canonicalRefund(row);
   const results = await Promise.all(Array.from({ length: 6 }, () => engine.reverse(row._id)));
   assert.equal(results.filter(r => r.status === "REVERSED").length, 1);
-  assert.equal((await M.Account.findById(`beneficiary:${people.aggregator}`).lean()).availableKobo, before.availableKobo - 360);
+  assert.equal((await M.Account.findById(`beneficiary:${people.aggregator}`).lean()).availableKobo, before.availableKobo - 252);
   assert.ok(await M.Event.exists({ _id: `accrual:${row._id}`, kind: "ACCRUAL" }));
   assert.ok(await M.Event.exists({ _id: `reversal:${row._id}`, kind: "REVERSAL" }));
   await assert.rejects(M.Event.updateOne({ _id: `accrual:${row._id}` }, { $set: { kind: "REVERSAL" } }), /append-only/);
@@ -274,12 +277,12 @@ test("reversal records recovery debt instead of debiting a customer's main walle
   await M.Account.updateOne({ _id: id }, { $set: { availableKobo: 0 } });
   await canonicalRefund(row); await engine.reverse(row._id);
   const debt = await M.Account.findById(id).lean();
-  assert.equal(debt.availableKobo, 0); assert.equal(debt.recoveryDebtKobo, 360);
+  assert.equal(debt.availableKobo, 0); assert.equal(debt.recoveryDebtKobo, 252);
   const next = await tx(); await admission(next); await successful(next); await engine.settle(next._id);
   const recovered = await M.Account.findById(id).lean();
   assert.equal(recovered.recoveryDebtKobo, 0); assert.equal(recovered.availableKobo, 0);
   // Restore the synthetic pre-existing custody that was temporarily reserved.
-  await M.Account.updateOne({ _id: id }, { $set: { availableKobo: accountBefore.availableKobo - 360 } });
+  await M.Account.updateOne({ _id: id }, { $set: { availableKobo: accountBefore.availableKobo - 252 } });
 });
 test("a rule change immediately blocks readiness and cannot change an admitted rule", async () => {
   const row = await tx(); await admission(row);
@@ -292,15 +295,16 @@ test("a rule change immediately blocks readiness and cannot change an admitted r
   assert.equal((await M.Event.findById(`accrual:${row._id}`).lean()).data.plan.ruleId, dataRule.id);
   await N.Settings.updateOne({ _id: "profit-sharing" }, { $pull: { "profitSharing.services.DATA.versions": { id: changed.id } } });
 });
-test("missing pool, zero pool and legacy policy cannot pass readiness or alter saved rules", async () => {
-  for (const patch of [{ poolPercentage: undefined }, { poolPercentage: 0 }, { policyVersion: 1 }]) {
+test("incomplete allocations and legacy policy cannot pass readiness or alter saved rules", async () => {
+  for (const patch of [{ percentages: { ...rates, HEAD_OFFICE: undefined } },
+    { percentages: {} }, { policyVersion: 2 }, { poolPercentage: 50 }]) {
     const changed = { ...dataRule, ...patch, id: "review-required-rule" };
     await N.Settings.updateOne({ _id: "profit-sharing" }, { $set: {
       "profitSharing.services.DATA.versions": [changed] } });
     const before = await N.Settings.findById("profit-sharing").lean();
     const check = await engine.readiness(["DATA"]);
     assert.equal(check.ready, false);
-    assert.ok(check.services[0].blockers.some(b => /POOL|POLICY/.test(b)));
+    assert.ok(check.services[0].blockers.some(b => /POOL|POLICY|PERCENTAGE/.test(b)));
     await assert.rejects(admission(await tx()));
     assert.deepEqual(await N.Settings.findById("profit-sharing").lean(), before);
   }
@@ -314,10 +318,10 @@ test("new admission schema rejects unsupported beneficiaries and legacy rules wi
     admittedAt: clock(), activationId: "synthetic",
     beneficiaries: Object.fromEntries(Object.keys(rates).map(role => [role, null])) };
   await assert.rejects(new M.Admission({ ...fields, rule: { ...dataRule, policyVersion: 1 } }).validate(),
-    /THREE_ROLE_POLICY_V2_REQUIRED/);
+    /FOUR_BENEFICIARY_POLICY_V3_REQUIRED/);
   await assert.rejects(new M.Admission({ ...fields, rule: dataRule,
-    beneficiaries: { ...fields.beneficiaries, HEAD_OFFICE: { id: String(people.head) } } }).validate(),
-    /three supported/);
+    beneficiaries: { ...fields.beneficiaries, BUSINESS_NETWORK_AGENT: { id: String(people.retail) } } }).validate(),
+    /four configured/);
   await new M.Admission({ ...fields, rule: dataRule }).validate();
   assert.equal(await M.Admission.exists({ _id: fields._id }), null);
 });

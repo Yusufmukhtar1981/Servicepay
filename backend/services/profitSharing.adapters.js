@@ -5,7 +5,7 @@
 // A catalogue price or SUCCESSFUL label alone cannot satisfy that contract.
 const adapters = Object.freeze({});
 const required = Object.freeze([
-  "verifiedSettlement", "actualProviderCost", "approvedDirectCosts",
+  "verifiedSettlement", "verifiedRevenue", "actualProviderCost", "approvedDirectCosts",
   "atomicAdmission", "legacyExclusion", "refundIntegration", "durableRecovery",
 ]);
 function blockers(adapter) {

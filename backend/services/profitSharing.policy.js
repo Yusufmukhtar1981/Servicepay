@@ -5,11 +5,9 @@
 // Production admission must supply verified cost and beneficiary snapshots and
 // atomically exclude the legacy manager and retail commission writers.
 const ROLES = Object.freeze([
-  "AGGREGATOR", "STATE_MANAGER", "ZONAL_MANAGER",
+  "HEAD_OFFICE", "ZONAL_MANAGER", "STATE_MANAGER", "AGGREGATOR",
 ]);
-// An explicit Admin template, never a fallback in any financial calculation.
-const ALLOCATION_SUGGESTION = Object.freeze({ AGGREGATOR: 40, STATE_MANAGER: 35, ZONAL_MANAGER: 25 });
-const POLICY_VERSION = 2;
+const POLICY_VERSION = 3;
 const fail = (code) => {
   const error = new Error(code);
   error.code = code;
@@ -52,17 +50,10 @@ function percentageBasisPoints(percentages) {
   return values;
 }
 
-function poolBasisPoints(value) {
-  if (value === undefined || value === null) fail("EXPLICIT_POOL_PERCENTAGE_REQUIRED");
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 100 ||
-      Math.abs(value * 100 - Math.round(value * 100)) > 1e-8) fail("INVALID_POOL_PERCENTAGE");
-  return Math.round(value * 100);
-}
-
 function validateDistributionRule(rule) {
-  if (rule?.policyVersion !== POLICY_VERSION) fail("THREE_ROLE_POLICY_V2_REQUIRED");
+  if (rule?.policyVersion !== POLICY_VERSION) fail("FOUR_BENEFICIARY_POLICY_V3_REQUIRED");
   percentageBasisPoints(rule.percentages);
-  poolBasisPoints(rule.poolPercentage);
+  if (own(rule, "poolPercentage")) fail("LEGACY_POOL_CONFIGURATION_NOT_SUPPORTED");
 }
 
 function validateRule(rule, now) {
@@ -76,7 +67,7 @@ function validateRule(rule, now) {
   return {
     id: rule.id, serviceType: rule.serviceType,
     enabled: rule.enabled, effectiveAt: new Date(effectiveAt).toISOString(),
-    policyVersion: POLICY_VERSION, poolPercentage: rule.poolPercentage,
+    policyVersion: POLICY_VERSION,
     percentages: { ...rule.percentages },
   };
 }
@@ -86,7 +77,10 @@ function validateRule(rule, now) {
 function profitPool(costs) {
   if (!costs || costs.verified !== true) fail("VERIFIED_COST_EVIDENCE_REQUIRED");
   text(costs.evidenceReference, "COST_EVIDENCE_REFERENCE");
-  const sale = integer(costs.customerAmountKobo, "CUSTOMER_AMOUNT");
+  integer(costs.customerAmountKobo, "CUSTOMER_AMOUNT");
+  // Binding a request to its amount is not revenue recognition. In particular,
+  // a transfer's customer principal must never be treated as company profit.
+  const sale = integer(costs.revenueKobo, "VERIFIED_REVENUE");
   const provider = integer(costs.providerCostKobo, "PROVIDER_COST");
   const direct = integer(costs.directCostsKobo, "DIRECT_COSTS");
   const other = integer(costs.otherApprovedCostsKobo, "OTHER_APPROVED_COSTS");
@@ -109,14 +103,18 @@ function allocate(poolKobo, percentages, beneficiaries) {
   const allocations = ROLES.map((role, index) => {
     const candidate = beneficiaries[role];
     const id = candidate?.id;
-    const eligible = candidate?.eligible === true &&
+    // Head Office is company custody, never the currently logged-in
+    // administrator's personal account. No person or rate is selected here.
+    const headOffice = role === "HEAD_OFFICE" && candidate?.eligible === true &&
+      candidate?.kind === "COMPANY" && !candidate?.id;
+    const eligible = role !== "HEAD_OFFICE" && candidate?.eligible === true &&
       typeof id === "string" && /^[a-f\d]{24}$/i.test(id) &&
       !seen.has(id.toLowerCase());
     if (eligible) seen.add(id.toLowerCase());
     return {
       role, beneficiaryId: eligible ? id.toLowerCase() : null,
       basisPoints: bps[role], amountKobo: amounts[index],
-      custody: eligible ? "BENEFICIARY" : "UNALLOCATED_COMMISSION",
+      custody: headOffice ? "HEAD_OFFICE" : eligible ? "BENEFICIARY" : "UNALLOCATED_COMMISSION",
     };
   });
   const roundingKobo = poolKobo - amounts.reduce((a, b) => a + b, 0);
@@ -124,8 +122,10 @@ function allocate(poolKobo, percentages, beneficiaries) {
     .reduce((sum, row) => sum + row.amountKobo, 0);
   const beneficiaryKobo = allocations.filter(a => a.custody === "BENEFICIARY")
     .reduce((sum, row) => sum + row.amountKobo, 0);
-  if (unallocatedKobo + roundingKobo + beneficiaryKobo !== poolKobo) fail("PROFIT_POOL_NOT_CONSERVED");
-  return { poolKobo, allocations, roundingKobo, unallocatedKobo, beneficiaryKobo };
+  const headOfficeKobo = allocations.filter(a => a.custody === "HEAD_OFFICE")
+    .reduce((sum, row) => sum + row.amountKobo, 0);
+  if (headOfficeKobo + unallocatedKobo + roundingKobo + beneficiaryKobo !== poolKobo) fail("PROFIT_POOL_NOT_CONSERVED");
+  return { poolKobo, allocations, roundingKobo, unallocatedKobo, beneficiaryKobo, headOfficeKobo };
 }
 
 function plan({ transaction, rule, costs, beneficiaries }) {
@@ -144,18 +144,15 @@ function plan({ transaction, rule, costs, beneficiaries }) {
   if (costs?.customerAmountKobo !== transaction.amountKobo) fail("COST_TRANSACTION_AMOUNT_MISMATCH");
   const netProfitKobo = profitPool(costs);
   if (!netProfitKobo) return { eligible: false, reason: "NO_POSITIVE_NET_PROFIT" };
-  const poolKobo = Number(BigInt(netProfitKobo) * BigInt(poolBasisPoints(rule.poolPercentage)) / 10000n);
-  const companyRetainedKobo = netProfitKobo - poolKobo;
-  if (!poolKobo) return { eligible: false, reason: "NO_DISTRIBUTABLE_COMMISSION",
-    netProfitKobo, poolKobo, companyRetainedKobo };
+  const poolKobo = netProfitKobo;
   return {
     eligible: true, transactionId: transaction.id, reference: transaction.reference,
     ruleId: rule.id, eventKey: `profit-sharing:${transaction.id}`,
     costEvidenceReference: costs.evidenceReference, policyVersion: POLICY_VERSION,
-    netProfitKobo, poolPercentage: rule.poolPercentage, companyRetainedKobo,
+    netProfitKobo,
     ...allocate(poolKobo, rule.percentages, beneficiaries),
   };
 }
 
-module.exports = { ROLES, POLICY_VERSION, ALLOCATION_SUGGESTION, percentageBasisPoints,
-  poolBasisPoints, validateDistributionRule, validateRule, profitPool, allocate, plan };
+module.exports = { ROLES, POLICY_VERSION, percentageBasisPoints,
+  validateDistributionRule, validateRule, profitPool, allocate, plan };
