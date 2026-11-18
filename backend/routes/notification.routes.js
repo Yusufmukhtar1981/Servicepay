@@ -14,8 +14,12 @@ const {
 } = require("../controllers/notification.controller");
 
 const { protect, adminOnly } = require("../middleware/auth.middleware");
+const customerExperience = require("../controllers/customerExperience.controller");
 
 // Customer
+router.get("/customer-settings", protect, customerExperience.getSettings);
+router.patch("/customer-settings", protect, customerExperience.updateSettings);
+router.post("/wallet-credit-alerts/next", protect, customerExperience.nextAlert);
 router.get("/", protect, getMyNotifications);
 router.get("/unread-count", protect, getUnreadCount);
 router.get("/:id", protect, getNotificationDetail);

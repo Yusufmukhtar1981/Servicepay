@@ -12,6 +12,19 @@ const svpScopeSchema = new mongoose.Schema({
 
 const userSchema = new mongoose.Schema(
   {
+    // Customer-owned presentation only. No startup backfill or financial state.
+    customerDashboardSettings: {
+      type: new mongoose.Schema({
+        dashboardBackground: { type: String, enum: ["green", "default"] },
+        soundNotifications: Boolean,
+        voiceAnnouncements: Boolean,
+      }, { _id: false }),
+      default: undefined,
+      select: false,
+    },
+    walletCreditAlertsStartedAt: { type: Date, select: false },
+    walletCreditAlertsLastPollAt: { type: Date, select: false },
+    walletCreditAlertDeliveryVersion: { type: Number, select: false },
     // Permanent customer-bound fences for requests explicitly retired before
     // wallet admission. No TTL: a delayed original POST must remain rejected.
     retiredDataRequestKeys: {
