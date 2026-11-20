@@ -112,7 +112,7 @@ void main() {
     );
   });
 
-  testWidgets('promotions are directly after the wallet before the account',
+  testWidgets('announcement surface follows the wallet and insights',
       (WidgetTester tester) async {
     for (final Size size in <Size>[
       const Size(390, 844),
@@ -130,6 +130,11 @@ void main() {
       final double promoTop =
           tester.getTopLeft(find.byKey(const Key('customer-announcement-surface'))).dy;
       expect(promoTop, greaterThan(walletTop));
+      final double insightsTop = tester
+          .getTopLeft(find.byKey(const Key('customer-transaction-insights')))
+          .dy;
+      expect(insightsTop, greaterThan(walletTop));
+      expect(promoTop, greaterThan(insightsTop));
       expect(
         find
                 .byKey(const Key('announcement-loading-state'))
@@ -146,7 +151,8 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
   });
 
-  testWidgets('live referral policy renders below wallet and opens existing Referral page',
+  testWidgets(
+      'order is wallet, funding account, insights, services, then referral',
       (WidgetTester tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -170,6 +176,14 @@ void main() {
       if (request.url.path.endsWith('/wallet')) {
         return http.Response('{"walletBalance":24500}', 200);
       }
+      if (request.url.path.endsWith('/securewave/virtual-account')) {
+        return http.Response(
+          '{"data":{"virtualAccount":{"status":"ACTIVE",'
+          '"accountNumber":"0123456789","accountName":"Ada Okafor",'
+          '"bankName":"ServicePay"}}}',
+          200,
+        );
+      }
       return http.Response('{}', 404);
     });
     await tester.pumpWidget(MaterialApp(home: DashboardScreen(client: client)));
@@ -179,8 +193,20 @@ void main() {
     expect(find.byKey(const Key('referral-promotion-card')), findsOneWidget);
     expect(find.text('Get ₦100 for each successful referral and ₦1 per eligible transaction.'),
         findsOneWidget);
-    expect(tester.getTopLeft(find.byKey(const Key('referral-promotion-card'))).dy,
-        greaterThan(tester.getTopLeft(find.text('Available Balance')).dy));
+    double top(Key key) =>
+        tester.getTopLeft(find.byKey(key, skipOffstage: false)).dy;
+    final wallet = top(const Key('servicepay-wallet-card'));
+    final funding = top(const Key('customer-funding-account'));
+    final insights = top(const Key('customer-transaction-insights'));
+    final services = top(const Key('customer-quick-services'));
+    final referral = top(const Key('customer-referral-surface'));
+    expect(wallet, lessThan(funding));
+    expect(funding, lessThan(insights));
+    expect(insights, lessThan(services));
+    expect(services, lessThan(referral));
+    // Referral is reached only after scrolling on a 390x844 phone.
+    expect(referral, greaterThan(844));
+    expect(find.text('0123456789'), findsOneWidget);
     expect(requests.every((request) => request.method == 'GET'), isTrue);
     expect(requests.singleWhere((request) =>
         request.url.path.endsWith('/auth/referral')).url.queryParameters['historyLimit'], '1');
@@ -260,6 +286,9 @@ void main() {
     expect(announcementRequests, 1);
     expect(find.byKey(const Key('announcement-error-state')), findsOneWidget);
     expect(find.text('No active promotions'), findsNothing);
+    // The announcement surface now sits below the account and insights cards.
+    await tester.ensureVisible(find.byKey(const Key('announcement-error-state')));
+    await tester.pump();
     await tester.tap(
       find.descendant(
         of: find.byKey(const Key('announcement-error-state')),

@@ -17,8 +17,15 @@ void main() {
     SharedPreferences.setMockInitialValues({'user_role': 'CUSTOMER'});
     await tester.pumpWidget(const MaterialApp(home: MainNavigation()));
     await tester.pump(const Duration(milliseconds: 100));
-    for (final tab in ['Transactions', 'Wallet', 'Profile', 'Home']) {
-      await tester.tap(find.text(tab).last);
+    for (final tab in ['History', 'Wallet', 'Profile', 'Home']) {
+      // History uses the stable customer navigation label key.
+      final target = tab == 'History'
+          ? find.byKey(const Key('customer-navigation-label-1'))
+          : find.text(tab).last;
+      if (tab == 'History') {
+        expect(tester.widget<Text>(target).data, 'History');
+      }
+      await tester.tap(target);
       await tester.pump(const Duration(milliseconds: 100));
       final dashboard =
           find.byType(DashboardScreen, skipOffstage: false).evaluate().single;

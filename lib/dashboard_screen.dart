@@ -66,6 +66,7 @@ import 'services/customer_wallet_alert_poller.dart';
 import 'services/customer_settings_events.dart';
 import 'widgets/customer_wallet_credit_notice.dart';
 import 'widgets/customer_dashboard_visibility.dart';
+import 'widgets/customer_transaction_insights.dart';
 
 List<ServicePayAnnouncement> mergeAnnouncementSessionState({
   required List<ServicePayAnnouncement> loaded,
@@ -5657,7 +5658,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                       ),
                     ),
                   ),
-                  TextButton(
+                  Flexible(
+                    child: TextButton(
                     key: const Key('dashboard-see-all-transactions'),
                     onPressed: () => openScreen(const TransactionsScreen()),
                     style: TextButton.styleFrom(
@@ -5675,15 +5677,18 @@ class _DashboardScreenState extends State<DashboardScreen>
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: <Widget>[
-                        Text(
-                          compact ? 'See All' : 'See All Transactions',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                        Flexible(
+                          child: Text(
+                            compact ? 'See All' : 'See All Transactions',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                         const SizedBox(width: 2),
                         const Icon(Icons.chevron_right_rounded, size: 17),
                       ],
                     ),
+                  ),
                   ),
                 ],
               );
@@ -5961,9 +5966,13 @@ class _DashboardScreenState extends State<DashboardScreen>
               child: Center(
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 700),
-                  child: ListView(
+                  // Eagerly built so the announcement popup lifecycle runs
+                  // once regardless of scroll position (no lazy rebuilds).
+                  child: SingleChildScrollView(
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.fromLTRB(16, 16, 16, 34),
+                    child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: <Widget>[
                       buildHeader(),
                       const SizedBox(height: 14),
@@ -5976,23 +5985,31 @@ class _DashboardScreenState extends State<DashboardScreen>
                       if (isLoading) const SizedBox(height: 10),
                       buildPremiumBalanceCard(),
                       const SizedBox(height: 14),
+                      buildFundingAccountCard(),
+                      if (fundingAccountNumber.isNotEmpty)
+                        const SizedBox(height: 14),
+                      CustomerTransactionInsightsSection(
+                        client: _client,
+                        refreshVersion: _championsRefreshVersion,
+                        onOpenHistory: () =>
+                            openScreen(const TransactionsScreen()),
+                      ),
+                      const SizedBox(height: 14),
+                      // Admin announcements (and their popup lifecycle) stay in
+                      // this single surface. Referral is presented separately
+                      // further down so it never shifts announcement tracking.
                       if (_announcementsLoading ||
                           _announcementsError != null ||
                           announcements.isNotEmpty ||
-                          _announcementResponseEmpty ||
-                          _referralPresentationPolicy != null) ...[
+                          _announcementResponseEmpty) ...[
                         CustomerCampaignFrame(
                           key: const Key('customer-announcement-surface'),
                           child: _announcementService != null &&
-                                  (announcements.isNotEmpty ||
-                                      _referralPresentationPolicy != null)
+                                  announcements.isNotEmpty
                               ? AnnouncementSurface(
                                   announcements: announcements,
                                   service: _announcementService!,
                                   rewardProgressService: _rewardProgressService,
-                                  referralPolicy: _referralPresentationPolicy,
-                                  onReferralAction: () =>
-                                      openScreen(const ReferralScreen()),
                                   onPopupCompleted: (item) {
                                     _sessionPopupCompletedBanners[item.id] =
                                         item;
@@ -6008,28 +6025,14 @@ class _DashboardScreenState extends State<DashboardScreen>
                                     });
                                   },
                                 )
-                              : _referralPresentationPolicy != null
-                                  ? AnnouncementPromotionCarousel(
-                                      announcements: const <ServicePayAnnouncement>[],
-                                      onDismiss: (_) {},
-                                      onAcknowledge: (_) {},
-                                      onAction: (_) {},
-                                      referralPolicy:
-                                          _referralPresentationPolicy,
-                                      onReferralAction: () =>
-                                          openScreen(const ReferralScreen()),
-                                    )
-                                  : AnnouncementLoadPlaceholder(
-                                      loading: _announcementsLoading,
-                                      error: _announcementsError,
-                                      onRetry: _refreshDashboard,
-                                    ),
+                              : AnnouncementLoadPlaceholder(
+                                  loading: _announcementsLoading,
+                                  error: _announcementsError,
+                                  onRetry: _refreshDashboard,
+                                ),
                         ),
                         const SizedBox(height: 14),
                       ],
-                      buildFundingAccountCard(),
-                      if (fundingAccountNumber.isNotEmpty)
-                        const SizedBox(height: 15),
                       CustomerChampionsDashboardEntry(
                         key: _championsEntryKey,
                         refreshVersion: _championsRefreshVersion,
@@ -6049,6 +6052,21 @@ class _DashboardScreenState extends State<DashboardScreen>
                         buildSchoolPortalCard(),
                       ],
                       buildRecentActivity(),
+                      if (_referralPresentationPolicy != null) ...[
+                        const SizedBox(height: 18),
+                        CustomerCampaignFrame(
+                          key: const Key('customer-referral-surface'),
+                          child: AnnouncementPromotionCarousel(
+                            announcements: const <ServicePayAnnouncement>[],
+                            onDismiss: (_) {},
+                            onAcknowledge: (_) {},
+                            onAction: (_) {},
+                            referralPolicy: _referralPresentationPolicy,
+                            onReferralAction: () =>
+                                openScreen(const ReferralScreen()),
+                          ),
+                        ),
+                      ],
                       if (isLoadingServiceStatuses ||
                           activeServiceStatuses.isNotEmpty)
                         const SizedBox(height: 4),
@@ -6068,6 +6086,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                         ),
                       const SizedBox(height: 22),
                     ],
+                    ),
                   ),
                 ),
               ),
