@@ -816,12 +816,12 @@ class _WalletScreenState extends State<WalletScreen> {
                       height: 22,
                       child: CircularProgressIndicator(
                         strokeWidth: 2.4,
-                        color: ServicePayColors.brand,
+                        color: ServicePayColors.accent,
                       ),
                     )
                   : const Icon(
                       Icons.refresh_rounded,
-                      color: Color(0xFF0F172A),
+                      color: Color(0xFFA0B4E3),
                     ),
             ),
             const SizedBox(width: 8),
@@ -830,7 +830,7 @@ class _WalletScreenState extends State<WalletScreen> {
         body: isLoading
             ? const Center(
                 child: CircularProgressIndicator(
-                  color: ServicePayColors.brand,
+                  color: ServicePayColors.accent,
                 ),
               )
             : RefreshIndicator(
@@ -997,16 +997,16 @@ class _WalletScreenState extends State<WalletScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF7ED),
+        color: const Color(0xFF4B3316),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFFED7AA)),
+        border: Border.all(color: const Color(0xFFAB702B)),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Icon(
             Icons.info_outline_rounded,
-            color: Color(0xFFC2410C),
+            color: Color(0xFFF8AB8C),
             size: 20,
           ),
           const SizedBox(width: 10),
@@ -1014,7 +1014,7 @@ class _WalletScreenState extends State<WalletScreen> {
             child: Text(
               walletNotice,
               style: const TextStyle(
-                color: Color(0xFF9A3412),
+                color: Color(0xFFF2AA91),
                 fontSize: 12,
                 height: 1.4,
                 fontWeight: FontWeight.w600,
@@ -1036,14 +1036,14 @@ class _WalletScreenState extends State<WalletScreen> {
           children: [
             CircularProgressIndicator(
               strokeWidth: 2.5,
-              color: ServicePayColors.brand,
+              color: ServicePayColors.accent,
             ),
             SizedBox(width: 14),
             Expanded(
               child: Text(
                 'Loading your virtual account...',
                 style: TextStyle(
-                  color: Color(0xFF475569),
+                  color: Color(0xFFA0BCE3),
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -1072,7 +1072,7 @@ class _WalletScreenState extends State<WalletScreen> {
                   ),
                   child: const Icon(
                     Icons.account_balance_rounded,
-                    color: ServicePayColors.brand,
+                    color: ServicePayColors.accent,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -1083,7 +1083,7 @@ class _WalletScreenState extends State<WalletScreen> {
                       Text(
                         'Virtual Account',
                         style: TextStyle(
-                          color: Color(0xFF0F172A),
+                          color: Color(0xFFA0B4E3),
                           fontSize: 17,
                           fontWeight: FontWeight.w800,
                         ),
@@ -1092,7 +1092,7 @@ class _WalletScreenState extends State<WalletScreen> {
                       Text(
                         'Transfer money here to fund your wallet.',
                         style: TextStyle(
-                          color: Color(0xFF64748B),
+                          color: ServicePayColors.muted,
                           fontSize: 12,
                         ),
                       ),
@@ -1110,7 +1110,7 @@ class _WalletScreenState extends State<WalletScreen> {
                   ? 'SecureWaveNG Virtual Account'
                   : virtualAccountBank,
               style: const TextStyle(
-                color: Color(0xFF475569),
+                color: Color(0xFFA0BCE3),
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
               ),
@@ -1122,7 +1122,7 @@ class _WalletScreenState extends State<WalletScreen> {
                   child: Text(
                     virtualAccountNumber,
                     style: const TextStyle(
-                      color: Color(0xFF0F172A),
+                      color: Color(0xFFA0B4E3),
                       fontSize: 27,
                       letterSpacing: 1.2,
                       fontWeight: FontWeight.w900,
@@ -1134,7 +1134,7 @@ class _WalletScreenState extends State<WalletScreen> {
                   onPressed: _copyAccountNumber,
                   icon: const Icon(
                     Icons.copy_rounded,
-                    color: ServicePayColors.brand,
+                    color: ServicePayColors.accent,
                   ),
                 ),
               ],
@@ -1152,7 +1152,7 @@ class _WalletScreenState extends State<WalletScreen> {
             Text(
               virtualAccountName.isEmpty ? userName : virtualAccountName,
               style: const TextStyle(
-                color: Color(0xFF334155),
+                color: Color(0xFFA0BCE3),
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
               ),
@@ -1170,14 +1170,14 @@ class _WalletScreenState extends State<WalletScreen> {
                   Icon(
                     Icons.info_outline_rounded,
                     size: 18,
-                    color: ServicePayColors.brand,
+                    color: ServicePayColors.accent,
                   ),
                   SizedBox(width: 9),
                   Expanded(
                     child: Text(
                       'Money sent to this account will be credited to your ServicePay wallet automatically after confirmation.',
                       style: TextStyle(
-                        color: ServicePayColors.brandDeep,
+                        color: ServicePayColors.accent,
                         fontSize: 12,
                         height: 1.4,
                       ),
@@ -1206,7 +1206,7 @@ class _WalletScreenState extends State<WalletScreen> {
             ),
             child: const Icon(
               Icons.account_balance_rounded,
-              color: ServicePayColors.brand,
+              color: ServicePayColors.accent,
               size: 30,
             ),
           ),
@@ -1215,7 +1215,7 @@ class _WalletScreenState extends State<WalletScreen> {
             'Dedicated Virtual Account',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Color(0xFF0F172A),
+              color: Color(0xFFA0B4E3),
               fontSize: 17,
               fontWeight: FontWeight.w800,
             ),
@@ -1225,7 +1225,7 @@ class _WalletScreenState extends State<WalletScreen> {
             _virtualAccountMessage(),
             textAlign: TextAlign.center,
             style: const TextStyle(
-              color: Color(0xFF64748B),
+              color: ServicePayColors.muted,
               fontSize: 13,
               height: 1.45,
             ),
@@ -1276,10 +1276,10 @@ class _WalletScreenState extends State<WalletScreen> {
 
   BoxDecoration _whiteCardDecoration() {
     return BoxDecoration(
-      color: Colors.white,
+      color: ServicePayColors.surface,
       borderRadius: BorderRadius.circular(22),
       border: Border.all(
-        color: const Color(0xFFE8EDF3),
+        color: const Color(0xFF49688D),
       ),
       boxShadow: [
         BoxShadow(
@@ -1318,7 +1318,7 @@ class _WalletScreenState extends State<WalletScreen> {
 
   Widget _buildAccountStatementEntry() {
     return Material(
-      color: Colors.white,
+      color: ServicePayColors.surface,
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
         onTap: () => Navigator.of(context).push(
@@ -1337,7 +1337,7 @@ class _WalletScreenState extends State<WalletScreen> {
                 backgroundColor: ServicePayColors.brandSoft,
                 child: Icon(
                   Icons.description_outlined,
-                  color: ServicePayColors.brand,
+                  color: ServicePayColors.accent,
                 ),
               ),
               SizedBox(width: 13),
@@ -1348,7 +1348,7 @@ class _WalletScreenState extends State<WalletScreen> {
                     Text(
                       'Generate Statement',
                       style: TextStyle(
-                        color: Color(0xFF0F172A),
+                        color: Color(0xFFA0B4E3),
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -1356,7 +1356,7 @@ class _WalletScreenState extends State<WalletScreen> {
                     Text(
                       'Get a server-prepared PDF for your chosen dates',
                       style: TextStyle(
-                        color: Color(0xFF64748B),
+                        color: ServicePayColors.muted,
                         fontSize: 12,
                       ),
                     ),
@@ -1365,7 +1365,7 @@ class _WalletScreenState extends State<WalletScreen> {
               ),
               Icon(
                 Icons.chevron_right_rounded,
-                color: Color(0xFF64748B),
+                color: ServicePayColors.muted,
               ),
             ],
           ),
@@ -1381,7 +1381,7 @@ class _WalletScreenState extends State<WalletScreen> {
         const Text(
           'Recent Transactions',
           style: TextStyle(
-            color: Color(0xFF0F172A),
+            color: Color(0xFFA0B4E3),
             fontSize: 19,
             fontWeight: FontWeight.w800,
           ),
@@ -1397,7 +1397,7 @@ class _WalletScreenState extends State<WalletScreen> {
             label: const Text(
               'See All Transactions',
               style: TextStyle(
-                color: ServicePayColors.brand,
+                color: ServicePayColors.accent,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -1416,7 +1416,7 @@ class _WalletScreenState extends State<WalletScreen> {
               separatorBuilder: (_, __) => const Divider(
                 height: 1,
                 indent: 76,
-                color: Color(0xFFEEF2F6),
+                color: Color(0xFF4A6B8C),
               ),
               itemBuilder: (
                 BuildContext context,
@@ -1444,14 +1444,14 @@ class _WalletScreenState extends State<WalletScreen> {
         children: [
           Icon(
             Icons.receipt_long_rounded,
-            color: ServicePayColors.brand,
+            color: ServicePayColors.accent,
             size: 42,
           ),
           SizedBox(height: 15),
           Text(
             'No transactions yet',
             style: TextStyle(
-              color: Color(0xFF0F172A),
+              color: Color(0xFFA0B4E3),
               fontSize: 16,
               fontWeight: FontWeight.w800,
             ),
@@ -1461,7 +1461,7 @@ class _WalletScreenState extends State<WalletScreen> {
             'Your wallet transactions will appear here.',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Color(0xFF64748B),
+              color: ServicePayColors.muted,
               fontSize: 13,
             ),
           ),
@@ -1511,7 +1511,7 @@ class _WalletScreenState extends State<WalletScreen> {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: const TextStyle(
-          color: Color(0xFF0F172A),
+          color: Color(0xFFA0B4E3),
           fontSize: 14,
           fontWeight: FontWeight.w700,
         ),

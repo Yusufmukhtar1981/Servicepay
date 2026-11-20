@@ -17,6 +17,7 @@ import 'forced_password_change_screen.dart';
 import 'admin/svp_command_center_screen.dart' deferred as svp;
 import 'widgets/deferred_screen.dart';
 import 'electricity_screen.dart';
+import 'servicepay_theme.dart';
 
 String normalizeLoginRole(dynamic value) {
   return value
@@ -217,6 +218,9 @@ Widget authenticatedHomeForRole(
   Map<String, dynamic> user = const <String, dynamic>{},
   AdminSessionService? adminSessionService,
 }) {
+  // Presentation only: staff keep the original light theme, customers get the
+  // premium green theme. Routing below is unchanged.
+  ServicePayThemeSelection.selectForRole(normalizeLoginRole(role));
   switch (normalizeLoginRole(role)) {
     case 'DELIVERY_RIDER':
       return DeferredScreen(
@@ -306,8 +310,9 @@ Widget authenticatedHomeForLogin(String role,
         {required bool mustChangePassword,
         Map<String, dynamic> user = const <String, dynamic>{},
         AdminSessionService? adminSessionService,
-        VoidCallback? onRelogin}) =>
-    mustChangePassword
+        VoidCallback? onRelogin}) {
+  ServicePayThemeSelection.selectForRole(normalizeLoginRole(role));
+  return mustChangePassword
         ? ForcedPasswordChangeScreen(
             role: normalizeLoginRole(role),
             staffUser: user,
@@ -318,6 +323,7 @@ Widget authenticatedHomeForLogin(String role,
             user: user,
             adminSessionService: adminSessionService,
           );
+}
 
 Map<String, dynamic> _mapFromDynamic(dynamic value) {
   return value is Map ? Map<String, dynamic>.from(value) : <String, dynamic>{};

@@ -909,7 +909,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     BuildContext context,
   ) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         backgroundColor: primaryGreen,
         foregroundColor: Colors.white,
@@ -948,7 +948,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       body: isLoading
           ? const Center(
               child: CircularProgressIndicator(
-                color: primaryGreen,
+                color: ServicePayColors.accent,
               ),
             )
           : errorMessage.isNotEmpty
@@ -1195,7 +1195,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             icon: Icons.card_giftcard_rounded,
                             title: 'My Referral',
                             subtitle: 'View, copy and share your referral code',
-                            iconColor: ServicePayColors.brand,
+                            iconColor: ServicePayColors.accent,
                             onTap: () {
                               Navigator.of(context).push(
                                 MaterialPageRoute(
@@ -1216,7 +1216,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             icon: Icons.delete_outline_rounded,
                             title: 'Delete Account or Request Data',
                             subtitle: 'Open the secure privacy request form',
-                            iconColor: const Color(0xFFB42318),
+                            iconColor: const Color(0xFFF19A93),
                             titleColor: const Color(0xFFB42318),
                             onTap: () async {
                               final messenger = ScaffoldMessenger.of(context);
@@ -1420,7 +1420,7 @@ class _ProfileHeader extends StatelessWidget {
                       decoration: BoxDecoration(
                         color: const Color(0xFF0F5F34),
                         shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 2),
+                        border: Border.all(color: ServicePayColors.border, width: 2),
                       ),
                       child: const Icon(
                         Icons.camera_alt_rounded,
@@ -1616,9 +1616,9 @@ class _KycTierCard extends StatelessWidget {
       key: const Key('profile-kyc-tier-card'),
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: ServicePayColors.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFDDE7DF)),
+        border: Border.all(color: ServicePayColors.border),
         boxShadow: const <BoxShadow>[
           BoxShadow(
             color: Color(0x0F0F3D24),
@@ -1632,7 +1632,7 @@ class _KycTierCard extends StatelessWidget {
               height: 110,
               child: Center(
                 child: CircularProgressIndicator(
-                  color: ServicePayColors.brand,
+                  color: ServicePayColors.accent,
                   strokeWidth: 2,
                 ),
               ),
@@ -1651,7 +1651,7 @@ class _KycTierCard extends StatelessWidget {
                       ),
                       child: const Icon(
                         Icons.workspace_premium_rounded,
-                        color: ServicePayColors.brand,
+                        color: ServicePayColors.accent,
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -1662,14 +1662,14 @@ class _KycTierCard extends StatelessWidget {
                           const Text(
                             'Verification tier',
                             style: TextStyle(
-                              color: Color(0xFF64748B),
+                              color: ServicePayColors.muted,
                               fontSize: 12,
                             ),
                           ),
                           Text(
                             'Tier $tierNumber',
                             style: const TextStyle(
-                              color: Color(0xFF17211A),
+                              color: ServicePayColors.ink,
                               fontSize: 19,
                               fontWeight: FontWeight.w900,
                             ),
@@ -1710,7 +1710,7 @@ class _KycTierCard extends StatelessWidget {
                         decoration: BoxDecoration(
                           color: active
                               ? ServicePayColors.brand
-                              : const Color(0xFFE2E8F0),
+                              : ServicePayColors.brandSoft,
                           borderRadius: BorderRadius.circular(20),
                         ),
                       ),
@@ -1722,7 +1722,7 @@ class _KycTierCard extends StatelessWidget {
                   Text(
                     'Upgrade request: ${requestedLevel.replaceAll('_', ' ')}',
                     style: const TextStyle(
-                      color: Color(0xFF1D4ED8),
+                      color: Color(0xFF93ACF1),
                       fontSize: 12,
                       fontWeight: FontWeight.w700,
                     ),
@@ -1753,7 +1753,7 @@ class _KycTierCard extends StatelessWidget {
                   Text(
                     reviewReason,
                     style: const TextStyle(
-                      color: Color(0xFFB45309),
+                      color: Color(0xFFF9BA8B),
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                     ),
@@ -1765,7 +1765,7 @@ class _KycTierCard extends StatelessWidget {
                   Text(
                     missingRequirements.first,
                     style: const TextStyle(
-                      color: Color(0xFF64748B),
+                      color: ServicePayColors.muted,
                       fontSize: 12,
                     ),
                   ),
@@ -1781,8 +1781,8 @@ class _KycTierCard extends StatelessWidget {
                       tierNumber < 3 ? 'Manage or upgrade KYC' : 'View KYC',
                     ),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: ServicePayColors.brand,
-                      side: const BorderSide(color: Color(0xFFB7D6BE)),
+                      foregroundColor: ServicePayColors.accent,
+                      side: const BorderSide(color: ServicePayColors.border),
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
                   ),
@@ -1802,7 +1802,7 @@ class _LimitItem extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.all(11),
         decoration: BoxDecoration(
-          color: const Color(0xFFF6F8F7),
+          color: ServicePayColors.surface,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
@@ -1810,13 +1810,13 @@ class _LimitItem extends StatelessWidget {
           children: [
             Text(
               label,
-              style: const TextStyle(color: Color(0xFF64748B), fontSize: 10),
+              style: const TextStyle(color: ServicePayColors.muted, fontSize: 10),
             ),
             const SizedBox(height: 3),
             Text(
               value,
               style: const TextStyle(
-                color: Color(0xFF17211A),
+                color: ServicePayColors.ink,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -1839,10 +1839,10 @@ class _WalletSummaryCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(17),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: ServicePayColors.surface,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: const Color(0xFFE8ECE8),
+          color: ServicePayColors.border,
         ),
       ),
       child: Row(
@@ -1858,7 +1858,7 @@ class _WalletSummaryCard extends StatelessWidget {
             ),
             child: const Icon(
               Icons.account_balance_wallet_rounded,
-              color: ServicePayColors.brand,
+              color: ServicePayColors.accent,
             ),
           ),
           const SizedBox(width: 13),
@@ -1869,7 +1869,7 @@ class _WalletSummaryCard extends StatelessWidget {
                 const Text(
                   'Wallet Balance',
                   style: TextStyle(
-                    color: Color(0xFF777D78),
+                    color: ServicePayColors.muted,
                     fontSize: 12,
                   ),
                 ),
@@ -1877,7 +1877,7 @@ class _WalletSummaryCard extends StatelessWidget {
                 Text(
                   '₦${balance.toStringAsFixed(2)}',
                   style: const TextStyle(
-                    color: Color(0xFF171A18),
+                    color: ServicePayColors.ink,
                     fontSize: 21,
                     fontWeight: FontWeight.w900,
                   ),
@@ -1887,7 +1887,7 @@ class _WalletSummaryCard extends StatelessWidget {
           ),
           const Icon(
             Icons.verified_user_rounded,
-            color: ServicePayColors.brand,
+            color: ServicePayColors.accent,
           ),
         ],
       ),
@@ -1909,7 +1909,7 @@ class _ProfileSectionTitle extends StatelessWidget {
     return Text(
       title,
       style: const TextStyle(
-        color: Color(0xFF171A18),
+        color: ServicePayColors.ink,
         fontSize: 17,
         fontWeight: FontWeight.w800,
       ),
@@ -1933,10 +1933,10 @@ class _ProfileInfoCard extends StatelessWidget {
         horizontal: 15,
       ),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: ServicePayColors.surface,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: const Color(0xFFE8ECE8),
+          color: ServicePayColors.border,
         ),
       ),
       child: Column(
@@ -1975,7 +1975,7 @@ class _ProfileInfoRow extends StatelessWidget {
         border: showDivider
             ? const Border(
                 bottom: BorderSide(
-                  color: Color(0xFFE8ECE8),
+                  color: ServicePayColors.border,
                 ),
               )
             : null,
@@ -1993,7 +1993,7 @@ class _ProfileInfoRow extends StatelessWidget {
             ),
             child: Icon(
               icon,
-              color: ServicePayColors.brand,
+              color: ServicePayColors.accent,
               size: 20,
             ),
           ),
@@ -2005,7 +2005,7 @@ class _ProfileInfoRow extends StatelessWidget {
                 Text(
                   label,
                   style: const TextStyle(
-                    color: Color(0xFF777D78),
+                    color: ServicePayColors.muted,
                     fontSize: 11,
                   ),
                 ),
@@ -2034,7 +2034,7 @@ class _ProfileInfoRow extends StatelessWidget {
               child: Text(
                 badge!,
                 style: const TextStyle(
-                  color: Color(0xFF2E7D32),
+                  color: ServicePayColors.accent,
                   fontSize: 10,
                   fontWeight: FontWeight.w800,
                 ),
@@ -2062,10 +2062,10 @@ class _ProfileActionCard extends StatelessWidget {
         horizontal: 8,
       ),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: ServicePayColors.surface,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: const Color(0xFFE8ECE8),
+          color: ServicePayColors.border,
         ),
       ),
       child: Column(
@@ -2112,7 +2112,7 @@ class _ProfileActionTile extends StatelessWidget {
           border: showDivider
               ? const Border(
                   bottom: BorderSide(
-                    color: Color(0xFFE8ECE8),
+                    color: ServicePayColors.border,
                   ),
                 )
               : null,
@@ -2156,7 +2156,7 @@ class _ProfileActionTile extends StatelessWidget {
                   Text(
                     subtitle,
                     style: const TextStyle(
-                      color: Color(0xFF777D78),
+                      color: ServicePayColors.muted,
                       fontSize: 11,
                     ),
                   ),
@@ -2396,7 +2396,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
         bottom: MediaQuery.of(context).viewInsets.bottom + 22,
       ),
       decoration: const BoxDecoration(
-        color: Colors.white,
+        color: ServicePayColors.surface,
         borderRadius: BorderRadius.vertical(
           top: Radius.circular(26),
         ),
@@ -2415,7 +2415,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                     width: 46,
                     height: 5,
                     decoration: BoxDecoration(
-                      color: Colors.grey.shade300,
+                      color: ServicePayColors.surface,
                       borderRadius: BorderRadius.circular(
                         20,
                       ),
@@ -2717,7 +2717,7 @@ class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
         bottom: MediaQuery.of(context).viewInsets.bottom + 22,
       ),
       decoration: const BoxDecoration(
-        color: Colors.white,
+        color: ServicePayColors.surface,
         borderRadius: BorderRadius.vertical(
           top: Radius.circular(26),
         ),
@@ -2736,7 +2736,7 @@ class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
                     width: 46,
                     height: 5,
                     decoration: BoxDecoration(
-                      color: Colors.grey.shade300,
+                      color: ServicePayColors.surface,
                       borderRadius: BorderRadius.circular(
                         20,
                       ),
@@ -2887,14 +2887,14 @@ class _ProfileTextField extends StatelessWidget {
         labelText: label,
         prefixIcon: Icon(
           icon,
-          color: ServicePayColors.brand,
+          color: ServicePayColors.accent,
         ),
         filled: true,
-        fillColor: const Color(0xFFF8FAFC),
+        fillColor: ServicePayColors.surface,
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: const BorderSide(
-            color: Color(0xFFE8ECE8),
+            color: ServicePayColors.border,
           ),
         ),
         focusedBorder: OutlineInputBorder(
@@ -2951,7 +2951,7 @@ class _PasswordField extends StatelessWidget {
         labelText: label,
         prefixIcon: const Icon(
           Icons.lock_outline_rounded,
-          color: ServicePayColors.brand,
+          color: ServicePayColors.accent,
         ),
         suffixIcon: IconButton(
           onPressed: onToggle,
@@ -2962,11 +2962,11 @@ class _PasswordField extends StatelessWidget {
           ),
         ),
         filled: true,
-        fillColor: const Color(0xFFF8FAFC),
+        fillColor: ServicePayColors.surface,
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: const BorderSide(
-            color: Color(0xFFE8ECE8),
+            color: ServicePayColors.border,
           ),
         ),
         focusedBorder: OutlineInputBorder(
@@ -3013,12 +3013,12 @@ class _ProfileErrorState extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: ServicePayColors.surface,
             borderRadius: BorderRadius.circular(
               18,
             ),
             border: Border.all(
-              color: const Color(0xFFFECACA),
+              color: const Color(0xFFAB2B2B),
             ),
           ),
           child: Column(
@@ -3026,7 +3026,7 @@ class _ProfileErrorState extends StatelessWidget {
             children: [
               const Icon(
                 Icons.error_outline_rounded,
-                color: Color(0xFFDC2626),
+                color: Color(0xFFEE9696),
                 size: 50,
               ),
               const SizedBox(
@@ -3036,7 +3036,7 @@ class _ProfileErrorState extends StatelessWidget {
                 message,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
-                  color: Color(0xFF6B7280),
+                  color: ServicePayColors.muted,
                   height: 1.4,
                 ),
               ),

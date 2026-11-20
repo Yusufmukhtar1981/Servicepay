@@ -326,7 +326,7 @@ class _CashbackScreenState extends State<CashbackScreen> {
       child: ListTile(
         leading: const CircleAvatar(
             backgroundColor: ServicePayColors.brandSoft,
-            child: Icon(Icons.savings_outlined, color: ServicePayColors.brand)),
+            child: Icon(Icons.savings_outlined, color: ServicePayColors.accent)),
         title: Text((item['description'] ?? 'Cashback activity').toString(),
             style: const TextStyle(fontWeight: FontWeight.w800)),
         subtitle: Text(
@@ -334,7 +334,7 @@ class _CashbackScreenState extends State<CashbackScreen> {
         isThreeLine: true,
         trailing: Text(formatKobo(item['amountMinor']),
             style: const TextStyle(
-                fontWeight: FontWeight.w900, color: ServicePayColors.brand)),
+                fontWeight: FontWeight.w900, color: ServicePayColors.accent)),
       ),
     );
   }
@@ -343,9 +343,9 @@ class _CashbackScreenState extends State<CashbackScreen> {
         padding: const EdgeInsets.all(16),
         margin: const EdgeInsets.only(bottom: 12),
         decoration: BoxDecoration(
-            color: const Color(0xFFFFF2EF),
+            color: const Color(0xFF4B2016),
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: const Color(0xFFE9B8AE))),
+            border: Border.all(color: const Color(0xFFA8432E))),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           const Text('Cashback unavailable',
               style: TextStyle(
@@ -364,12 +364,12 @@ class _CashbackScreenState extends State<CashbackScreen> {
   Widget _emptyCashback() => Container(
         padding: const EdgeInsets.symmetric(vertical: 30, horizontal: 20),
         decoration: BoxDecoration(
-            color: Colors.white,
+            color: ServicePayColors.surface,
             borderRadius: BorderRadius.circular(18),
             border: Border.all(color: ServicePayColors.border)),
         child: const Column(children: [
           Icon(Icons.receipt_long_outlined,
-              size: 34, color: ServicePayColors.brand),
+              size: 34, color: ServicePayColors.accent),
           SizedBox(height: 10),
           Text('No cashback activity yet',
               style: TextStyle(
@@ -520,7 +520,7 @@ class _GenerateStatementScreenState extends State<GenerateStatementScreen> {
           Card(
               child: ListTile(
             leading: const Icon(Icons.calendar_month_outlined,
-                color: ServicePayColors.brand),
+                color: ServicePayColors.accent),
             title: Text('${_dateKey(_range.start)}  —  ${_dateKey(_range.end)}',
                 style: const TextStyle(fontWeight: FontWeight.w800)),
             subtitle: const Text('Select a start and end date'),

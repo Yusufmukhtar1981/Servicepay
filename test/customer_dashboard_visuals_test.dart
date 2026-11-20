@@ -108,10 +108,10 @@ void main() {
     );
     final Text balance =
         tester.widget<Text>(find.byKey(const Key('dashboard-balance-value')));
-    expect(balance.style?.color, Colors.white);
+    expect(balance.style?.color, CustomerDashboardPalette.onWallet);
     expect(
       tester.widget<Text>(find.text('Available Balance').first).style?.color,
-      Colors.white,
+      CustomerDashboardPalette.onWallet,
     );
     for (final Key actionKey in <Key>[
       const Key('dashboard-add-money-action'),
@@ -121,7 +121,8 @@ void main() {
       expect(action, findsOneWidget);
       final bool filled =
           actionKey == const Key('dashboard-add-money-action');
-      final Color foreground = filled ? const Color(0xFF064120) : Colors.white;
+      final Color foreground =
+          filled ? Colors.white : CustomerDashboardPalette.onWallet;
       final Color actionBackground = tester.widget<Material>(action).color!;
       final double foregroundLuminance = foreground.computeLuminance();
       final double backgroundLuminance = actionBackground.computeLuminance();

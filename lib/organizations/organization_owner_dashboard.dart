@@ -592,7 +592,7 @@ class _OrganizationOwnerDashboardState
                           icon: Icon(_dashboardIcon(name)),
                           selectedIcon: Icon(
                             _dashboardIcon(name),
-                            color: ServicePayColors.brand,
+                            color: ServicePayColors.accent,
                           ),
                           label: Text(name),
                         ),
@@ -755,7 +755,7 @@ List<Map<String, dynamic>> _list(Map<String, dynamic> source, String key) =>
         : <Map<String, dynamic>>[];
 Widget _empty(String label) => Padding(
       padding: const EdgeInsets.symmetric(vertical: 24),
-      child: Text(label, style: const TextStyle(color: Colors.black54)),
+      child: Text(label, style: const TextStyle(color: ServicePayColors.muted)),
     );
 
 class OwnerOverviewSection extends StatelessWidget {
@@ -1220,7 +1220,7 @@ Future<Map<String, dynamic>?> _feeForm(
                     alignment: Alignment.centerLeft,
                     child: Text(
                       'Installment accounting is not supported.',
-                      style: TextStyle(color: Colors.black54),
+                      style: TextStyle(color: ServicePayColors.muted),
                     ),
                   ),
                 ],

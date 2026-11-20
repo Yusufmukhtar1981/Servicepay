@@ -105,11 +105,11 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
         ),
       ),
 
-      backgroundColor: const Color(0xFFF7F9F8),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         title: const Text('Marketplace'),
-        backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF15201B),
+        backgroundColor: ServicePayColors.canvas,
+        foregroundColor: ServicePayColors.accent,
         elevation: 0,
         actions: [
           IconButton(
@@ -234,7 +234,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                 hintText: 'Search Marketplace',
                 prefixIcon: const Icon(Icons.search_rounded),
                 filled: true,
-                fillColor: Colors.white,
+                fillColor: ServicePayColors.surface,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(18),
                   borderSide: BorderSide.none,
@@ -256,7 +256,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                 Text(
                   '${products.length} items',
                   style: const TextStyle(
-                    color: Colors.black54,
+                    color: ServicePayColors.muted,
                   ),
                 ),
               ],
@@ -299,7 +299,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                       Icon(
                         Icons.storefront_outlined,
                         size: 50,
-                        color: Colors.black38,
+                        color: ServicePayColors.muted,
                       ),
                       SizedBox(height: 14),
                       Text(
@@ -341,10 +341,10 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                     },
                     child: Container(
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: ServicePayColors.surface,
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
-                          color: const Color(0xFFE8ECEA),
+                          color: ServicePayColors.border,
                         ),
                       ),
                       child: Column(
@@ -392,7 +392,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
-                                    color: Colors.black54,
+                                    color: ServicePayColors.muted,
                                     fontSize: 12,
                                   ),
                                 ),
@@ -402,7 +402,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                                     product['price'],
                                   ),
                                   style: const TextStyle(
-                                    color: ServicePayColors.brand,
+                                    color: ServicePayColors.accent,
                                     fontWeight: FontWeight.w800,
                                     fontSize: 16,
                                   ),
@@ -434,7 +434,7 @@ class _ProductPlaceholder extends StatelessWidget {
       child: const Icon(
         Icons.shopping_bag_outlined,
         size: 44,
-        color: ServicePayColors.brand,
+        color: ServicePayColors.accent,
       ),
     );
   }

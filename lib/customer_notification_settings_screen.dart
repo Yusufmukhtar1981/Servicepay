@@ -6,6 +6,7 @@ import 'services/customer_alert_media.dart';
 import 'services/customer_notification_settings.dart';
 import 'services/customer_settings_events.dart';
 import 'services/session_store.dart';
+import 'servicepay_theme.dart';
 
 class CustomerNotificationSettingsScreen extends StatefulWidget {
   const CustomerNotificationSettingsScreen({super.key, this.api, this.media});
@@ -118,7 +119,7 @@ class _CustomerNotificationSettingsScreenState
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: const Color(0xFFF5F8F5),
+        backgroundColor: ServicePayColors.canvas,
         appBar: AppBar(
           title: const Text('Dashboard & alerts'),
           backgroundColor: const Color(0xFF087D3B),
@@ -128,7 +129,7 @@ class _CustomerNotificationSettingsScreenState
             ? const Center(
                 child: SizedBox(
                   width: 280,
-                  child: LinearProgressIndicator(color: Color(0xFF087D3B)),
+                  child: LinearProgressIndicator(color: ServicePayColors.accent),
                 ),
               )
             : RefreshIndicator(
@@ -142,7 +143,7 @@ class _CustomerNotificationSettingsScreenState
                     const SizedBox(height: 6),
                     const Text(
                       'Choose how your dashboard looks and how you hear about wallet credits.',
-                      style: TextStyle(height: 1.45, color: Color(0xFF59685E)),
+                      style: TextStyle(height: 1.45, color: ServicePayColors.muted),
                     ),
                     if (_error != null) ...<Widget>[
                       const SizedBox(height: 16),
@@ -178,7 +179,7 @@ class _CustomerNotificationSettingsScreenState
                         onChanged: _saving == null
                             ? (value) => _update('soundNotifications', value)
                             : null,
-                        activeColor: const Color(0xFF087D3B),
+                        activeColor: ServicePayColors.accent,
                       ),
                     ),
                     const SizedBox(height: 14),
@@ -213,7 +214,7 @@ class _CustomerNotificationSettingsScreenState
                         onChanged: _saving == null
                             ? (value) => _update('voiceAnnouncements', value)
                             : null,
-                        activeColor: const Color(0xFF087D3B),
+                        activeColor: ServicePayColors.accent,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -233,7 +234,7 @@ class _CustomerNotificationSettingsScreenState
                     ),
                     if (_saving != null) ...<Widget>[
                       const SizedBox(height: 16),
-                      const LinearProgressIndicator(color: Color(0xFF087D3B)),
+                      const LinearProgressIndicator(color: ServicePayColors.accent),
                     ],
                   ],
                 ),
@@ -255,9 +256,9 @@ class _PreferenceCard extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.fromLTRB(16, 16, 12, 12),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: ServicePayColors.surface,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0xFFDDE9DF)),
+          border: Border.all(color: ServicePayColors.border),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -267,7 +268,7 @@ class _PreferenceCard extends StatelessWidget {
                     const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
             const SizedBox(height: 4),
             Text(subtitle,
-                style: const TextStyle(color: Color(0xFF657269), height: 1.4)),
+                style: const TextStyle(color: ServicePayColors.muted, height: 1.4)),
             const SizedBox(height: 12),
             child,
           ],
@@ -284,15 +285,15 @@ class _SettingsError extends StatelessWidget {
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: const Color(0xFFFFF4EE),
+          color: const Color(0xFF4B2916),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFFE8C4B0)),
+          border: Border.all(color: const Color(0xFFA65A30)),
         ),
         child: Row(
           children: <Widget>[
             Expanded(
                 child: Text(message,
-                    style: const TextStyle(color: Color(0xFF713E2A)))),
+                    style: const TextStyle(color: Color(0xFFE3B3A0)))),
             TextButton(onPressed: onRetry, child: const Text('Retry')),
           ],
         ),

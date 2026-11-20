@@ -106,7 +106,7 @@ class CustomerChampionsDashboardEntryState
           label: 'Checking monthly Champions availability',
           child: LinearProgressIndicator(
             semanticsLabel: 'Checking monthly Champions availability',
-            color: ServicePayColors.brand,
+            color: ServicePayColors.accent,
           ),
         ),
       );
@@ -121,7 +121,7 @@ class CustomerChampionsDashboardEntryState
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
-              color: const Color(0xFFF5EDE2),
+              color: const Color(0xFF483419),
               borderRadius: BorderRadius.circular(14),
             ),
             child: Row(
@@ -129,7 +129,7 @@ class CustomerChampionsDashboardEntryState
                 const Expanded(
                   child: Text(
                     'Champions is temporarily unavailable.',
-                    style: TextStyle(color: Color(0xFF634F38), fontSize: 12),
+                    style: TextStyle(color: Color(0xFFE3C4A0), fontSize: 12),
                   ),
                 ),
                 TextButton(
@@ -149,9 +149,9 @@ class CustomerChampionsDashboardEntryState
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: const Color(0xFFEAF4EC),
+          color: ServicePayColors.brandSoft,
           borderRadius: BorderRadius.circular(19),
-          border: Border.all(color: const Color(0xFFD5E7D9)),
+          border: Border.all(color: ServicePayColors.border),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -175,14 +175,14 @@ class CustomerChampionsDashboardEntryState
                     children: [
                       Text('SERVICEPAY CHAMPIONS',
                           style: TextStyle(
-                              color: Color(0xFF18382F),
+                              color: ServicePayColors.accent,
                               fontWeight: FontWeight.w900,
                               fontSize: 12,
                               letterSpacing: .6)),
                       SizedBox(height: 3),
                       Text('Monthly activity, recognised privately.',
                           style: TextStyle(
-                              color: Color(0xFF5D7065), fontSize: 11)),
+                              color: ServicePayColors.muted, fontSize: 11)),
                     ],
                   ),
                 ),
@@ -192,7 +192,7 @@ class CustomerChampionsDashboardEntryState
             const Text(
               'A clear record of everyday transactions. No rewards; names stay masked unless you opt in.',
               style: TextStyle(
-                  color: Color(0xFF526A5D), fontSize: 11, height: 1.4),
+                  color: ServicePayColors.muted, fontSize: 11, height: 1.4),
             ),
             const SizedBox(height: 13),
             CustomerLeaderboardReportPanel(

@@ -154,7 +154,7 @@ class _ProgramSponsorScreenState extends State<ProgramSponsorScreen> {
                   const SizedBox(height: 6),
                   const Text(
                     'ServicePay administration will verify the sponsor before program creation is unlocked.',
-                    style: TextStyle(color: Color(0xFF667085)),
+                    style: TextStyle(color: ServicePayColors.muted),
                   ),
                   const SizedBox(height: 18),
                   _field(fields['name']!, 'Organization name'),
@@ -419,7 +419,7 @@ class _ProgramSponsorScreenState extends State<ProgramSponsorScreen> {
         ),
         child: Text(value.replaceAll('_', ' '),
             style: const TextStyle(
-              color: Color(0xFF08783E),
+              color: ServicePayColors.accent,
               fontSize: 10,
               fontWeight: FontWeight.w800,
             )),
@@ -429,16 +429,16 @@ class _ProgramSponsorScreenState extends State<ProgramSponsorScreen> {
         child: Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: ServicePayColors.surface,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFFE4ECE6)),
+            border: Border.all(color: ServicePayColors.border),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               Text(label,
                   style: const TextStyle(
-                      color: Color(0xFF667085), fontSize: 11)),
+                      color: ServicePayColors.muted, fontSize: 11)),
               const SizedBox(height: 4),
               Text(_text(value, '0'),
                   style: const TextStyle(fontWeight: FontWeight.w900)),
@@ -457,7 +457,7 @@ class _ProgramSponsorScreenState extends State<ProgramSponsorScreen> {
           backgroundColor: ServicePayColors.brandSoft,
           child: Icon(
             Icons.account_balance_outlined,
-            color: ServicePayColors.brand,
+            color: ServicePayColors.accent,
           ),
         ),
         title: Text(_text(organization['name'])),
@@ -491,7 +491,7 @@ class _ProgramSponsorScreenState extends State<ProgramSponsorScreen> {
                   backgroundColor: ServicePayColors.brandSoft,
                   child: Icon(
                     Icons.workspace_premium_outlined,
-                    color: ServicePayColors.brand,
+                    color: ServicePayColors.accent,
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -507,7 +507,7 @@ class _ProgramSponsorScreenState extends State<ProgramSponsorScreen> {
             Text(
               '${_money(program['amountPerBeneficiary'])} benefit · ${_text(program['state'], 'Nationwide')}',
               style: const TextStyle(
-                  color: ServicePayColors.brand,
+                  color: ServicePayColors.accent,
                   fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 12),
@@ -523,7 +523,7 @@ class _ProgramSponsorScreenState extends State<ProgramSponsorScreen> {
             const SizedBox(height: 10),
             Text(
               '${_text(activity['applications'], '0')} applications · ${_text(activity['beneficiaries'], '0')} beneficiaries · ${_text(activity['paid'], '0')} paid',
-              style: const TextStyle(color: Color(0xFF667085)),
+              style: const TextStyle(color: ServicePayColors.muted),
             ),
             if (draft) ...<Widget>[
               const SizedBox(height: 10),
@@ -544,7 +544,7 @@ class _ProgramSponsorScreenState extends State<ProgramSponsorScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F9F8),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         title: const Text('Program Sponsor'),
         backgroundColor: const Color(0xFF003F26),
@@ -579,7 +579,7 @@ class _ProgramSponsorScreenState extends State<ProgramSponsorScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: <Widget>[
                         const Icon(Icons.error_outline,
-                            size: 48, color: Color(0xFFB42318)),
+                            size: 48, color: Color(0xFFF19A93)),
                         const SizedBox(height: 12),
                         Text(_error, textAlign: TextAlign.center),
                         const SizedBox(height: 14),
@@ -692,9 +692,9 @@ class _ProgramSponsorScreenState extends State<ProgramSponsorScreen> {
       Container(
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: ServicePayColors.surface,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0xFFE4ECE6)),
+          border: Border.all(color: ServicePayColors.border),
         ),
         child: Column(
           children: <Widget>[
@@ -707,7 +707,7 @@ class _ProgramSponsorScreenState extends State<ProgramSponsorScreen> {
             const SizedBox(height: 6),
             Text(description,
                 textAlign: TextAlign.center,
-                style: const TextStyle(color: Color(0xFF667085))),
+                style: const TextStyle(color: ServicePayColors.muted)),
             const SizedBox(height: 14),
             OutlinedButton(onPressed: action, child: Text(actionLabel)),
           ],

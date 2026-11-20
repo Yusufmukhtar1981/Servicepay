@@ -6,7 +6,6 @@ import '../servicepay_theme.dart';
 class TrustDashboardEntry extends StatelessWidget {
   const TrustDashboardEntry({super.key});
 
-  static const Color _green = ServicePayColors.brand;
   static const Color _softGreen = ServicePayColors.brandSoft;
 
   @override
@@ -31,13 +30,13 @@ class TrustDashboardEntry extends StatelessWidget {
             decoration: BoxDecoration(
               color: _softGreen,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFBCE6CB)),
+              border: Border.all(color: ServicePayColors.border),
             ),
             child: const Row(
               children: <Widget>[
                 Icon(
                   Icons.shield_outlined,
-                  color: _green,
+                  color: ServicePayColors.accent,
                   size: 26,
                 ),
                 SizedBox(width: 11),
@@ -48,7 +47,7 @@ class TrustDashboardEntry extends StatelessWidget {
                       Text(
                         'ServicePay Trust',
                         style: TextStyle(
-                          color: Color(0xFF17231D),
+                          color: ServicePayColors.accent,
                           fontSize: 14,
                           fontWeight: FontWeight.w800,
                         ),
@@ -57,7 +56,7 @@ class TrustDashboardEntry extends StatelessWidget {
                       Text(
                         'Verify Before You Pay',
                         style: TextStyle(
-                          color: _green,
+                          color: ServicePayColors.accent,
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
                         ),
@@ -67,7 +66,7 @@ class TrustDashboardEntry extends StatelessWidget {
                 ),
                 Icon(
                   Icons.chevron_right_rounded,
-                  color: _green,
+                  color: ServicePayColors.accent,
                 ),
               ],
             ),

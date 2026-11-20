@@ -323,7 +323,7 @@ class _EduPayScreenState extends State<EduPayScreen> {
           const SizedBox(height: 5),
           const Text(
             'Build steadily. See every naira. Stay ready for the term.',
-            style: TextStyle(color: Color(0xff60736b)),
+            style: TextStyle(color: ServicePayColors.muted),
           ),
           const SizedBox(height: 22),
           const Text(
@@ -452,7 +452,7 @@ class _EduPayScreenState extends State<EduPayScreen> {
               child: ListTile(
                 leading: const Icon(
                   Icons.insights_outlined,
-                  color: ServicePayColors.brand,
+                  color: ServicePayColors.accent,
                 ),
                 title: const Text('School updates for your children'),
                 subtitle: Text(
@@ -483,7 +483,7 @@ class _EduPayScreenState extends State<EduPayScreen> {
                 onPressed: () => _initiationGuard(_newChild),
                 icon: const Icon(
                   Icons.add_circle,
-                  color: ServicePayColors.brand,
+                  color: ServicePayColors.accent,
                 ),
               ),
             ],
@@ -494,7 +494,7 @@ class _EduPayScreenState extends State<EduPayScreen> {
               leading:
                   const Icon(
                     Icons.search_outlined,
-                    color: ServicePayColors.brand,
+                    color: ServicePayColors.accent,
                   ),
               title: const Text("Can't find your school?"),
               subtitle: const Text(
@@ -578,7 +578,7 @@ class _EduPayScreenState extends State<EduPayScreen> {
         child: ListTile(
           leading: const Icon(
             Icons.event_available,
-            color: ServicePayColors.brand,
+            color: ServicePayColors.accent,
           ),
           title: const Text('Upcoming school fee'),
           subtitle:
@@ -641,7 +641,7 @@ class _EduPayScreenState extends State<EduPayScreen> {
                 children: [
                   const CircleAvatar(
                     backgroundColor: ServicePayColors.brandSoft,
-                    child: Icon(Icons.school, color: ServicePayColors.brand),
+                    child: Icon(Icons.school, color: ServicePayColors.accent),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -1329,7 +1329,7 @@ class _EduPayScreenState extends State<EduPayScreen> {
   Widget _action(String a, String b, IconData i, VoidCallback tap) => Card(
         child: ListTile(
           onTap: tap,
-          leading: Icon(i, color: ServicePayColors.brand),
+          leading: Icon(i, color: ServicePayColors.accent),
           title: Text(a, style: const TextStyle(fontWeight: FontWeight.w700)),
           subtitle: Text(b),
           trailing: const Icon(Icons.chevron_right),
@@ -1423,7 +1423,7 @@ class _EduPayPlanDetailState extends State<EduPayPlanDetail> {
                     style: const TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.w800,
-                      color: ServicePayColors.brand,
+                      color: ServicePayColors.accent,
                     ),
                   ),
                   const Divider(height: 28),
@@ -1680,7 +1680,7 @@ class _EduPayPlanDetailState extends State<EduPayPlanDetail> {
               child: ListTile(
                 leading: const Icon(
                   Icons.receipt_long_outlined,
-                  color: ServicePayColors.brand,
+                  color: ServicePayColors.accent,
                 ),
                 title: const Text('Repayment status'),
                 subtitle: Text(
@@ -1733,7 +1733,7 @@ class _EduPayPlanDetailState extends State<EduPayPlanDetail> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(label, style: const TextStyle(color: Color(0xff60736b))),
+            Text(label, style: const TextStyle(color: ServicePayColors.muted)),
             const SizedBox(width: 12),
             Flexible(
               child: Text(
@@ -1761,7 +1761,7 @@ class _Skeleton extends StatelessWidget {
             height: i == 0 ? 130 : 64,
             margin: const EdgeInsets.only(bottom: 14),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: ServicePayColors.surface,
               borderRadius: BorderRadius.circular(18),
             ),
           ),
@@ -1783,7 +1783,7 @@ class _Error extends StatelessWidget {
               const Icon(
                 Icons.cloud_off_outlined,
                 size: 48,
-                color: ServicePayColors.brand,
+                color: ServicePayColors.accent,
               ),
               const SizedBox(height: 12),
               Text(message, textAlign: TextAlign.center),
@@ -1809,7 +1809,7 @@ class _Empty extends StatelessWidget {
             Text(
               text,
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Color(0xff60736b)),
+              style: const TextStyle(color: ServicePayColors.muted),
             ),
           ],
         ),
@@ -1825,14 +1825,14 @@ class _Notice extends StatelessWidget {
         padding: const EdgeInsets.all(15),
         decoration: BoxDecoration(
           color:
-              warning ? const Color(0xfffff5df) : ServicePayColors.brandSoft,
+              warning ? const Color(0xFF4B3A16) : ServicePayColors.brandSoft,
           borderRadius: BorderRadius.circular(16),
         ),
         child: Row(
           children: [
             Icon(
               warning ? Icons.info_outline : Icons.verified_outlined,
-              color: ServicePayColors.brand,
+              color: ServicePayColors.accent,
             ),
             const SizedBox(width: 10),
             Expanded(child: Text(text)),
@@ -1848,12 +1848,12 @@ Widget _metric(String label, String value, IconData icon) => Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(icon, size: 20, color: ServicePayColors.brand),
+              Icon(icon, size: 20, color: ServicePayColors.accent),
               const SizedBox(height: 7),
               Text(value, style: const TextStyle(fontWeight: FontWeight.w800)),
               Text(
                 label,
-                style: const TextStyle(fontSize: 11, color: Color(0xff60736b)),
+                style: const TextStyle(fontSize: 11, color: ServicePayColors.muted),
               ),
             ],
           ),

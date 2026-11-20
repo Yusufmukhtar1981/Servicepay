@@ -17,7 +17,6 @@ class AiSupportScreen extends StatefulWidget {
 
 class _AiSupportScreenState extends State<AiSupportScreen> {
   static const Color primaryGreen = ServicePayColors.brand;
-  static const Color darkGreen = ServicePayColors.brandDeep;
   static const Color background = ServicePayColors.canvas;
   static const String welcomeMessage =
       'Hello. I am ServicePay AI Support. I can help with transfers, wallet funding, airtime, data, electricity, cable TV, delivery, KYC and other ServicePay services.';
@@ -635,8 +634,8 @@ class _AiSupportScreenState extends State<AiSupportScreen> {
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
       decoration: const BoxDecoration(
-        color: Color(0xFFE8F3EC),
-        border: Border(bottom: BorderSide(color: Color(0xFFD4E6DA))),
+        color: ServicePayColors.brandSoft,
+        border: Border(bottom: BorderSide(color: ServicePayColors.border)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -644,13 +643,13 @@ class _AiSupportScreenState extends State<AiSupportScreen> {
           Row(
             children: [
               const Icon(Icons.verified_user_outlined,
-                  color: darkGreen, size: 18),
+                  color: ServicePayColors.accent, size: 18),
               const SizedBox(width: 8),
               const Expanded(
                 child: Text(
                   'AI assistant. Never shares or moves your money.',
                   style: TextStyle(
-                    color: darkGreen,
+                    color: ServicePayColors.accent,
                     fontSize: 12,
                     fontWeight: FontWeight.w800,
                   ),
@@ -677,7 +676,7 @@ class _AiSupportScreenState extends State<AiSupportScreen> {
             'Do not share your password, transaction PIN, or OTP. '
             'Kada ka tura kalmar sirri, PIN ko OTP.',
             style:
-                TextStyle(fontSize: 11, height: 1.35, color: Color(0xFF345342)),
+                TextStyle(fontSize: 11, height: 1.35, color: ServicePayColors.accent),
           ),
           if (_capabilities['hausaVoiceEnabled'] != true ||
               _capabilities['englishVoiceEnabled'] != true)
@@ -690,7 +689,7 @@ class _AiSupportScreenState extends State<AiSupportScreen> {
                     'Voice verification is unavailable. Hausa text support remains available.',
                     style: TextStyle(
                       fontSize: 10.5,
-                      color: Color(0xFF52685B),
+                      color: ServicePayColors.muted,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -698,7 +697,7 @@ class _AiSupportScreenState extends State<AiSupportScreen> {
                     'Idan kana bukatar taimako da Hausa, ka rubuta tambayarka da Hausa.',
                     style: TextStyle(
                       fontSize: 10.5,
-                      color: Color(0xFF52685B),
+                      color: ServicePayColors.muted,
                       height: 1.35,
                     ),
                   ),
@@ -728,7 +727,7 @@ class _AiSupportScreenState extends State<AiSupportScreen> {
               onPressed: _feedbackSent ? null : () => _sendFeedback(rating),
               icon: Icon(
                 rating <= _rating ? Icons.star : Icons.star_border,
-                color: const Color(0xFFB67A18),
+                color: const Color(0xFFF1CD93),
                 size: 21,
               ),
             ),
@@ -750,12 +749,12 @@ class _AiSupportScreenState extends State<AiSupportScreen> {
               child: ActionChip(
                 label: Text(question),
                 labelStyle: const TextStyle(
-                  color: darkGreen,
+                  color: ServicePayColors.accent,
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
                 ),
-                backgroundColor: const Color(0xFFE5F4EA),
-                side: const BorderSide(color: Color(0xFFCBE8D5)),
+                backgroundColor: ServicePayColors.brandSoft,
+                side: const BorderSide(color: ServicePayColors.border),
                 onPressed: _isSending
                     ? null
                     : () {
@@ -780,8 +779,8 @@ class _AiSupportScreenState extends State<AiSupportScreen> {
           icon: const Icon(Icons.support_agent_rounded, size: 19),
           label: const Text('Contact Human Support'),
           style: OutlinedButton.styleFrom(
-            foregroundColor: primaryGreen,
-            side: const BorderSide(color: Color(0xFF9ED3B1)),
+            foregroundColor: ServicePayColors.accent,
+            side: const BorderSide(color: ServicePayColors.border),
             padding: const EdgeInsets.symmetric(vertical: 12),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(14),
@@ -800,9 +799,9 @@ class _AiSupportScreenState extends State<AiSupportScreen> {
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
       decoration: const BoxDecoration(
-        color: Colors.white,
+        color: ServicePayColors.surface,
         border: Border(
-          top: BorderSide(color: Color(0xFFE1EDE5)),
+          top: BorderSide(color: ServicePayColors.border),
         ),
       ),
       child: Column(
@@ -827,7 +826,7 @@ class _AiSupportScreenState extends State<AiSupportScreen> {
               child: Row(
                 children: [
                   const Icon(Icons.fiber_manual_record,
-                      color: Colors.red, size: 16),
+                      color: Color(0xFFF9928B), size: 16),
                   const SizedBox(width: 7),
                   Expanded(
                       child: Text('Recording · ${_recordingSeconds}s / 30s')),
@@ -881,7 +880,7 @@ class _AiSupportScreenState extends State<AiSupportScreen> {
                         ? 'Ask ServicePay AI Support...'
                         : 'AI Support is currently unavailable',
                     filled: true,
-                    fillColor: const Color(0xFFF3F7F4),
+                    fillColor: ServicePayColors.surface,
                     contentPadding: const EdgeInsets.symmetric(
                       horizontal: 15,
                       vertical: 12,
@@ -917,7 +916,7 @@ class _AiSupportScreenState extends State<AiSupportScreen> {
 
   Widget _buildVoicePreview() => Container(
         padding: const EdgeInsets.fromLTRB(14, 9, 14, 10),
-        color: const Color(0xFFFFF7E8),
+        color: const Color(0xFF4B3916),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -935,7 +934,7 @@ class _AiSupportScreenState extends State<AiSupportScreen> {
                 isDense: true,
                 border: OutlineInputBorder(),
                 filled: true,
-                fillColor: Colors.white,
+                fillColor: ServicePayColors.surface,
               ),
             ),
             Align(
@@ -989,7 +988,7 @@ class _ChatBubble extends StatelessWidget {
             bottomLeft: Radius.circular(isUser ? 18 : 4),
             bottomRight: Radius.circular(isUser ? 4 : 18),
           ),
-          border: isUser ? null : Border.all(color: const Color(0xFFDDEBE1)),
+          border: isUser ? null : Border.all(color: ServicePayColors.border),
           boxShadow: const <BoxShadow>[
             BoxShadow(
               color: Color(0x0A163322),
@@ -1167,7 +1166,7 @@ class _RecordPickerState extends State<_RecordPicker> {
                                 trailing: widget.selectedId == record.id
                                     ? const Icon(
                                         Icons.check_circle,
-                                        color: ServicePayColors.brand,
+                                        color: ServicePayColors.accent,
                                       )
                                     : const Icon(Icons.chevron_right),
                                 onTap: () => widget.onSelect(record),
@@ -1197,9 +1196,9 @@ class _EvidenceCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
-        color: const Color(0xFFEAF3F8),
+        color: const Color(0xFF183749),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFC7DCE8)),
+        border: Border.all(color: const Color(0xFF3E7798)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1207,7 +1206,7 @@ class _EvidenceCard extends StatelessWidget {
           const Row(
             children: [
               Icon(Icons.fact_check_outlined,
-                  size: 17, color: Color(0xFF285A72)),
+                  size: 17, color: Color(0xFFA0CEE3)),
               SizedBox(width: 7),
               Text('Stored ServicePay record',
                   style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12)),
@@ -1260,7 +1259,7 @@ class _LoadingBubble extends StatelessWidget {
         width: width,
         height: 62,
         decoration: BoxDecoration(
-          color: const Color(0xFFE5EEE8),
+          color: ServicePayColors.surface,
           borderRadius: BorderRadius.circular(16),
         ),
       );
@@ -1277,9 +1276,9 @@ class _TypingIndicator extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 12),
         padding: const EdgeInsets.symmetric(horizontal: 17, vertical: 14),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: ServicePayColors.surface,
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: const Color(0xFFDDEBE1)),
+          border: Border.all(color: ServicePayColors.border),
         ),
         child: const SizedBox(
           width: 42,
@@ -1325,14 +1324,14 @@ class _StatusBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: const Color(0xFFFFF4E5),
+      color: const Color(0xFF4B3516),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(15, 10, 8, 10),
         child: Row(
           children: <Widget>[
             const Icon(
               Icons.info_outline_rounded,
-              color: Color(0xFF9A5B00),
+              color: Color(0xFFF9CC8B),
               size: 19,
             ),
             const SizedBox(width: 8),
@@ -1340,7 +1339,7 @@ class _StatusBanner extends StatelessWidget {
               child: Text(
                 message,
                 style: const TextStyle(
-                  color: Color(0xFF704400),
+                  color: Color(0xFFF9CE8B),
                   fontSize: 11.5,
                   height: 1.3,
                   fontWeight: FontWeight.w600,
@@ -1350,7 +1349,7 @@ class _StatusBanner extends StatelessWidget {
             IconButton(
               onPressed: onDismiss,
               icon: const Icon(Icons.close_rounded, size: 18),
-              color: const Color(0xFF704400),
+              color: const Color(0xFFF9CE8B),
               tooltip: 'Dismiss',
             ),
           ],

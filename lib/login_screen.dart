@@ -52,6 +52,8 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
+    // Presentation only: the sign-in surface always uses the customer theme.
+    ServicePayThemeSelection.select(ServicePayThemeAudience.customer);
     () async {
       if (!await BiometricAuthService.hasEnrollmentMarker()) return;
       final available =
@@ -720,7 +722,7 @@ class _LoginScreenState extends State<LoginScreen> {
               style: TextStyle(
                 fontSize: 34,
                 fontWeight: FontWeight.w900,
-                color: primaryColor,
+                color: ServicePayColors.accent,
               ),
             ),
           );
@@ -789,7 +791,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               child: Container(
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: ServicePayColors.surface,
                   borderRadius: BorderRadius.circular(
                     26,
                   ),
@@ -919,7 +921,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             child: const Text(
                               'Forgot Password?',
                               style: TextStyle(
-                                color: ServicePayColors.brandDeep,
+                                color: ServicePayColors.accent,
                                 fontWeight: FontWeight.w800,
                               ),
                             ),
@@ -1001,7 +1003,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             Expanded(
                               child: Divider(
-                                color: Colors.grey.shade300,
+                                color: ServicePayColors.border,
                               ),
                             ),
                           ],
@@ -1014,7 +1016,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           child: OutlinedButton.icon(
                             onPressed: isLoading ? null : openRegisterScreen,
                             style: OutlinedButton.styleFrom(
-                              foregroundColor: ServicePayColors.brandDeep,
+                              foregroundColor: ServicePayColors.accent,
                               side: const BorderSide(
                                 color: ServicePayColors.brand,
                                 width: 1.4,
@@ -1055,7 +1057,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             children: [
                               Icon(
                                 Icons.security_rounded,
-                                color: primaryColor,
+                                color: ServicePayColors.accent,
                                 size: 20,
                               ),
                               SizedBox(

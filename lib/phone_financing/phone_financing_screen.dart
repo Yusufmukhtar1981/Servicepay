@@ -7,7 +7,7 @@ import '../services/session_store.dart';
 import '../servicepay_theme.dart';
 
 const _green = ServicePayColors.brand;
-const _ink = Color(0xFF173126);
+const _ink = ServicePayColors.accent;
 String _money(num n) => '₦${n.toStringAsFixed(2).replaceAllMapped(RegExp(r'(\d)(?=(\d{3})+\.)'), (m) => '${m[1]},')}';
 List<Map<String, dynamic>> _rows(Map<String, dynamic>? data, String key) => data?[key] is List ? (data![key] as List).whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList() : const [];
 
@@ -23,7 +23,7 @@ class _PhoneFinancingScreenState extends State<PhoneFinancingScreen> {
   void _reload() { products = api.products(); applications = api.applications(); finance = api.finance(); }
   void refresh() => setState(_reload);
   @override Widget build(BuildContext context) => Scaffold(
-    backgroundColor: const Color(0xFFF5F9F6),
+    backgroundColor: ServicePayColors.canvas,
     body: SafeArea(child: IndexedStack(index: tab, children: [
       _Catalogue(api: api, products: products, refresh: refresh, onApplications: () => setState(() => tab = 1)),
       _Applications(api: api, future: applications, refresh: refresh),
@@ -49,7 +49,7 @@ class _Catalogue extends StatelessWidget {
       SizedBox(height: 7), Text('Clear pricing, a simple application, and manageable weekly payments. No surprises.', style: TextStyle(color: Color(0xFFD9F1E2), height: 1.4)),
     ])),
     const SizedBox(height: 26), const Text('Available phones', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: _ink)), const SizedBox(height: 4),
-    const Text('Every price and payment is calculated from the active product.', style: TextStyle(color: Color(0xFF66776C))),
+    const Text('Every price and payment is calculated from the active product.', style: TextStyle(color: ServicePayColors.muted)),
     const SizedBox(height: 14), FutureBuilder<Map<String, dynamic>>(future: products, builder: (context, snap) {
       if (snap.connectionState != ConnectionState.done) return const _LoadingCards();
       if (snap.hasError) return _State(message: snap.error.toString(), retry: refresh);
@@ -66,35 +66,35 @@ class _Catalogue extends StatelessWidget {
 
 class _ProductCard extends StatelessWidget {
   const _ProductCard({required this.product, required this.onTap}); final PhoneProduct product; final VoidCallback onTap;
-  @override Widget build(BuildContext context) => Card(color: Colors.white, elevation: 0, margin: const EdgeInsets.only(bottom: 13), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: Color(0xFFDDEBE1))), child: InkWell(borderRadius: BorderRadius.circular(20), onTap: onTap, child: Padding(padding: const EdgeInsets.all(15), child: Row(children: [
-    Container(width: 78, height: 90, decoration: BoxDecoration(color: const Color(0xFFEAF7F0), borderRadius: BorderRadius.circular(15)), child: product.images.isNotEmpty ? ClipRRect(borderRadius: BorderRadius.circular(15), child: Image.network(product.images.first, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.phone_android, color: _green, size: 35))) : const Icon(Icons.phone_android, color: _green, size: 35)),
-    const SizedBox(width: 14), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('${product.brand} ${product.name}', style: const TextStyle(fontWeight: FontWeight.w900, color: _ink, fontSize: 16)), const SizedBox(height: 5), Text('${product.specifications['storage'] ?? 'Storage not listed'} · ${product.specifications['ram'] ?? 'RAM not listed'}', style: const TextStyle(color: Color(0xFF6A7D70))), const SizedBox(height: 8), Text('${_money(product.weekly)} weekly', style: const TextStyle(color: _green, fontWeight: FontWeight.w900)), Text('${product.stock} in stock', style: const TextStyle(fontSize: 11, color: Color(0xFF7C8E82)))])), const Icon(Icons.chevron_right, color: _green)
+  @override Widget build(BuildContext context) => Card(color: ServicePayColors.surface, elevation: 0, margin: const EdgeInsets.only(bottom: 13), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20), side: const BorderSide(color: ServicePayColors.border)), child: InkWell(borderRadius: BorderRadius.circular(20), onTap: onTap, child: Padding(padding: const EdgeInsets.all(15), child: Row(children: [
+    Container(width: 78, height: 90, decoration: BoxDecoration(color: ServicePayColors.brandSoft, borderRadius: BorderRadius.circular(15)), child: product.images.isNotEmpty ? ClipRRect(borderRadius: BorderRadius.circular(15), child: Image.network(product.images.first, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.phone_android, color: _green, size: 35))) : const Icon(Icons.phone_android, color: _green, size: 35)),
+    const SizedBox(width: 14), Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text('${product.brand} ${product.name}', style: const TextStyle(fontWeight: FontWeight.w900, color: _ink, fontSize: 16)), const SizedBox(height: 5), Text('${product.specifications['storage'] ?? 'Storage not listed'} · ${product.specifications['ram'] ?? 'RAM not listed'}', style: const TextStyle(color: ServicePayColors.muted)), const SizedBox(height: 8), Text('${_money(product.weekly)} weekly', style: const TextStyle(color: _green, fontWeight: FontWeight.w900)), Text('${product.stock} in stock', style: const TextStyle(fontSize: 11, color: ServicePayColors.muted))])), const Icon(Icons.chevron_right, color: _green)
   ]))));
 }
 
 class _ProductDetails extends StatelessWidget {
   const _ProductDetails({required this.product, required this.api, required this.onSubmitted}); final PhoneProduct product; final PhoneFinancingApi api; final VoidCallback onSubmitted;
   @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Phone details')), body: ListView(padding: const EdgeInsets.all(20), children: [
-    Container(height: 190, decoration: BoxDecoration(color: const Color(0xFFEAF7F0), borderRadius: BorderRadius.circular(24)), child: product.images.isNotEmpty ? Image.network(product.images.first, fit: BoxFit.contain) : const Icon(Icons.phone_android, size: 90, color: _green)),
-    const SizedBox(height: 20), Text('${product.brand} ${product.name}', style: const TextStyle(fontSize: 25, fontWeight: FontWeight.w900, color: _ink)), Text(product.description, style: const TextStyle(color: Color(0xFF63766A), height: 1.4)),
+    Container(height: 190, decoration: BoxDecoration(color: ServicePayColors.brandSoft, borderRadius: BorderRadius.circular(24)), child: product.images.isNotEmpty ? Image.network(product.images.first, fit: BoxFit.contain) : const Icon(Icons.phone_android, size: 90, color: _green)),
+    const SizedBox(height: 20), Text('${product.brand} ${product.name}', style: const TextStyle(fontSize: 25, fontWeight: FontWeight.w900, color: _ink)), Text(product.description, style: const TextStyle(color: ServicePayColors.muted, height: 1.4)),
     const SizedBox(height: 20), _priceGrid(product), const SizedBox(height: 18), _specs(product),
-    const Text('Weekly quote is the financed remainder after deposit divided by installments. The final scheduled payment may differ by a few kobo after server rounding.', style: TextStyle(fontSize: 12, color: Color(0xFF68796E))),
-    if (product.minimumKycTier.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 12), child: Text('This phone requires verified ${product.minimumKycTier.replaceAll('_', ' ')} KYC before approval.', style: const TextStyle(color: Color(0xFF68796E)))),
+    const Text('Weekly quote is the financed remainder after deposit divided by installments. The final scheduled payment may differ by a few kobo after server rounding.', style: TextStyle(fontSize: 12, color: ServicePayColors.muted)),
+    if (product.minimumKycTier.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 12), child: Text('This phone requires verified ${product.minimumKycTier.replaceAll('_', ' ')} KYC before approval.', style: const TextStyle(color: ServicePayColors.muted))),
     const SizedBox(height: 22),
     FilledButton.icon(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => _ApplicationForm(product: product, api: api, onSubmitted: onSubmitted))), style: FilledButton.styleFrom(backgroundColor: _green, minimumSize: const Size.fromHeight(54)), icon: const Icon(Icons.assignment_outlined), label: const Text('Apply for this phone')),
   ]));
 }
 Widget _priceGrid(PhoneProduct p) => Container(
   padding: const EdgeInsets.all(16),
-  decoration: BoxDecoration(color: const Color(0xFFF0F7F2), borderRadius: BorderRadius.circular(18)),
+  decoration: BoxDecoration(color: ServicePayColors.brandSoft, borderRadius: BorderRadius.circular(18)),
   child: Wrap(runSpacing: 16, children: <Widget>[
     _stat('Cash price', _money(p.cashPrice)), _stat('Financed price', _money(p.financedPrice)),
     _stat('Deposit', _money(p.deposit)), _stat('Weekly payment', _money(p.weekly)),
     _stat('Duration', '${p.weeklyInstallments} weeks'), _stat('Stock', '${p.stock} available'),
   ].map((w) => SizedBox(width: 160, child: w)).toList()),
 );
-Widget _stat(String label, String value) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(label, style: const TextStyle(fontSize: 11, color: Color(0xFF6B7F72))), const SizedBox(height: 3), Text(value, style: const TextStyle(fontWeight: FontWeight.w900, color: _ink))]);
-Widget _specs(PhoneProduct p) => Wrap(spacing: 8, runSpacing: 8, children: p.specifications.entries.map((e) => Chip(label: Text('${e.key}: ${e.value}'), backgroundColor: Colors.white)).toList());
+Widget _stat(String label, String value) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(label, style: const TextStyle(fontSize: 11, color: ServicePayColors.muted)), const SizedBox(height: 3), Text(value, style: const TextStyle(fontWeight: FontWeight.w900, color: _ink))]);
+Widget _specs(PhoneProduct p) => Wrap(spacing: 8, runSpacing: 8, children: p.specifications.entries.map((e) => Chip(label: Text('${e.key}: ${e.value}'), backgroundColor: ServicePayColors.surface)).toList());
 
 class _ApplicationForm extends StatefulWidget {
   const _ApplicationForm({required this.product, required this.api, required this.onSubmitted}); final PhoneProduct product; final PhoneFinancingApi api; final VoidCallback onSubmitted;
@@ -104,11 +104,11 @@ class _ApplicationFormState extends State<_ApplicationForm> {
   final form = GlobalKey<FormState>(); final occupation = TextEditingController(), income = TextEditingController(), address = TextEditingController(), state = TextEditingController(), lga = TextEditingController(), employer = TextEditingController(); String duration = ''; bool consent = false, busy = false; 
   @override void dispose() { for (final c in [occupation,income,address,state,lga,employer]) { c.dispose(); } super.dispose(); }
   @override Widget build(BuildContext context) => Scaffold(appBar: AppBar(title: const Text('Your application')), body: Form(key: form, child: ListView(padding: const EdgeInsets.all(20), children: [
-    Text('Apply for ${widget.product.brand} ${widget.product.name}', style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900, color: _ink)), const SizedBox(height: 5), Text('We use these details to review your payment plan.', style: const TextStyle(color: Color(0xFF68796E))), const SizedBox(height: 20),
+    Text('Apply for ${widget.product.brand} ${widget.product.name}', style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w900, color: _ink)), const SizedBox(height: 5), Text('We use these details to review your payment plan.', style: const TextStyle(color: ServicePayColors.muted)), const SizedBox(height: 20),
     _field(occupation, 'Occupation', Icons.work_outline), _field(income, 'Monthly income', Icons.payments_outlined, keyboard: TextInputType.number), _field(address, 'Residential address', Icons.home_outlined), _field(state, 'State', Icons.map_outlined), _field(lga, 'LGA', Icons.location_city_outlined), _field(employer, 'Employer (optional)', Icons.business_outlined, required: false),
     DropdownButtonFormField<String>(value: duration.isEmpty ? null : duration, decoration: const InputDecoration(labelText: 'Preferred duration', prefixIcon: Icon(Icons.date_range_outlined)), items: (widget.product.durationOptionsWeeks.isEmpty ? [widget.product.weeklyInstallments] : widget.product.durationOptionsWeeks).map((v) => DropdownMenuItem(value: v.toString(), child: Text('$v weeks'))).toList(), onChanged: (v) => setState(() => duration = v ?? ''), validator: (v) => v == null ? 'Choose a duration' : null),
     if (duration.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 12), child: Text('Quoted weekly payment: ${_money(widget.product.weeklyFor(int.parse(duration)))}', style: const TextStyle(color: _green, fontWeight: FontWeight.w900))),
-    const Padding(padding: EdgeInsets.only(top: 4), child: Text('The final scheduled payment can vary by a few kobo after server rounding.', style: TextStyle(fontSize: 12, color: Color(0xFF68796E)))),
+    const Padding(padding: EdgeInsets.only(top: 4), child: Text('The final scheduled payment can vary by a few kobo after server rounding.', style: TextStyle(fontSize: 12, color: ServicePayColors.muted))),
     const SizedBox(height: 12), CheckboxListTile(contentPadding: EdgeInsets.zero, value: consent, onChanged: (v) => setState(() => consent = v ?? false), title: const Text('I confirm these details are accurate and I agree to the phone financing terms.'), controlAffinity: ListTileControlAffinity.leading),
     const SizedBox(height: 15), FilledButton(onPressed: busy ? null : _submit, style: FilledButton.styleFrom(backgroundColor: _green, minimumSize: const Size.fromHeight(52)), child: busy ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('Submit application')),
   ])));
@@ -128,9 +128,9 @@ class _Applications extends StatelessWidget {
 }
 class _ApplicationTile extends StatelessWidget {
   const _ApplicationTile({required this.api, required this.item, required this.refresh}); final PhoneFinancingApi api; final PhoneApplication item; final VoidCallback refresh;
-  @override Widget build(BuildContext context) { final p = item.product; return Card(color: Colors.white, elevation: 0, margin: const EdgeInsets.only(bottom: 12), child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-    Row(children: [Expanded(child: Text(p == null ? 'Phone application' : '${p.brand} ${p.name}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: _ink))), _Status(item.status)]), const SizedBox(height: 6), Text(item.reference.isEmpty ? 'Application under review' : item.reference, style: const TextStyle(color: Color(0xFF6A7B70), fontSize: 12)),
-    if (item.input.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 10), child: Text('${item.input['occupation'] ?? ''} · ${item.input['monthlyIncome'] == null ? '' : _money(num.tryParse('${item.input['monthlyIncome']}') ?? 0)} · ${item.input['preferredDurationWeeks'] ?? ''} weeks', style: const TextStyle(color: Color(0xFF63766A), fontSize: 12))),
+  @override Widget build(BuildContext context) { final p = item.product; return Card(color: ServicePayColors.surface, elevation: 0, margin: const EdgeInsets.only(bottom: 12), child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    Row(children: [Expanded(child: Text(p == null ? 'Phone application' : '${p.brand} ${p.name}', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16, color: _ink))), _Status(item.status)]), const SizedBox(height: 6), Text(item.reference.isEmpty ? 'Application under review' : item.reference, style: const TextStyle(color: ServicePayColors.muted, fontSize: 12)),
+    if (item.input.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 10), child: Text('${item.input['occupation'] ?? ''} · ${item.input['monthlyIncome'] == null ? '' : _money(num.tryParse('${item.input['monthlyIncome']}') ?? 0)} · ${item.input['preferredDurationWeeks'] ?? ''} weeks', style: const TextStyle(color: ServicePayColors.muted, fontSize: 12))),
     if (item.depositRequired > 0) Padding(padding: const EdgeInsets.only(top: 8), child: Text('Deposit: ${_money(item.depositPaid)} paid of ${_money(item.depositRequired)} required', style: const TextStyle(fontWeight: FontWeight.w700, color: _ink))),
     if (item.history.isNotEmpty) ...[const SizedBox(height: 14), ...item.history.reversed.take(3).map((h) => ListTile(contentPadding: EdgeInsets.zero, dense: true, leading: const Icon(Icons.check_circle_outline, color: _green, size: 20), title: Text('${h['status'] ?? ''}'.replaceAll('_', ' ')), subtitle: Text('${h['note'] ?? ''}')))],
     if (item.status == 'AWAITING_DEPOSIT') Align(alignment: Alignment.centerRight, child: FilledButton(onPressed: () => _pay(context), style: FilledButton.styleFrom(backgroundColor: _green), child: Text('Pay deposit ${_money(item.depositRequired - item.depositPaid)}')))
@@ -156,14 +156,14 @@ class _FinanceCard extends StatelessWidget {
       LinearProgressIndicator(value: finance.total == 0 ? 0 : (finance.paid / finance.total).clamp(0, 1), backgroundColor: const Color(0xFF4B9B6D), color: const Color(0xFFFFD76B)), const SizedBox(height: 9), Text('${_money(finance.paid)} paid of ${_money(finance.total)}', style: const TextStyle(color: Color(0xFFE5F5EA)))
     ])), const SizedBox(height: 20), Text('Weekly schedule', style: const TextStyle(color: _ink, fontSize: 19, fontWeight: FontWeight.w900)), const SizedBox(height: 8),
     if (finance.schedule.isEmpty) const Text('No schedule available yet.') else ...finance.schedule.map((r) => Card(
-      color: Colors.white, elevation: 0, child: ListTile(
+      color: ServicePayColors.surface, elevation: 0, child: ListTile(
         leading: Icon(r['status'] == 'PAID' ? Icons.check_circle : Icons.calendar_today_outlined, color: r['status'] == 'PAID' ? _green : const Color(0xFF87988D)),
         title: Text('Installment ${r['installmentNumber'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.w800)),
         subtitle: Text('${r['status'] ?? 'PENDING'} · ${r['dueDate'] ?? ''}'),
         trailing: Text(_money(num.tryParse('${r['amount']}') ?? 0), style: const TextStyle(fontWeight: FontWeight.w900)),
       ),
     )),
-    if (finance.device.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 14), child: Text('Device: ${finance.device['reference'] ?? finance.device['serialNumber'] ?? 'Assigned device'}${finance.device['status'] == null ? '' : ' · ${finance.device['status']}'}', style: const TextStyle(color: Color(0xFF63766A)))),
+    if (finance.device.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 14), child: Text('Device: ${finance.device['reference'] ?? finance.device['serialNumber'] ?? 'Assigned device'}${finance.device['status'] == null ? '' : ' · ${finance.device['status']}'}', style: const TextStyle(color: ServicePayColors.muted))),
     if (finance.id.isNotEmpty) ExpansionTile(title: const Text('Payment history', style: TextStyle(fontWeight: FontWeight.w800)), children: [
       FutureBuilder<Map<String, dynamic>>(future: api.payments(finance.id), builder: (context, snap) {
         if (snap.connectionState != ConnectionState.done) return const Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator(color: _green));
@@ -183,8 +183,8 @@ class _Page extends StatelessWidget {
 }
 class _Status extends StatelessWidget {
   const _Status(this.value, {this.light = false}); final String value; final bool light;
-  @override Widget build(BuildContext context) => Container(padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6), decoration: BoxDecoration(color: light ? const Color(0xFF3B9461) : const Color(0xFFE3F4E8), borderRadius: BorderRadius.circular(20)), child: Text(value.replaceAll('_', ' '), style: TextStyle(color: light ? Colors.white : _green, fontSize: 11, fontWeight: FontWeight.w800)));
+  @override Widget build(BuildContext context) => Container(padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6), decoration: BoxDecoration(color: light ? const Color(0xFF3B9461) : ServicePayColors.brandSoft, borderRadius: BorderRadius.circular(20)), child: Text(value.replaceAll('_', ' '), style: TextStyle(color: light ? Colors.white : _green, fontSize: 11, fontWeight: FontWeight.w800)));
 }
-class _LoadingCards extends StatelessWidget { const _LoadingCards(); @override Widget build(BuildContext context) => Column(children: List.generate(3, (i) => Container(height: 110, margin: const EdgeInsets.only(bottom: 12), decoration: BoxDecoration(color: const Color(0xFFE6EEE8), borderRadius: BorderRadius.circular(20))))); }
-class _State extends StatelessWidget { const _State({required this.message, this.retry}); final String message; final VoidCallback? retry; @override Widget build(BuildContext context) => Container(padding: const EdgeInsets.all(25), decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)), child: Column(children: [const Icon(Icons.phone_android_outlined, color: _green, size: 38), const SizedBox(height: 10), Text(message, textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFF66776C))), if (retry != null) TextButton(onPressed: retry, child: const Text('Try again'))])); }
+class _LoadingCards extends StatelessWidget { const _LoadingCards(); @override Widget build(BuildContext context) => Column(children: List.generate(3, (i) => Container(height: 110, margin: const EdgeInsets.only(bottom: 12), decoration: BoxDecoration(color: ServicePayColors.surface, borderRadius: BorderRadius.circular(20))))); }
+class _State extends StatelessWidget { const _State({required this.message, this.retry}); final String message; final VoidCallback? retry; @override Widget build(BuildContext context) => Container(padding: const EdgeInsets.all(25), decoration: BoxDecoration(color: ServicePayColors.surface, borderRadius: BorderRadius.circular(20)), child: Column(children: [const Icon(Icons.phone_android_outlined, color: _green, size: 38), const SizedBox(height: 10), Text(message, textAlign: TextAlign.center, style: const TextStyle(color: ServicePayColors.muted)), if (retry != null) TextButton(onPressed: retry, child: const Text('Try again'))])); }
 Future<String?> _paymentDialog(BuildContext context, String title, double amount) { final pin = TextEditingController(); return showDialog<String>(context: context, builder: (context) => AlertDialog(title: Text(title), content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [Text('Exact amount: ${_money(amount)}', style: const TextStyle(fontWeight: FontWeight.w900, color: _green)), const SizedBox(height: 15), TextField(controller: pin, autofocus: true, obscureText: true, keyboardType: TextInputType.number, maxLength: 4, decoration: const InputDecoration(labelText: 'Transaction PIN', prefixIcon: Icon(Icons.lock_outline)))]), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')), FilledButton(onPressed: () { if (pin.text.length == 4) Navigator.pop(context, pin.text); }, style: FilledButton.styleFrom(backgroundColor: _green), child: const Text('Confirm'))])); }

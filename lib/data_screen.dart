@@ -437,7 +437,7 @@ class _DataScreenState extends State<DataScreen> {
                 Text(
                   '₦${formatAmount(price)}',
                   style: const TextStyle(
-                    color: primaryGreen,
+                    color: ServicePayColors.accent,
                     fontSize: 22,
                     fontWeight: FontWeight.w900,
                   ),
@@ -740,7 +740,7 @@ class _DataScreenState extends State<DataScreen> {
             ),
             icon: const Icon(
               Icons.check_circle_rounded,
-              color: primaryGreen,
+              color: ServicePayColors.accent,
               size: 60,
             ),
             title: const Text(
@@ -819,12 +819,12 @@ class _DataScreenState extends State<DataScreen> {
             label: Text(network),
             selected: selected,
             selectedColor: primaryGreen,
-            backgroundColor: Colors.white,
+            backgroundColor: ServicePayColors.surface,
             side: BorderSide(
-              color: selected ? primaryGreen : Colors.grey.shade300,
+              color: selected ? primaryGreen : ServicePayColors.border,
             ),
             labelStyle: TextStyle(
-              color: selected ? Colors.white : Colors.black87,
+              color: selected ? Colors.white : ServicePayColors.ink,
               fontWeight: FontWeight.w700,
             ),
             onSelected: isBuyingData
@@ -887,14 +887,14 @@ class _DataScreenState extends State<DataScreen> {
 
     return Card(
       elevation: 0,
-      color: Colors.white,
+      color: ServicePayColors.surface,
       margin: const EdgeInsets.only(
         bottom: 12,
       ),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
         side: BorderSide(
-          color: Colors.grey.shade200,
+          color: ServicePayColors.border,
         ),
       ),
       child: InkWell(
@@ -915,7 +915,7 @@ class _DataScreenState extends State<DataScreen> {
                 ),
                 child: const Icon(
                   Icons.signal_cellular_alt_rounded,
-                  color: primaryGreen,
+                  color: ServicePayColors.accent,
                 ),
               ),
               const SizedBox(width: 13),
@@ -943,7 +943,7 @@ class _DataScreenState extends State<DataScreen> {
                           )
                           .join(' • '),
                       style: TextStyle(
-                        color: Colors.grey.shade600,
+                        color: ServicePayColors.muted,
                         fontWeight: FontWeight.w600,
                       ),
                     ),
@@ -955,7 +955,7 @@ class _DataScreenState extends State<DataScreen> {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: Colors.grey.shade700,
+                        color: ServicePayColors.muted,
                         fontSize: 12,
                       ),
                     ),
@@ -969,7 +969,7 @@ class _DataScreenState extends State<DataScreen> {
                   Text(
                     '₦${formatAmount(plan['price'])}',
                     style: const TextStyle(
-                      color: primaryGreen,
+                      color: ServicePayColors.accent,
                       fontSize: 18,
                       fontWeight: FontWeight.w900,
                     ),
@@ -1035,7 +1035,7 @@ class _DataScreenState extends State<DataScreen> {
                     child: Column(children: [
                   Container(
                     width: double.infinity,
-                    color: Colors.white,
+                    color: ServicePayColors.surface,
                     padding: const EdgeInsets.fromLTRB(
                       16,
                       16,
@@ -1134,7 +1134,7 @@ class _DataScreenState extends State<DataScreen> {
                                           const Icon(
                                             Icons.error_outline_rounded,
                                             size: 46,
-                                            color: Colors.red,
+                                            color: Color(0xFFF9928B),
                                           ),
                                           const SizedBox(
                                             height: 12,

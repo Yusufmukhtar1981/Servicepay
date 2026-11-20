@@ -20,7 +20,7 @@ class _CustomerLeaderboardScreenState extends State<CustomerLeaderboardScreen> {
   String? _error;
   int _requestVersion = 0;
   DateTime _month = DateTime.now().toUtc().add(const Duration(hours: 1));
-  static const ink = Color(0xFF18382F);
+  static const ink = ServicePayColors.accent;
   static const green = ServicePayColors.brand;
 
   String get _monthKey =>
@@ -89,9 +89,9 @@ class _CustomerLeaderboardScreenState extends State<CustomerLeaderboardScreen> {
   Widget build(BuildContext context) {
     final report = _report;
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F7F3),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
-        backgroundColor: const Color(0xFFF4F7F3),
+        backgroundColor: ServicePayColors.canvas,
         foregroundColor: ink,
         elevation: 0,
         title: const Text('SERVICEPAY CHAMPIONS',
@@ -192,7 +192,7 @@ class _CustomerLeaderboardScreenState extends State<CustomerLeaderboardScreen> {
                     height: 66,
                     margin: const EdgeInsets.only(bottom: 9),
                     decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: ServicePayColors.surface,
                         borderRadius: BorderRadius.circular(15))),
             ] else if (_error != null)
               _message(Icons.cloud_off_outlined, 'Could not load this month',
@@ -219,7 +219,7 @@ class _CustomerLeaderboardScreenState extends State<CustomerLeaderboardScreen> {
       Container(
         padding: const EdgeInsets.all(24),
         decoration: BoxDecoration(
-            color: Colors.white, borderRadius: BorderRadius.circular(18)),
+            color: ServicePayColors.surface, borderRadius: BorderRadius.circular(18)),
         child: Column(children: [
           Icon(icon, color: green, size: 30),
           const SizedBox(height: 10),
@@ -228,7 +228,7 @@ class _CustomerLeaderboardScreenState extends State<CustomerLeaderboardScreen> {
           const SizedBox(height: 5),
           Text(body,
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Color(0xFF718178))),
+              style: const TextStyle(color: ServicePayColors.muted)),
           if (onRetry != null)
             TextButton.icon(
                 onPressed: onRetry,

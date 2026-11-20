@@ -256,7 +256,7 @@ class HelpSupportScreen extends StatelessWidget {
                   icon: Icons.chat_bubble_outline_rounded,
                   title: 'WhatsApp Support',
                   subtitle: 'Chat with ServicePay support on WhatsApp.',
-                  iconColor: const Color(0xFF16A34A),
+                  iconColor: ServicePayColors.accent,
                   iconBackground: const Color(0xFFDCFCE7),
                   onTap: () {
                     _openWhatsApp(context);
@@ -266,7 +266,7 @@ class HelpSupportScreen extends StatelessWidget {
                   icon: Icons.call_outlined,
                   title: 'Call Support',
                   subtitle: 'Call $supportPhone for assistance.',
-                  iconColor: const Color(0xFF2563EB),
+                  iconColor: const Color(0xFF8FAFF5),
                   iconBackground: const Color(0xFFDBEAFE),
                   onTap: () {
                     _callSupport(context);
@@ -276,7 +276,7 @@ class HelpSupportScreen extends StatelessWidget {
                   icon: Icons.email_outlined,
                   title: 'Email Support',
                   subtitle: supportEmail,
-                  iconColor: const Color(0xFF7C3AED),
+                  iconColor: const Color(0xFFB48FF5),
                   iconBackground: const Color(0xFFEDE9FE),
                   onTap: () {
                     _emailSupport(context);
@@ -287,7 +287,7 @@ class HelpSupportScreen extends StatelessWidget {
                   title: 'Report a Problem',
                   subtitle:
                       'Send details about a failed service or account issue.',
-                  iconColor: const Color(0xFFDC2626),
+                  iconColor: const Color(0xFFEE9696),
                   iconBackground: const Color(0xFFFEE2E2),
                   onTap: () {
                     _reportProblem(context);
@@ -297,7 +297,7 @@ class HelpSupportScreen extends StatelessWidget {
                   icon: Icons.confirmation_number_outlined,
                   title: 'My Support Tickets',
                   subtitle: 'Track problem reports and reply to support.',
-                  iconColor: ServicePayColors.brand,
+                  iconColor: ServicePayColors.accent,
                   iconBackground: const Color(0xFFCCFBF1),
                   onTap: () => Navigator.push(
                       context,
@@ -315,14 +315,14 @@ class HelpSupportScreen extends StatelessWidget {
                   width: double.infinity,
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFFF7ED),
+                    color: const Color(0xFF4B3316),
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFFFED7AA)),
+                    border: Border.all(color: const Color(0xFFAB702B)),
                   ),
                   child: const Text(
                     'ServicePay Support will never ask for your password, OTP or transaction PIN.',
                     style: TextStyle(
-                      color: Color(0xFF9A3412),
+                      color: Color(0xFFF2AA91),
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -336,7 +336,7 @@ class HelpSupportScreen extends StatelessWidget {
                   icon: Icons.description_outlined,
                   title: 'Terms of Service',
                   subtitle: 'Read the conditions for using ServicePay.',
-                  iconColor: const Color(0xFFD97706),
+                  iconColor: const Color(0xFFF9C68B),
                   iconBackground: const Color(0xFFFEF3C7),
                   onTap: () {
                     _openTerms(context);
@@ -346,7 +346,7 @@ class HelpSupportScreen extends StatelessWidget {
                   icon: Icons.privacy_tip_outlined,
                   title: 'Privacy Policy',
                   subtitle: 'Learn how ServicePay handles your information.',
-                  iconColor: ServicePayColors.brand,
+                  iconColor: ServicePayColors.accent,
                   iconBackground: const Color(0xFFCCFBF1),
                   onTap: () {
                     _openPrivacy(context);
@@ -356,7 +356,7 @@ class HelpSupportScreen extends StatelessWidget {
                   icon: Icons.delete_outline,
                   title: 'Delete Account or Request Data',
                   subtitle: 'Submit a secure account or data request.',
-                  iconColor: const Color(0xFFB42318),
+                  iconColor: const Color(0xFFF19A93),
                   iconBackground: const Color(0xFFFEE4E2),
                   onTap: () => launchUrl(
                     Uri.parse('https://servicepay.ng/delete-account'),
@@ -442,7 +442,7 @@ class SupportHeader extends StatelessWidget {
               'Chat With Support',
             ),
             style: FilledButton.styleFrom(
-              backgroundColor: Colors.white,
+              backgroundColor: ServicePayColors.surface,
               foregroundColor: HelpSupportScreen.primaryGreen,
             ),
           ),
@@ -465,7 +465,7 @@ class SectionTitle extends StatelessWidget {
     return Text(
       title,
       style: const TextStyle(
-        color: Color(0xFF0F172A),
+        color: Color(0xFFA0B4E3),
         fontSize: 19,
         fontWeight: FontWeight.w800,
       ),
@@ -498,11 +498,11 @@ class SupportActionCard extends StatelessWidget {
         bottom: 11,
       ),
       elevation: 0,
-      color: Colors.white,
+      color: ServicePayColors.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
         side: const BorderSide(
-          color: Color(0xFFE8EDF3),
+          color: Color(0xFF49688D),
         ),
       ),
       child: ListTile(
@@ -531,7 +531,7 @@ class SupportActionCard extends StatelessWidget {
         subtitle: Text(
           subtitle,
           style: const TextStyle(
-            color: Color(0xFF64748B),
+            color: ServicePayColors.muted,
             fontSize: 12,
           ),
         ),
@@ -623,10 +623,10 @@ class _FaqSectionState extends State<FaqSection> {
         .toList();
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: ServicePayColors.surface,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: const Color(0xFFE8EDF3),
+          color: const Color(0xFF49688D),
         ),
       ),
       child: Column(
@@ -668,7 +668,7 @@ class _FaqSectionState extends State<FaqSection> {
                   child: Text(
                     faqs[index]['answer']!,
                     style: const TextStyle(
-                      color: Color(0xFF64748B),
+                      color: ServicePayColors.muted,
                       fontSize: 13,
                       height: 1.5,
                     ),
@@ -726,7 +726,7 @@ class LegalInformationScreen extends StatelessWidget {
               width: double.infinity,
               padding: const EdgeInsets.all(22),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: ServicePayColors.surface,
                 borderRadius: BorderRadius.circular(22),
               ),
               child: Column(
@@ -758,7 +758,7 @@ class LegalInformationScreen extends StatelessWidget {
                     Text(
                       section.content,
                       style: const TextStyle(
-                        color: Color(0xFF64748B),
+                        color: ServicePayColors.muted,
                         fontSize: 14,
                         height: 1.6,
                       ),
@@ -888,10 +888,10 @@ class _SupportRequestScreenState extends State<SupportRequestScreen> {
                               margin: const EdgeInsets.only(bottom: 14),
                               padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: const Color(0xFFFFF1F0),
+                                color: const Color(0xFF4B1916),
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
-                                  color: const Color(0xFFFECACA),
+                                  color: const Color(0xFFAB2B2B),
                                 ),
                               ),
                               child: Row(
@@ -963,7 +963,7 @@ class _SupportRequestScreenState extends State<SupportRequestScreen> {
                             padding: const EdgeInsets.all(12),
                             margin: const EdgeInsets.only(bottom: 14),
                             decoration: BoxDecoration(
-                              color: const Color(0xFFEFF6FF),
+                              color: const Color(0xFF162D4B),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Text(widget.transactionSummary!),
@@ -992,7 +992,7 @@ class _SupportRequestScreenState extends State<SupportRequestScreen> {
                         const Text(
                           'ServicePay Support will never ask for your password, OTP or transaction PIN.',
                           style:
-                              TextStyle(color: Color(0xFF9A3412), fontSize: 12),
+                              TextStyle(color: Color(0xFFF2AA91), fontSize: 12),
                         ),
                         const SizedBox(height: 18),
                         SizedBox(

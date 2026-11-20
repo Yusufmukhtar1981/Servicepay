@@ -1537,7 +1537,7 @@ class _SecureRegistrationScreenState extends State<SecureRegistrationScreen> {
           padding: const EdgeInsets.all(14),
           margin: const EdgeInsets.only(bottom: 16),
           decoration: BoxDecoration(
-            color: Colors.grey.shade100,
+            color: ServicePayColors.surface,
             borderRadius: BorderRadius.circular(12),
           ),
           child: const Text(

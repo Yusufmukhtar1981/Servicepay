@@ -118,13 +118,13 @@ class _CommunityAgentLocatorScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7FAF8),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         title: const Text(
           'Community Agent Locator',
         ),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black87,
+        backgroundColor: ServicePayColors.canvas,
+        foregroundColor: ServicePayColors.ink,
       ),
       body: ListView(
         padding: const EdgeInsets.all(18),
@@ -140,7 +140,7 @@ class _CommunityAgentLocatorScreenState
           const Text(
             'Search verified ServicePay field representatives by State or LGA.',
             style: TextStyle(
-              color: Colors.black54,
+              color: ServicePayColors.muted,
             ),
           ),
           const SizedBox(height: 18),
@@ -201,7 +201,7 @@ class _CommunityAgentLocatorScreenState
                   trailing: Text(
                     agent['role']?.toString() ?? '',
                     style: const TextStyle(
-                      color: primaryGreen,
+                      color: ServicePayColors.accent,
                       fontSize: 11,
                       fontWeight: FontWeight.w700,
                     ),

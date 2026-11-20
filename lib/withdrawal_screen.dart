@@ -805,7 +805,7 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
                   children: [
                     Icon(
                       Icons.account_balance_wallet_rounded,
-                      color: primaryGreen,
+                      color: ServicePayColors.accent,
                       size: 32,
                     ),
                     SizedBox(height: 10),
@@ -820,7 +820,7 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
                     Text(
                       'Your requested amount will be reserved while Head Office reviews and processes your bank payment.',
                       style: TextStyle(
-                        color: Colors.black54,
+                        color: ServicePayColors.muted,
                         height: 1.4,
                       ),
                     ),
@@ -833,7 +833,7 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: pendingRequestAcknowledged
-                        ? const Color(0xFFEAF7F0)
+                        ? ServicePayColors.brandSoft
                         : const Color(0xFFFFF4D6),
                     borderRadius: BorderRadius.circular(10),
                   ),
@@ -908,7 +908,7 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
                 '₦${maximumWithdrawal.toStringAsFixed(0)}. '
                 'Your bank details are saved on this device after a confirmed request.',
                 style: const TextStyle(
-                  color: Colors.black54,
+                  color: ServicePayColors.muted,
                   height: 1.35,
                 ),
               ),
@@ -917,7 +917,7 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
                 Text(
                   'Available to withdraw: ₦${availableBalance!.toStringAsFixed(2)}',
                   style: const TextStyle(
-                    color: Colors.black54,
+                    color: ServicePayColors.muted,
                     height: 1.35,
                   ),
                 ),

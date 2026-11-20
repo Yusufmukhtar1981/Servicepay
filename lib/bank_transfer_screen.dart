@@ -527,7 +527,7 @@ class _BankTransferScreenState extends State<BankTransferScreen> {
                       width: double.infinity,
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFEAF9F4),
+                        color: ServicePayColors.brandSoft,
                         borderRadius: BorderRadius.circular(16),
                       ),
                       child: Column(
@@ -535,7 +535,7 @@ class _BankTransferScreenState extends State<BankTransferScreen> {
                           const Text(
                             'Beneficiary',
                             style: TextStyle(
-                              color: Color(0xFF6B7280),
+                              color: ServicePayColors.muted,
                             ),
                           ),
                           const SizedBox(height: 5),
@@ -553,21 +553,21 @@ class _BankTransferScreenState extends State<BankTransferScreen> {
                             '$verifiedAccountNumber',
                             textAlign: TextAlign.center,
                             style: const TextStyle(
-                              color: Color(0xFF6B7280),
+                              color: ServicePayColors.muted,
                             ),
                           ),
                           const Divider(height: 28),
                           const Text(
                             'Amount',
                             style: TextStyle(
-                              color: Color(0xFF6B7280),
+                              color: ServicePayColors.muted,
                             ),
                           ),
                           const SizedBox(height: 4),
                           Text(
                             formatMoney(amount),
                             style: const TextStyle(
-                              color: primaryGreen,
+                              color: ServicePayColors.accent,
                               fontSize: 25,
                               fontWeight: FontWeight.w900,
                             ),
@@ -601,7 +601,7 @@ class _BankTransferScreenState extends State<BankTransferScreen> {
                         counterText: '',
                         prefixIcon: const Icon(
                           Icons.pin_outlined,
-                          color: primaryGreen,
+                          color: ServicePayColors.accent,
                         ),
                         suffixIcon: IconButton(
                           onPressed: () {
@@ -910,17 +910,17 @@ class _BankTransferScreenState extends State<BankTransferScreen> {
       return Container(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          color: const Color(0xFFFFF7ED),
+          color: const Color(0xFF4B3316),
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: const Color(0xFFFED7AA),
+            color: const Color(0xFFAB702B),
           ),
         ),
         child: Column(
           children: [
             const Icon(
               Icons.error_outline_rounded,
-              color: Color(0xFFEA580C),
+              color: Color(0xFFF9B08B),
               size: 38,
             ),
             const SizedBox(height: 8),
@@ -928,7 +928,7 @@ class _BankTransferScreenState extends State<BankTransferScreen> {
               errorMessage,
               textAlign: TextAlign.center,
               style: const TextStyle(
-                color: Color(0xFF7C2D12),
+                color: Color(0xFFEFAB94),
               ),
             ),
             const SizedBox(height: 12),
@@ -959,10 +959,10 @@ class _BankTransferScreenState extends State<BankTransferScreen> {
         labelText: 'Select Bank',
         prefixIcon: const Icon(
           Icons.account_balance_outlined,
-          color: primaryGreen,
+          color: ServicePayColors.accent,
         ),
         filled: true,
-        fillColor: Colors.white,
+        fillColor: ServicePayColors.surface,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(15),
         ),
@@ -1002,7 +1002,7 @@ class _BankTransferScreenState extends State<BankTransferScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F8FA),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         title: const Text(
           'Bank Transfer',
@@ -1099,10 +1099,10 @@ class _BankTransferScreenState extends State<BankTransferScreen> {
                   counterText: '',
                   prefixIcon: const Icon(
                     Icons.credit_card_outlined,
-                    color: primaryGreen,
+                    color: ServicePayColors.accent,
                   ),
                   filled: true,
-                  fillColor: Colors.white,
+                  fillColor: ServicePayColors.surface,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(15),
                   ),
@@ -1117,7 +1117,7 @@ class _BankTransferScreenState extends State<BankTransferScreen> {
                           ? null
                           : resolveAccount,
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: primaryGreen,
+                    foregroundColor: ServicePayColors.accent,
                     side: const BorderSide(
                       color: primaryGreen,
                     ),
@@ -1143,17 +1143,17 @@ class _BankTransferScreenState extends State<BankTransferScreen> {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFEAF9F4),
+                    color: ServicePayColors.brandSoft,
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: const Color(0xFFBCE5D9),
+                      color: ServicePayColors.border,
                     ),
                   ),
                   child: Row(
                     children: [
                       const Icon(
                         Icons.verified_rounded,
-                        color: primaryGreen,
+                        color: ServicePayColors.accent,
                         size: 32,
                       ),
                       const SizedBox(width: 12),
@@ -1164,7 +1164,7 @@ class _BankTransferScreenState extends State<BankTransferScreen> {
                             const Text(
                               'VERIFIED ACCOUNT NAME',
                               style: TextStyle(
-                                color: Color(0xFF6B7280),
+                                color: ServicePayColors.muted,
                                 fontSize: 10,
                                 fontWeight: FontWeight.w700,
                               ),
@@ -1202,10 +1202,10 @@ class _BankTransferScreenState extends State<BankTransferScreen> {
                   prefixText: '₦ ',
                   prefixIcon: const Icon(
                     Icons.payments_outlined,
-                    color: primaryGreen,
+                    color: ServicePayColors.accent,
                   ),
                   filled: true,
-                  fillColor: Colors.white,
+                  fillColor: ServicePayColors.surface,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(15),
                   ),
@@ -1221,10 +1221,10 @@ class _BankTransferScreenState extends State<BankTransferScreen> {
                   counterText: '',
                   prefixIcon: const Icon(
                     Icons.notes_rounded,
-                    color: primaryGreen,
+                    color: ServicePayColors.accent,
                   ),
                   filled: true,
-                  fillColor: Colors.white,
+                  fillColor: ServicePayColors.surface,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(15),
                   ),
@@ -1266,10 +1266,10 @@ class _BankTransferScreenState extends State<BankTransferScreen> {
               Container(
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFFF7ED),
+                  color: const Color(0xFF4B3316),
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(
-                    color: const Color(0xFFFED7AA),
+                    color: const Color(0xFFAB702B),
                   ),
                 ),
                 child: const Row(
@@ -1277,7 +1277,7 @@ class _BankTransferScreenState extends State<BankTransferScreen> {
                   children: [
                     Icon(
                       Icons.info_outline,
-                      color: Color(0xFFEA580C),
+                      color: Color(0xFFF9B08B),
                     ),
                     SizedBox(width: 9),
                     Expanded(
@@ -1286,7 +1286,7 @@ class _BankTransferScreenState extends State<BankTransferScreen> {
                         'Live transfers remain disabled until '
                         'ServicePay completes final security testing.',
                         style: TextStyle(
-                          color: Color(0xFF7C2D12),
+                          color: Color(0xFFEFAB94),
                           height: 1.4,
                         ),
                       ),

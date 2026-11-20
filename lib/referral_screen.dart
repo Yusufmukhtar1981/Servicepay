@@ -196,10 +196,10 @@ class _ReferralScreenState extends State<ReferralScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: ServicePayColors.surface,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: configured ? const Color(0xFFBFE8D0) : const Color(0xFFF0F2F1),
+          color: configured ? ServicePayColors.border : ServicePayColors.border,
         ),
       ),
       child: Column(
@@ -207,7 +207,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
         children: [
           Row(
             children: [
-              const Icon(Icons.card_giftcard_rounded, color: primaryGreen),
+              const Icon(Icons.card_giftcard_rounded, color: ServicePayColors.accent),
               const SizedBox(width: 8),
               const Expanded(
                 child: Text(
@@ -220,7 +220,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                 decoration: BoxDecoration(
                   color: configured
                       ? ServicePayColors.brandSoft
-                      : const Color(0xFFF1F3F2),
+                      : ServicePayColors.surfaceRaised,
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
@@ -228,7 +228,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                       ? (programme.enabled ? 'ACTIVE' : 'NOT ACTIVE')
                       : summary.rewardProgramStatus,
                   style: TextStyle(
-                    color: configured ? primaryGreen : Colors.black54,
+                    color: configured ? ServicePayColors.accent : ServicePayColors.muted,
                     fontSize: 10,
                     fontWeight: FontWeight.w900,
                   ),
@@ -242,37 +242,37 @@ class _ReferralScreenState extends State<ReferralScreen> {
               'After activation, earn ₦100 once when a new referral registers '
               'after verifying a phone number or email, plus ₦1 for each '
               'eligible successful paid service transaction.',
-              style: TextStyle(color: Colors.black87, height: 1.45),
+              style: TextStyle(color: ServicePayColors.ink, height: 1.45),
             ),
             const SizedBox(height: 8),
             Text(
               'Funding, transfers, rewards and refunds do not qualify. '
               'Only activity from activation onward is included.',
-              style: TextStyle(color: Colors.black54, height: 1.4),
+              style: TextStyle(color: ServicePayColors.muted, height: 1.4),
             ),
             if (programme.eligibleServices.isNotEmpty) ...[
               const SizedBox(height: 8),
               Text(
                 'Eligible services: ${programme.eligibleServices.map((e) => e.replaceAll('_', ' ')).join(', ')}.',
-                style: const TextStyle(color: Colors.black54, height: 1.4),
+                style: const TextStyle(color: ServicePayColors.muted, height: 1.4),
               ),
             ],
           ] else if (programme.isVersionTwo && !configured)
             const Text(
               'The referral programme is not active yet. New-policy rewards '
               'start only after activation; no earlier activity is backfilled.',
-              style: TextStyle(color: Colors.black54, height: 1.4),
+              style: TextStyle(color: ServicePayColors.muted, height: 1.4),
             )
           else if (!configured)
             const Text(
               'Rewards remain pending until ServicePay activates a reward '
               'programme.',
-              style: TextStyle(color: Colors.black54, height: 1.4),
+              style: TextStyle(color: ServicePayColors.muted, height: 1.4),
             )
           else if (summary.rewardPolicy.categories.isEmpty)
             const Text(
               'Your referral rewards are being tracked under the active policy.',
-              style: TextStyle(color: Colors.black54, height: 1.4),
+              style: TextStyle(color: ServicePayColors.muted, height: 1.4),
             )
           else
             ...summary.rewardPolicy.categories.map(
@@ -289,7 +289,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                     Text(
                       '${rule.target} referrals · ₦${_money(rule.reward)}'
                       '${rule.minimumTransaction > 0 ? ' · min ₦${_money(rule.minimumTransaction)}' : ''}',
-                      style: const TextStyle(color: Colors.black54),
+                      style: const TextStyle(color: ServicePayColors.muted),
                     ),
                   ],
                 ),
@@ -307,9 +307,9 @@ class _ReferralScreenState extends State<ReferralScreen> {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: ServicePayColors.surface,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFF0F2F1)),
+        border: Border.all(color: ServicePayColors.border),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -320,7 +320,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
             child: Text(
               initial,
               style: const TextStyle(
-                color: primaryGreen,
+                color: ServicePayColors.accent,
                 fontWeight: FontWeight.w900,
                 fontSize: 18,
               ),
@@ -338,7 +338,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                 const SizedBox(height: 4),
                 Text(
                   item.registrationDate,
-                  style: const TextStyle(color: Colors.black54, fontSize: 12),
+                  style: const TextStyle(color: ServicePayColors.muted, fontSize: 12),
                 ),
                 if (item.category.isNotEmpty) ...[
                   const SizedBox(height: 6),
@@ -359,7 +359,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                   Text(
                     '${item.verified ? 'Verified contact' : 'Contact not verified'}'
                     ' · ${item.successfulTransactions} eligible transactions',
-                    style: const TextStyle(fontSize: 12, color: Colors.black54),
+                    style: const TextStyle(fontSize: 12, color: ServicePayColors.muted),
                   ),
                   Text(
                     'Earned: ₦${_money(item.registrationBonusEarned + item.transactionCommissionsEarned)}',
@@ -398,7 +398,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                   height: index == 0 ? 150 : 74,
                   margin: const EdgeInsets.only(bottom: 12),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFE9F0EC),
+                    color: ServicePayColors.surface,
                     borderRadius: BorderRadius.circular(20),
                   ),
                 ),
@@ -508,14 +508,14 @@ class _ReferralScreenState extends State<ReferralScreen> {
                           vertical: 13,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: ServicePayColors.surface,
                           borderRadius: BorderRadius.circular(18),
                         ),
                         child: Row(
                           children: [
                             const Icon(
                               Icons.payments_outlined,
-                              color: primaryGreen,
+                              color: ServicePayColors.accent,
                             ),
                             const SizedBox(width: 10),
                             Expanded(
@@ -529,7 +529,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                             Text(
                               '₦${_money(summary.programme.isVersionTwo ? summary.totalRewards : summary.totalRewards)}',
                               style: const TextStyle(
-                                color: primaryGreen,
+                                color: ServicePayColors.accent,
                                 fontSize: 18,
                                 fontWeight: FontWeight.w900,
                               ),
@@ -578,7 +578,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                           Text(
                             '${summary.total}',
                             style: const TextStyle(
-                              color: primaryGreen,
+                              color: ServicePayColors.accent,
                               fontWeight: FontWeight.w900,
                             ),
                           ),
@@ -589,7 +589,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                         Container(
                           padding: const EdgeInsets.all(18),
                           decoration: BoxDecoration(
-                            color: Colors.white,
+                            color: ServicePayColors.surface,
                             borderRadius: BorderRadius.circular(18),
                           ),
                           child: const Text(
@@ -602,7 +602,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                       Container(
                         padding: const EdgeInsets.all(18),
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: ServicePayColors.surface,
                           borderRadius: BorderRadius.circular(18),
                         ),
                         child: const Column(
@@ -640,16 +640,16 @@ class _ReferralScreenState extends State<ReferralScreen> {
         child: Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: ServicePayColors.surface,
             borderRadius: BorderRadius.circular(17),
-            border: Border.all(color: const Color(0xFFE7ECE8)),
+            border: Border.all(color: ServicePayColors.border),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(value,
                   style: const TextStyle(
-                      color: primaryGreen,
+                      color: ServicePayColors.accent,
                       fontSize: 19,
                       fontWeight: FontWeight.w900)),
               const SizedBox(height: 3),
@@ -662,7 +662,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
   Widget _earningsBreakdown() => Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-            color: Colors.white, borderRadius: BorderRadius.circular(18)),
+            color: ServicePayColors.surface, borderRadius: BorderRadius.circular(18)),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -678,7 +678,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
             const Text(
                 'Legacy rewards are shown for history and are not part of new-policy earnings.',
                 style: TextStyle(
-                    color: Colors.black54, fontSize: 12, height: 1.4)),
+                    color: ServicePayColors.muted, fontSize: 12, height: 1.4)),
           ],
         ),
       );
@@ -707,7 +707,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                 width: double.infinity,
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: ServicePayColors.surface,
                     borderRadius: BorderRadius.circular(16)),
                 child: const Text('No referral reward activity yet.'),
               )
@@ -721,7 +721,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                   margin: const EdgeInsets.only(bottom: 8),
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: ServicePayColors.surface,
                       borderRadius: BorderRadius.circular(16)),
                   child: Row(
                     children: [
@@ -730,7 +730,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                               ? Icons.call_received_rounded
                               : Icons.call_made_rounded,
                           color:
-                              credit ? primaryGreen : const Color(0xFF9B4D3A),
+                              credit ? ServicePayColors.accent : const Color(0xFF9B4D3A),
                           semanticLabel: credit ? 'Credit' : 'Debit'),
                       const SizedBox(width: 10),
                       Expanded(
@@ -743,14 +743,14 @@ class _ReferralScreenState extends State<ReferralScreen> {
                               Text(
                                   '${event.firstName.isEmpty ? 'Referral' : event.firstName} · ${event.date}',
                                   style: const TextStyle(
-                                      color: Colors.black54, fontSize: 12)),
+                                      color: ServicePayColors.muted, fontSize: 12)),
                             ]),
                       ),
                       Text('${credit ? '+' : '−'}₦${_money(event.amount)}',
                           style: TextStyle(
                               fontWeight: FontWeight.w800,
                               color: credit
-                                  ? primaryGreen
+                                  ? ServicePayColors.accent
                                   : const Color(0xFF9B4D3A))),
                     ],
                   ),
@@ -765,7 +765,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                   Text(
                     'Page ${summary.historyPage} of ${summary.historyPages}'
                     '${summary.historyTotal > 0 ? ' · ${summary.historyTotal} entries' : ''}',
-                    style: const TextStyle(color: Colors.black54, fontSize: 12),
+                    style: const TextStyle(color: ServicePayColors.muted, fontSize: 12),
                   ),
                   Row(
                     mainAxisSize: MainAxisSize.min,
@@ -797,7 +797,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
             ],
             const Text(
                 'Activity shows first names only. Contact details are private.',
-                style: TextStyle(color: Colors.black54, fontSize: 12)),
+                style: TextStyle(color: ServicePayColors.muted, fontSize: 12)),
           ],
         ),
       );

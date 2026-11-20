@@ -38,7 +38,7 @@ class _CustomerLeaderboardReportPanelState
     extends State<CustomerLeaderboardReportPanel>
     with SingleTickerProviderStateMixin {
   late final TabController _tabs;
-  static const _ink = Color(0xFF18382F);
+  static const _ink = ServicePayColors.accent;
   static const _green = ServicePayColors.brand;
 
   @override
@@ -77,7 +77,7 @@ class _CustomerLeaderboardReportPanelState
             ),
             Text(report.timeZone,
                 style: const TextStyle(
-                    color: Color(0xFF718178),
+                    color: ServicePayColors.muted,
                     fontSize: 10,
                     fontWeight: FontWeight.w700)),
           ],
@@ -93,14 +93,14 @@ class _CustomerLeaderboardReportPanelState
         const SizedBox(height: 12),
         Container(
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: ServicePayColors.surface,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFFE2EAE3)),
+            border: Border.all(color: ServicePayColors.border),
           ),
           child: TabBar(
             controller: _tabs,
             labelColor: _green,
-            unselectedLabelColor: const Color(0xFF718178),
+            unselectedLabelColor: ServicePayColors.muted,
             indicatorColor: _green,
             tabs: const [
               Tab(text: 'Most Transactions'),
@@ -126,7 +126,7 @@ class _CustomerLeaderboardReportPanelState
             child: Text(
               'Updated ${_time(report.calculatedAt)} · cached until ${_time(report.cachedUntil)}',
               textAlign: TextAlign.center,
-              style: const TextStyle(color: Color(0xFF718178), fontSize: 10),
+              style: const TextStyle(color: ServicePayColors.muted, fontSize: 10),
             ),
           ),
       ],
@@ -139,9 +139,9 @@ class _CustomerLeaderboardReportPanelState
     return Container(
       padding: EdgeInsets.all(widget.compact ? 14 : 18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: ServicePayColors.surface,
         borderRadius: BorderRadius.circular(17),
-        border: Border.all(color: const Color(0xFFE2EAE3)),
+        border: Border.all(color: ServicePayColors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -178,14 +178,14 @@ class _CustomerLeaderboardReportPanelState
             const SizedBox(height: 8),
             Text(
               '$needed extra qualifying ${needed == 1 ? 'purchase' : 'purchases'} to exceed the current 10th-place transaction count',
-              style: const TextStyle(color: Color(0xFF60736A), fontSize: 12),
+              style: const TextStyle(color: ServicePayColors.muted, fontSize: 12),
             ),
           ],
           const SizedBox(height: 7),
           const Text(
             'This count target is not a prediction of future rank. Ties use transaction value, then earliest eligible activity, then customer ID; rankings can change.',
             style:
-                TextStyle(color: Color(0xFF718178), fontSize: 10, height: 1.4),
+                TextStyle(color: ServicePayColors.muted, fontSize: 10, height: 1.4),
           ),
         ],
       ),
@@ -196,7 +196,7 @@ class _CustomerLeaderboardReportPanelState
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(title,
-              style: const TextStyle(color: Color(0xFF718178), fontSize: 11)),
+              style: const TextStyle(color: ServicePayColors.muted, fontSize: 11)),
           const SizedBox(height: 4),
           Text(value,
               style: const TextStyle(
@@ -215,12 +215,12 @@ class _CustomerLeaderboardReportPanelState
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-          color: const Color(0xFFEAF4EC),
+          color: ServicePayColors.brandSoft,
           borderRadius: BorderRadius.circular(13)),
       child: Text(
         'Period: ${reportTimeZoneLabel(widget.report)}${basis == 'createdAt' ? ' · transaction creation date' : ''}. ${rules['historyUsesCurrentRules'] == true ? 'Historical months use the rules currently selected.' : ''}',
         style: const TextStyle(
-            color: Color(0xFF526A5D), fontSize: 10, height: 1.4),
+            color: ServicePayColors.muted, fontSize: 10, height: 1.4),
       ),
     );
   }
@@ -236,7 +236,7 @@ class _CustomerLeaderboardReportPanelState
           child: Text(
             'No qualifying activity to show for this ranking yet.',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Color(0xFF718178)),
+            style: TextStyle(color: ServicePayColors.muted),
           ),
         ),
       );
@@ -267,11 +267,11 @@ class _CustomerLeaderboardReportPanelState
             constraints: const BoxConstraints(minHeight: 50),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: ServicePayColors.surface,
               borderRadius: BorderRadius.circular(13),
               border: Border.all(
                 color: row.isMe
-                    ? const Color(0xFF9CC8AA)
+                    ? ServicePayColors.border
                     : const Color(0xFFE6ECE7),
               ),
             ),
@@ -284,7 +284,7 @@ class _CustomerLeaderboardReportPanelState
                           color: medalColors[row.rank - 1], size: 22)
                       : Text('#${row.rank}',
                           style: const TextStyle(
-                              color: Color(0xFF75847B),
+                              color: ServicePayColors.muted,
                               fontWeight: FontWeight.w800)),
                 ),
                 Expanded(

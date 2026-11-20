@@ -90,7 +90,7 @@ class _TrustProfileScreenState extends State<TrustProfileScreen> {
   Widget build(BuildContext context) {
     final TrustProfile? profile = _profile;
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         title: Text(widget.isOwnProfile ? 'My Trust Profile' : 'Trust Profile'),
         backgroundColor: _green,
@@ -138,7 +138,7 @@ class _TrustProfileScreenState extends State<TrustProfileScreen> {
                         const Text(
                             'Trust information helps you make a more informed decision. It is not a guarantee against fraud.',
                             style:
-                                TextStyle(color: Colors.black54, fontSize: 12)),
+                                TextStyle(color: ServicePayColors.muted, fontSize: 12)),
                       ]),
                 ),
     );
@@ -264,7 +264,7 @@ class _TrustProfileScreenState extends State<TrustProfileScreen> {
   Widget _card(String title, Widget child) => Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-          color: Colors.white, borderRadius: BorderRadius.circular(16)),
+          color: ServicePayColors.surface, borderRadius: BorderRadius.circular(16)),
       child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
@@ -278,15 +278,15 @@ class _TrustProfileScreenState extends State<TrustProfileScreen> {
       contentPadding: EdgeInsets.zero,
       dense: true,
       leading: Icon(value ? Icons.verified_rounded : Icons.cancel_outlined,
-          color: value ? _green : Colors.grey),
+          color: value ? ServicePayColors.accent : Colors.grey),
       title: Text(label),
       trailing: Text(value ? 'Verified' : 'Not verified',
-          style: TextStyle(color: value ? _green : Colors.grey)));
+          style: TextStyle(color: value ? ServicePayColors.accent : Colors.grey)));
   Widget _detail(String label, String value) => Padding(
       padding: const EdgeInsets.symmetric(vertical: 7),
       child: Row(children: <Widget>[
         Expanded(
-            child: Text(label, style: const TextStyle(color: Colors.black54))),
+            child: Text(label, style: const TextStyle(color: ServicePayColors.muted))),
         Text(value, style: const TextStyle(fontWeight: FontWeight.w700))
       ]));
 }

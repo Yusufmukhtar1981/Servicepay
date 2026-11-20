@@ -18,7 +18,6 @@ class _CardsScreenState extends State<CardsScreen> {
 
   static const Color primaryGreen = ServicePayColors.brand;
   static const Color softGreen = ServicePayColors.brandSoft;
-  static const Color darkText = Color(0xFF172B22);
 
   bool isLoading = true;
   bool isProcessing = false;
@@ -170,7 +169,7 @@ class _CardsScreenState extends State<CardsScreen> {
     final String? address = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: Colors.white,
+      backgroundColor: ServicePayColors.surface,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(
           top: Radius.circular(28),
@@ -199,7 +198,7 @@ class _CardsScreenState extends State<CardsScreen> {
                     ),
                     child: const Icon(
                       Icons.credit_card_rounded,
-                      color: primaryGreen,
+                      color: ServicePayColors.accent,
                     ),
                   ),
                   const SizedBox(width: 14),
@@ -212,7 +211,7 @@ class _CardsScreenState extends State<CardsScreen> {
                           style: TextStyle(
                             fontSize: 19,
                             fontWeight: FontWeight.w800,
-                            color: darkText,
+                            color: ServicePayColors.accent,
                           ),
                         ),
                         SizedBox(height: 3),
@@ -220,7 +219,7 @@ class _CardsScreenState extends State<CardsScreen> {
                           'Enter the address where you want your ServicePay card delivered.',
                           style: TextStyle(
                             fontSize: 13,
-                            color: Color(0xFF6C7A72),
+                            color: ServicePayColors.muted,
                           ),
                         ),
                       ],
@@ -239,10 +238,10 @@ class _CardsScreenState extends State<CardsScreen> {
                   hintText: 'House number, street, LGA, state...',
                   prefixIcon: const Icon(
                     Icons.location_on_outlined,
-                    color: primaryGreen,
+                    color: ServicePayColors.accent,
                   ),
                   filled: true,
-                  fillColor: const Color(0xFFF7FAF8),
+                  fillColor: ServicePayColors.surface,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(18),
                     borderSide: BorderSide.none,
@@ -250,7 +249,7 @@ class _CardsScreenState extends State<CardsScreen> {
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(18),
                     borderSide: const BorderSide(
-                      color: Color(0xFFE4ECE7),
+                      color: ServicePayColors.border,
                     ),
                   ),
                   focusedBorder: OutlineInputBorder(
@@ -482,7 +481,7 @@ class _CardsScreenState extends State<CardsScreen> {
           content: Row(
             children: <Widget>[
               const CircularProgressIndicator(
-                color: primaryGreen,
+                color: ServicePayColors.accent,
               ),
               const SizedBox(width: 20),
               Expanded(
@@ -609,15 +608,15 @@ class _CardsScreenState extends State<CardsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F8F7),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: ServicePayColors.canvas,
         surfaceTintColor: Colors.white,
         elevation: 0,
         title: const Text(
           'ServicePay Cards',
           style: TextStyle(
-            color: darkText,
+            color: ServicePayColors.accent,
             fontWeight: FontWeight.w800,
           ),
         ),
@@ -627,7 +626,7 @@ class _CardsScreenState extends State<CardsScreen> {
             onPressed: isLoading ? null : loadCards,
             icon: const Icon(
               Icons.refresh_rounded,
-              color: primaryGreen,
+              color: ServicePayColors.accent,
             ),
           ),
           const SizedBox(width: 6),
@@ -652,7 +651,7 @@ class _CardsScreenState extends State<CardsScreen> {
                     style: TextStyle(
                       fontSize: 19,
                       fontWeight: FontWeight.w900,
-                      color: darkText,
+                      color: ServicePayColors.accent,
                     ),
                   ),
                 ),
@@ -669,7 +668,7 @@ class _CardsScreenState extends State<CardsScreen> {
                     child: Text(
                       '${cards.length}',
                       style: const TextStyle(
-                        color: primaryGreen,
+                        color: ServicePayColors.accent,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -682,7 +681,7 @@ class _CardsScreenState extends State<CardsScreen> {
                 padding: EdgeInsets.symmetric(vertical: 50),
                 child: Center(
                   child: CircularProgressIndicator(
-                    color: primaryGreen,
+                    color: ServicePayColors.accent,
                   ),
                 ),
               )
@@ -787,7 +786,7 @@ class _CardsScreenState extends State<CardsScreen> {
     required VoidCallback onTap,
   }) {
     return Material(
-      color: Colors.white,
+      color: ServicePayColors.surface,
       borderRadius: BorderRadius.circular(22),
       child: InkWell(
         borderRadius: BorderRadius.circular(22),
@@ -797,7 +796,7 @@ class _CardsScreenState extends State<CardsScreen> {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(22),
             border: Border.all(
-              color: const Color(0xFFE4ECE7),
+              color: ServicePayColors.border,
             ),
           ),
           child: Column(
@@ -812,14 +811,14 @@ class _CardsScreenState extends State<CardsScreen> {
                 ),
                 child: Icon(
                   icon,
-                  color: primaryGreen,
+                  color: ServicePayColors.accent,
                 ),
               ),
               const SizedBox(height: 14),
               Text(
                 title,
                 style: const TextStyle(
-                  color: darkText,
+                  color: ServicePayColors.accent,
                   fontWeight: FontWeight.w900,
                   fontSize: 14,
                 ),
@@ -828,7 +827,7 @@ class _CardsScreenState extends State<CardsScreen> {
               Text(
                 subtitle,
                 style: const TextStyle(
-                  color: Color(0xFF758078),
+                  color: ServicePayColors.muted,
                   fontSize: 11.5,
                 ),
               ),
@@ -984,10 +983,10 @@ class _CardsScreenState extends State<CardsScreen> {
           Container(
             padding: const EdgeInsets.fromLTRB(14, 11, 9, 11),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: ServicePayColors.surface,
               borderRadius: BorderRadius.circular(17),
               border: Border.all(
-                color: const Color(0xFFE7ECE9),
+                color: ServicePayColors.border,
               ),
             ),
             child: Row(
@@ -1029,7 +1028,7 @@ class _CardsScreenState extends State<CardsScreen> {
                       frozen ? 'Unfreeze' : 'Freeze',
                     ),
                     style: TextButton.styleFrom(
-                      foregroundColor: primaryGreen,
+                      foregroundColor: ServicePayColors.accent,
                     ),
                   ),
               ],
@@ -1047,10 +1046,10 @@ class _CardsScreenState extends State<CardsScreen> {
         vertical: 42,
       ),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: ServicePayColors.surface,
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: const Color(0xFFE7ECE9),
+          color: ServicePayColors.border,
         ),
       ),
       child: const Column(
@@ -1061,14 +1060,14 @@ class _CardsScreenState extends State<CardsScreen> {
             child: Icon(
               Icons.credit_card_off_rounded,
               size: 31,
-              color: primaryGreen,
+              color: ServicePayColors.accent,
             ),
           ),
           SizedBox(height: 16),
           Text(
             'No cards yet',
             style: TextStyle(
-              color: darkText,
+              color: ServicePayColors.accent,
               fontSize: 18,
               fontWeight: FontWeight.w900,
             ),
@@ -1078,7 +1077,7 @@ class _CardsScreenState extends State<CardsScreen> {
             'Request a Physical or Virtual ServicePay card above to get started.',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Color(0xFF758078),
+              color: ServicePayColors.muted,
               height: 1.45,
             ),
           ),
@@ -1091,7 +1090,7 @@ class _CardsScreenState extends State<CardsScreen> {
     return Container(
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF4F2),
+        color: const Color(0xFF4B1E16),
         borderRadius: BorderRadius.circular(22),
       ),
       child: Column(
@@ -1099,14 +1098,14 @@ class _CardsScreenState extends State<CardsScreen> {
           const Icon(
             Icons.error_outline_rounded,
             size: 38,
-            color: Color(0xFFB42318),
+            color: Color(0xFFF19A93),
           ),
           const SizedBox(height: 12),
           Text(
             errorMessage,
             textAlign: TextAlign.center,
             style: const TextStyle(
-              color: Color(0xFF7A271A),
+              color: Color(0xFFE9A59A),
               fontWeight: FontWeight.w700,
             ),
           ),

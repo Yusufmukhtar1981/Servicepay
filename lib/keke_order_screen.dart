@@ -1415,9 +1415,9 @@ class _KekeOrderScreenState
                     heroTag:
                         'current_location',
                     backgroundColor:
-                        Colors.white,
+                        ServicePayColors.surface,
                     foregroundColor:
-                        primaryGreen,
+                        ServicePayColors.accent,
                     onPressed:
                         _useCurrentLocation,
                     child:
@@ -1550,7 +1550,7 @@ class _KekeOrderScreenState
               decoration: BoxDecoration(
                 color: ServicePayColors.brandSoft,
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFFCFE7D8)),
+                border: Border.all(color: ServicePayColors.border),
               ),
               child: _isEstimatingFare
                   ? const Row(
@@ -1568,7 +1568,7 @@ class _KekeOrderScreenState
                       children: [
                         const Icon(
                           Icons.electric_rickshaw_rounded,
-                          color: primaryGreen,
+                          color: ServicePayColors.accent,
                         ),
                         const SizedBox(width: 10),
                         const Expanded(
@@ -1734,7 +1734,7 @@ class _KekeOrderScreenState
                 Icons
                     .electric_rickshaw,
                 color:
-                    primaryGreen,
+                    ServicePayColors.accent,
                 size:
                     30,
               ),
@@ -1845,7 +1845,7 @@ class _KekeOrderScreenState
               style:
                   TextStyle(
                 color:
-                    primaryGreen,
+                    ServicePayColors.accent,
                 fontWeight:
                     FontWeight.w600,
               ),
@@ -1891,7 +1891,7 @@ class _KekeOrderScreenState
                     Icons
                         .verified_user_rounded,
                     color:
-                        primaryGreen,
+                        ServicePayColors.accent,
                     size:
                         34,
                   ),
@@ -1904,7 +1904,7 @@ class _KekeOrderScreenState
                     style:
                         TextStyle(
                       color:
-                          primaryGreen,
+                          ServicePayColors.accent,
                       fontWeight:
                           FontWeight.w800,
                       fontSize:
@@ -1926,7 +1926,7 @@ class _KekeOrderScreenState
                       child:
                           CircularProgressIndicator(
                         color:
-                            primaryGreen,
+                            ServicePayColors.accent,
                       ),
                     )
                   else ...<Widget>[
@@ -2013,7 +2013,7 @@ class _KekeOrderScreenState
                     Icons
                         .route_rounded,
                     color:
-                        primaryGreen,
+                        ServicePayColors.accent,
                   ),
                   SizedBox(
                     width:
@@ -2124,7 +2124,7 @@ class _MapPin extends StatelessWidget {
       decoration:
           BoxDecoration(
         color:
-            Colors.white,
+            ServicePayColors.surface,
         shape:
             BoxShape.circle,
         boxShadow:

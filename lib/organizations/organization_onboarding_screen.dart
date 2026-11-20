@@ -418,14 +418,14 @@ class _OrganizationOnboardingScreenState
                   children: [
                     Text('Step ${step + 1} of 5',
                         style: const TextStyle(
-                            color: ServicePayColors.brand,
+                            color: ServicePayColors.accent,
                             fontWeight: FontWeight.w800)),
                     const SizedBox(height: 8),
                     LinearProgressIndicator(
                         value: (step + 1) / 5,
                         minHeight: 7,
                         borderRadius: BorderRadius.circular(8),
-                        color: ServicePayColors.brand),
+                        color: ServicePayColors.accent),
                     const SizedBox(height: 18),
                     Text(titles[step],
                         style: const TextStyle(
@@ -440,7 +440,7 @@ class _OrganizationOnboardingScreenState
             Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 18),
                 child: Material(
-                    color: Colors.red.shade50,
+                    color: Color(0xFF4B161E),
                     borderRadius: BorderRadius.circular(12),
                     child: Padding(
                         padding: const EdgeInsets.all(12),
@@ -490,7 +490,7 @@ class _OrganizationOnboardingScreenState
       labelText: label,
       hintText: hint,
       filled: true,
-      fillColor: Colors.white,
+      fillColor: ServicePayColors.surface,
       border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide.none));

@@ -38,7 +38,7 @@ class _TrustDealsScreenState extends State<TrustDealsScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: const Color(0xFFF5F7FA),
+        backgroundColor: ServicePayColors.canvas,
         appBar: AppBar(
             title: const Text('Protected deals'),
             backgroundColor: ServicePayColors.brand,
@@ -74,9 +74,9 @@ class _TrustDealsScreenState extends State<TrustDealsScreen> {
                               return Card(
                                   child: ListTile(
                                 leading: const CircleAvatar(
-                                    backgroundColor: Color(0xFFEAF7F0),
+                                    backgroundColor: ServicePayColors.brandSoft,
                                     child: Icon(Icons.shield_outlined,
-                                        color: ServicePayColors.brand)),
+                                        color: ServicePayColors.accent)),
                                 title: Text(deal.title),
                                 subtitle: Text(
                                     '${_money(deal)} • ${deal.status.replaceAll('_', ' ')}'),
@@ -277,7 +277,7 @@ class _TrustDealDetailScreenState extends State<TrustDealDetailScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: const Color(0xFFF5F7FA),
+        backgroundColor: ServicePayColors.canvas,
         appBar: AppBar(
             title: const Text('Protected deal'),
             backgroundColor: ServicePayColors.brand,
@@ -295,7 +295,7 @@ class _TrustDealDetailScreenState extends State<TrustDealDetailScreen> {
                         const SizedBox(height: 8),
                         Text(_money(_deal),
                             style: const TextStyle(
-                                color: ServicePayColors.brand,
+                                color: ServicePayColors.accent,
                                 fontSize: 24,
                                 fontWeight: FontWeight.bold)),
                         const SizedBox(height: 8),
@@ -353,7 +353,7 @@ class _TrustDealDetailScreenState extends State<TrustDealDetailScreen> {
               padding: EdgeInsets.only(top: 18),
               child: Text(
                   'Trust information helps you make a more informed decision. It is not a guarantee against fraud.',
-                  style: TextStyle(color: Colors.black54, fontSize: 12))),
+                  style: TextStyle(color: ServicePayColors.muted, fontSize: 12))),
         ]),
       );
 }

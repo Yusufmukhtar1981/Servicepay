@@ -106,17 +106,17 @@ class _BusinessTransactionRecordScreenState
     final transaction = widget.transaction;
     return Scaffold(
       appBar: AppBar(
-        foregroundColor: const Color(0xFF18372A),
+        foregroundColor: ServicePayColors.accent,
         titleTextStyle: const TextStyle(
-          color: Color(0xFF18372A),
+          color: ServicePayColors.accent,
           fontWeight: FontWeight.w800,
         ),
-        iconTheme: const IconThemeData(color: Color(0xFF18372A)),
-        actionsIconTheme: const IconThemeData(color: Color(0xFF18372A)),
+        iconTheme: const IconThemeData(color: ServicePayColors.accent),
+        actionsIconTheme: const IconThemeData(color: ServicePayColors.accent),
         title: const Text(
           'Business transaction record',
           style: TextStyle(
-            color: Color(0xFF18372A),
+            color: ServicePayColors.accent,
             fontWeight: FontWeight.w800,
           ),
         ),
@@ -170,7 +170,7 @@ class _BusinessTransactionRecordScreenState
 
   Widget _recordField(String label, String? value) => ListTile(
         contentPadding: EdgeInsets.zero,
-        title: Text(label, style: const TextStyle(color: Color(0xFF66756D))),
+        title: Text(label, style: const TextStyle(color: ServicePayColors.muted)),
         subtitle: Text(
           value?.isNotEmpty == true ? value! : 'Not supplied by the API',
           style: const TextStyle(fontWeight: FontWeight.w700),

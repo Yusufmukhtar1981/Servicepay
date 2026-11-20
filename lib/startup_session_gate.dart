@@ -340,14 +340,14 @@ class _StartupSessionLoadingScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F9F8),
+      backgroundColor: ServicePayColors.canvas,
       body: const Center(
         child: SizedBox(
           width: 32,
           height: 32,
           child: CircularProgressIndicator(
             strokeWidth: 3,
-            color: ServicePayColors.brand,
+            color: ServicePayColors.accent,
             semanticsLabel: 'Checking your saved ServicePay session',
           ),
         ),
@@ -368,7 +368,7 @@ class _StartupRecoveryScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F9F8),
+      backgroundColor: ServicePayColors.canvas,
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -381,7 +381,7 @@ class _StartupRecoveryScreen extends StatelessWidget {
                   const Icon(
                     Icons.cloud_off_outlined,
                     size: 48,
-                    color: ServicePayColors.brand,
+                    color: ServicePayColors.accent,
                   ),
                   const SizedBox(height: 20),
                   const Text(
@@ -393,7 +393,7 @@ class _StartupRecoveryScreen extends StatelessWidget {
                   const Text(
                     'Check your connection and try again. Your saved session has not been changed.',
                     textAlign: TextAlign.center,
-                    style: TextStyle(color: Color(0xFF52605D)),
+                    style: TextStyle(color: ServicePayColors.muted),
                   ),
                   const SizedBox(height: 24),
                   SizedBox(

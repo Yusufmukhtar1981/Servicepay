@@ -305,7 +305,7 @@ class _AirtimeResultScreenState extends State<AirtimeResultScreen>
         (transaction['reference'] ?? widget.initialResult['reference'] ?? '')
             .toString();
     return Scaffold(
-      backgroundColor: const Color(0xFFF2F7F4),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         title: const Text('Airtime status'),
         backgroundColor: ServicePayColors.brand,
@@ -324,9 +324,9 @@ class _AirtimeResultScreenState extends State<AirtimeResultScreen>
                     width: double.infinity,
                     padding: const EdgeInsets.fromLTRB(24, 30, 24, 24),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: ServicePayColors.surface,
                       borderRadius: BorderRadius.circular(24),
-                      border: Border.all(color: const Color(0xFFDCEAE1)),
+                      border: Border.all(color: ServicePayColors.border),
                     ),
                     child: Column(
                       children: [
@@ -352,7 +352,7 @@ class _AirtimeResultScreenState extends State<AirtimeResultScreen>
                           _title,
                           textAlign: TextAlign.center,
                           style: const TextStyle(
-                            color: Color(0xFF173B2B),
+                            color: ServicePayColors.accent,
                             fontSize: 22,
                             fontWeight: FontWeight.w800,
                           ),
@@ -361,7 +361,7 @@ class _AirtimeResultScreenState extends State<AirtimeResultScreen>
                         Text(_message,
                             textAlign: TextAlign.center,
                             style: const TextStyle(
-                                color: Color(0xFF566A5F), height: 1.45)),
+                                color: ServicePayColors.muted, height: 1.45)),
                         const SizedBox(height: 22),
                         Text('₦$amount',
                             style: const TextStyle(
@@ -391,7 +391,7 @@ class _AirtimeResultScreenState extends State<AirtimeResultScreen>
                     const SizedBox(height: 14),
                     Text(_readError!,
                         textAlign: TextAlign.center,
-                        style: const TextStyle(color: Color(0xFF765500))),
+                        style: const TextStyle(color: Color(0xFFF9DA8B))),
                   ],
                   const SizedBox(height: 18),
                   if (_status == 'SUCCESSFUL')
@@ -423,7 +423,7 @@ class _AirtimeResultScreenState extends State<AirtimeResultScreen>
                             ? 'Checking status…'
                             : 'Check status'),
                         style: OutlinedButton.styleFrom(
-                          foregroundColor: ServicePayColors.brand,
+                          foregroundColor: ServicePayColors.accent,
                           side: const BorderSide(color: ServicePayColors.brand),
                         ),
                       ),
@@ -456,13 +456,13 @@ class _AirtimeResultScreenState extends State<AirtimeResultScreen>
           children: [
             Expanded(
                 child: Text(label,
-                    style: const TextStyle(color: Color(0xFF66766D)))),
+                    style: const TextStyle(color: ServicePayColors.muted))),
             const SizedBox(width: 14),
             Flexible(
               child: Text(value,
                   textAlign: TextAlign.right,
                   style: const TextStyle(
-                      color: Color(0xFF203B2D), fontWeight: FontWeight.w700)),
+                      color: ServicePayColors.accent, fontWeight: FontWeight.w700)),
             ),
           ],
         ),

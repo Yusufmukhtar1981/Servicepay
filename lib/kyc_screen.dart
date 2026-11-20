@@ -573,7 +573,7 @@ class _KycScreenState extends State<KycScreen> {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
-        side: BorderSide(color: Colors.grey.shade200),
+        side: BorderSide(color: ServicePayColors.border),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -598,7 +598,7 @@ class _KycScreenState extends State<KycScreen> {
             ),
             const SizedBox(height: 7),
             Text(subtitle,
-                style: const TextStyle(color: Colors.black54, height: 1.35)),
+                style: const TextStyle(color: ServicePayColors.muted, height: 1.35)),
             const SizedBox(height: 16),
             ...children,
           ],
@@ -714,7 +714,7 @@ class _KycScreenState extends State<KycScreen> {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         border: Border.all(
-            color: uploaded ? Colors.green.shade300 : Colors.grey.shade300),
+            color: uploaded ? ServicePayColors.border : Colors.grey.shade300),
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
@@ -724,7 +724,7 @@ class _KycScreenState extends State<KycScreen> {
             children: <Widget>[
               const Icon(
                 Icons.image_outlined,
-                color: ServicePayColors.brand,
+                color: ServicePayColors.accent,
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -738,7 +738,7 @@ class _KycScreenState extends State<KycScreen> {
               uploaded
                   ? 'Uploaded securely. You can replace or remove it before submission.'
                   : subtitle,
-              style: const TextStyle(color: Colors.black54, height: 1.3)),
+              style: const TextStyle(color: ServicePayColors.muted, height: 1.3)),
           if (preview != null) ...<Widget>[
             const SizedBox(height: 10),
             ClipRRect(
@@ -777,7 +777,7 @@ class _KycScreenState extends State<KycScreen> {
                   onPressed: _isLocked || loading
                       ? null
                       : () => _removeDocument(documentType),
-                  icon: const Icon(Icons.delete_outline, color: Colors.red),
+                  icon: const Icon(Icons.delete_outline, color: Color(0xFFF9928B)),
                 ),
               ],
             ],
@@ -860,7 +860,7 @@ class _KycScreenState extends State<KycScreen> {
                         : _isLocked
                             ? .9
                             : .45,
-                    color: ServicePayColors.brand,
+                    color: ServicePayColors.accent,
                     backgroundColor: ServicePayColors.brandSoft,
                   ),
                   const SizedBox(height: 16),
@@ -869,7 +869,7 @@ class _KycScreenState extends State<KycScreen> {
                       padding: EdgeInsets.only(bottom: 12),
                       child: Text(
                           'Your application is submitted. Refresh to track review progress.',
-                          style: TextStyle(color: Colors.black54)),
+                          style: TextStyle(color: ServicePayColors.muted)),
                     ),
                   Form(
                     key: _formKey,

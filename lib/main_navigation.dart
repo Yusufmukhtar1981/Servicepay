@@ -20,7 +20,7 @@ class MainNavigation extends StatefulWidget {
 }
 
 class _MainNavigationState extends State<MainNavigation> {
-  static const Color primaryGreen = ServicePayColors.brand;
+  static const Color primaryGreen = Color(0xFF087A45);
 
   int currentIndex = 0;
   final Set<int> _visitedPages = {0};
@@ -61,6 +61,7 @@ class _MainNavigationState extends State<MainNavigation> {
         return;
       }
 
+      ServicePayThemeSelection.selectForRole(role);
       setState(() {
         userRole = role;
 
@@ -167,7 +168,13 @@ class _MainNavigationState extends State<MainNavigation> {
         backgroundColor: userRole == 'CUSTOMER'
             ? CustomerDashboardPalette.canvas
             : const Color(0xFFF7F9FB),
-        body: Center(child: CircularProgressIndicator(color: primaryGreen)),
+        body: Center(
+          child: CircularProgressIndicator(
+            color: userRole == 'CUSTOMER'
+                ? ServicePayColors.accent
+                : primaryGreen,
+          ),
+        ),
       );
     }
 
@@ -197,7 +204,7 @@ class _MainNavigationState extends State<MainNavigation> {
             border: Border.all(
               color: userRole == 'CUSTOMER'
                   ? CustomerDashboardPalette.border
-                  : ServicePayColors.border,
+                  : const Color(0xFFB9CEC1),
             ),
             boxShadow: userRole == 'CUSTOMER'
                 ? const <BoxShadow>[]
@@ -328,7 +335,7 @@ class _MainNavigationState extends State<MainNavigation> {
         customerNavigation ? CustomerDashboardPalette.royalBlue : primaryGreen;
     final Color selectedSurface = customerNavigation
         ? CustomerDashboardPalette.paleBlue
-        : ServicePayColors.brandSoft;
+        : const Color(0xFFE8F5EC);
 
     return Expanded(
       child: Padding(
@@ -373,7 +380,7 @@ class _MainNavigationState extends State<MainNavigation> {
                               : Colors.white
                           : customerNavigation
                               ? CustomerDashboardPalette.softText
-                              : ServicePayColors.muted,
+                               : const Color(0xFF4B6257),
                       size: selected ? 19 : 21,
                     ),
                   ),
@@ -394,7 +401,7 @@ class _MainNavigationState extends State<MainNavigation> {
                             ? activeColor
                             : customerNavigation
                                 ? CustomerDashboardPalette.muted
-                                : ServicePayColors.muted,
+                                 : const Color(0xFF4B6257),
                       ),
                     ),
                   ),

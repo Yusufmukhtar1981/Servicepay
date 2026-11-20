@@ -23,8 +23,8 @@ class MarketplaceCartScreen extends StatelessWidget {
       backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         title: const Text('My Cart'),
-        backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF15201B),
+        backgroundColor: ServicePayColors.canvas,
+        foregroundColor: ServicePayColors.accent,
         elevation: 0,
       ),
       body: ValueListenableBuilder<List<Map<String, dynamic>>>(
@@ -52,7 +52,7 @@ class MarketplaceCartScreen extends StatelessWidget {
                   Text(
                     'Add products from Marketplace.',
                     style: TextStyle(
-                      color: Color(0xFF718078),
+                      color: ServicePayColors.muted,
                     ),
                   ),
                 ],
@@ -82,10 +82,10 @@ class MarketplaceCartScreen extends StatelessWidget {
                     return Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: ServicePayColors.surface,
                         borderRadius: BorderRadius.circular(18),
                         border: Border.all(
-                          color: const Color(0xFFE5ECE8),
+                          color: ServicePayColors.border,
                         ),
                       ),
                       child: Row(
@@ -105,7 +105,7 @@ class MarketplaceCartScreen extends StatelessWidget {
                                         color: softGreen,
                                         child: Icon(
                                           Icons.shopping_bag_outlined,
-                                          color: primary,
+                                          color: ServicePayColors.accent,
                                         ),
                                       ),
                                     )
@@ -113,7 +113,7 @@ class MarketplaceCartScreen extends StatelessWidget {
                                       color: softGreen,
                                       child: Icon(
                                         Icons.shopping_bag_outlined,
-                                        color: primary,
+                                        color: ServicePayColors.accent,
                                       ),
                                     ),
                             ),
@@ -138,7 +138,7 @@ class MarketplaceCartScreen extends StatelessWidget {
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
-                                    color: Color(0xFF718078),
+                                    color: ServicePayColors.muted,
                                     fontSize: 12,
                                   ),
                                 ),
@@ -146,7 +146,7 @@ class MarketplaceCartScreen extends StatelessWidget {
                                 Text(
                                   money(item['price']),
                                   style: const TextStyle(
-                                    color: primary,
+                                    color: ServicePayColors.accent,
                                     fontWeight: FontWeight.w800,
                                     fontSize: 16,
                                   ),
@@ -176,7 +176,7 @@ class MarketplaceCartScreen extends StatelessWidget {
                                       },
                                       icon: const Icon(
                                         Icons.add_circle_outline,
-                                        color: primary,
+                                        color: ServicePayColors.accent,
                                       ),
                                     ),
                                     const Spacer(),
@@ -208,7 +208,7 @@ class MarketplaceCartScreen extends StatelessWidget {
                   20,
                 ),
                 decoration: const BoxDecoration(
-                  color: Colors.white,
+                  color: ServicePayColors.surface,
                   boxShadow: [
                     BoxShadow(
                       blurRadius: 20,
@@ -227,7 +227,7 @@ class MarketplaceCartScreen extends StatelessWidget {
                             'Subtotal',
                             style: TextStyle(
                               fontSize: 15,
-                              color: Color(0xFF637069),
+                              color: ServicePayColors.muted,
                             ),
                           ),
                           const Spacer(),
@@ -238,7 +238,7 @@ class MarketplaceCartScreen extends StatelessWidget {
                             style: const TextStyle(
                               fontWeight: FontWeight.w900,
                               fontSize: 20,
-                              color: primary,
+                              color: ServicePayColors.accent,
                             ),
                           ),
                         ],

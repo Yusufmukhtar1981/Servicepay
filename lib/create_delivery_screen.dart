@@ -509,7 +509,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
                     : 'You cannot create a delivery request to this state yet.',
                 textAlign: TextAlign.center,
                 style: const TextStyle(
-                  color: Colors.black54,
+                  color: ServicePayColors.muted,
                   fontSize: 13,
                   height: 1.4,
                 ),
@@ -673,7 +673,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
             return AlertDialog(
               icon: const Icon(
                 Icons.check_circle,
-                color: primaryGreen,
+                color: ServicePayColors.accent,
                 size: 58,
               ),
               title: const Text(
@@ -694,7 +694,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
                     confirmedFee,
                     textAlign: TextAlign.center,
                     style: const TextStyle(
-                      color: primaryBlue,
+                      color: ServicePayColors.accent,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -717,7 +717,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
                       style: const TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 16,
-                        color: primaryBlue,
+                        color: ServicePayColors.accent,
                       ),
                     ),
                   ],
@@ -832,7 +832,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
         style: const TextStyle(
           fontSize: 17,
           fontWeight: FontWeight.w700,
-          color: Color(0xFF111827),
+          color: Color(0xFFA0B6E3),
         ),
       ),
     );
@@ -857,7 +857,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
             icon,
           ),
           filled: true,
-          fillColor: Colors.white,
+          fillColor: ServicePayColors.surface,
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(
               14,
@@ -868,7 +868,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
               14,
             ),
             borderSide: const BorderSide(
-              color: Color(0xFFE5E7EB),
+              color: ServicePayColors.border,
             ),
           ),
           focusedBorder: OutlineInputBorder(
@@ -930,7 +930,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
                       live ? 'LIVE' : 'NOT LIVE',
                       style: TextStyle(
                         color: live
-                            ? Colors.green.shade800
+                            ? ServicePayColors.accent
                             : Colors.orange.shade800,
                         fontSize: 9,
                         fontWeight: FontWeight.w800,
@@ -1002,13 +1002,13 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
           prefixIcon: maxLines == 1 ? Icon(icon) : null,
           alignLabelWithHint: maxLines > 1,
           filled: true,
-          fillColor: Colors.white,
+          fillColor: ServicePayColors.surface,
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(
               14,
             ),
             borderSide: const BorderSide(
-              color: Color(0xFFE5E7EB),
+              color: ServicePayColors.border,
             ),
           ),
           enabledBorder: OutlineInputBorder(
@@ -1016,7 +1016,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
               14,
             ),
             borderSide: const BorderSide(
-              color: Color(0xFFE5E7EB),
+              color: ServicePayColors.border,
             ),
           ),
           focusedBorder: OutlineInputBorder(
@@ -1044,7 +1044,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
           16,
         ),
         decoration: BoxDecoration(
-          color: const Color(0xFFEAF3FF),
+          color: const Color(0xFF162D4B),
           borderRadius: BorderRadius.circular(
             14,
           ),
@@ -1097,7 +1097,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
               coverageError,
               textAlign: TextAlign.center,
               style: const TextStyle(
-                color: Colors.red,
+                color: Color(0xFFF9928B),
               ),
             ),
             const SizedBox(
@@ -1159,7 +1159,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
         children: [
           Icon(
             liveCount > 0 ? Icons.check_circle_outline : Icons.info_outline,
-            color: liveCount > 0 ? primaryGreen : Colors.orange,
+            color: liveCount > 0 ? ServicePayColors.accent : Colors.orange,
           ),
           const SizedBox(
             width: 10,
@@ -1225,7 +1225,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
                     children: [
                       Icon(
                         Icons.local_shipping_outlined,
-                        color: primaryBlue,
+                        color: ServicePayColors.accent,
                         size: 30,
                       ),
                       SizedBox(
@@ -1252,7 +1252,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
                 Card(
                   margin: const EdgeInsets.only(bottom: 8),
                   elevation: 0,
-                  color: Colors.white,
+                  color: ServicePayColors.surface,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
                   ),
@@ -1271,7 +1271,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
                           },
                     secondary: const Icon(
                       Icons.person_pin_circle_outlined,
-                      color: primaryBlue,
+                      color: ServicePayColors.accent,
                     ),
                     title: const Text(
                       'Use my profile details',
@@ -1285,7 +1285,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
                       horizontal: 12,
                       vertical: 4,
                     ),
-                    activeColor: primaryBlue,
+                    activeColor: ServicePayColors.accent,
                   ),
                 ),
                 buildSectionTitle(
@@ -1367,7 +1367,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
                     subtitle: priceError.isEmpty ? null : Text(priceError),
                     leading: Icon(
                       Icons.payments_outlined,
-                      color: primaryGreen,
+                      color: ServicePayColors.accent,
                     ),
                     title: Text(
                       'Delivery Fee',
@@ -1380,7 +1380,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
                         : Text(
                       NumberFormat.currency(locale: 'en_NG', symbol: '₦', decimalDigits: 2).format(deliveryPrice),
                       style: const TextStyle(
-                        color: primaryGreen,
+                        color: ServicePayColors.accent,
                         fontSize: 17,
                         fontWeight: FontWeight.w800,
                       ),

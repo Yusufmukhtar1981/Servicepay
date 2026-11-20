@@ -373,8 +373,8 @@ class _GroupWalletScreenState extends State<GroupWalletScreen> {
       backgroundColor: _surface,
       appBar: AppBar(
         title: const Text('Group Wallet / Ajo'),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black87,
+        backgroundColor: ServicePayColors.canvas,
+        foregroundColor: ServicePayColors.ink,
         actions: [IconButton(onPressed: _loading ? null : _loadGroups, icon: const Icon(Icons.refresh_rounded), tooltip: 'Refresh')],
       ),
       body: RefreshIndicator(
@@ -410,10 +410,10 @@ class _GroupWalletScreenState extends State<GroupWalletScreen> {
 
   Widget _createCard() => Card(
         elevation: 0,
-        color: Colors.white,
+        color: ServicePayColors.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         child: ExpansionTile(
-          leading: const CircleAvatar(backgroundColor: Color(0xFFE0F2E7), child: Icon(Icons.add_circle_outline_rounded, color: _green)),
+          leading: const CircleAvatar(backgroundColor: ServicePayColors.brandSoft, child: Icon(Icons.add_circle_outline_rounded, color: _green)),
           title: const Text('Start a new contribution group', style: TextStyle(fontWeight: FontWeight.w800)),
           subtitle: const Text('You will be the group leader'),
           childrenPadding: const EdgeInsets.fromLTRB(18, 4, 18, 18),
@@ -454,8 +454,8 @@ class _GroupWalletScreenState extends State<GroupWalletScreen> {
         Container(
           width: double.infinity,
           padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
-          child: Text(leader ? 'You are not leading any groups yet.' : 'You have not joined any contribution groups yet.', style: const TextStyle(color: Colors.black54)),
+          decoration: BoxDecoration(color: ServicePayColors.surface, borderRadius: BorderRadius.circular(16)),
+          child: Text(leader ? 'You are not leading any groups yet.' : 'You have not joined any contribution groups yet.', style: const TextStyle(color: ServicePayColors.muted)),
         )
       else
         ...groups.map(_groupCard),
@@ -472,7 +472,7 @@ class _GroupWalletScreenState extends State<GroupWalletScreen> {
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
       elevation: 0,
-      color: Colors.white,
+      color: ServicePayColors.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       child: InkWell(
         borderRadius: BorderRadius.circular(18),
@@ -481,11 +481,11 @@ class _GroupWalletScreenState extends State<GroupWalletScreen> {
           padding: const EdgeInsets.all(16),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              CircleAvatar(backgroundColor: const Color(0xFFE0F2E7), foregroundColor: _green, child: Text(_initials(_name(group)).isEmpty ? 'A' : _initials(_name(group)))),
+              CircleAvatar(backgroundColor: ServicePayColors.brandSoft, foregroundColor: _green, child: Text(_initials(_name(group)).isEmpty ? 'A' : _initials(_name(group)))),
               const SizedBox(width: 11),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text(_name(group), style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
-                Text(group['isLeader'] == true ? 'You lead this group' : 'Led by ${leader['fullName'] ?? 'Group leader'}', style: const TextStyle(color: Colors.black54, fontSize: 12)),
+                Text(group['isLeader'] == true ? 'You lead this group' : 'Led by ${leader['fullName'] ?? 'Group leader'}', style: const TextStyle(color: ServicePayColors.muted, fontSize: 12)),
               ])),
               _StatusChip(status: group['status']?.toString() ?? 'ACTIVE'),
             ]),
@@ -495,9 +495,9 @@ class _GroupWalletScreenState extends State<GroupWalletScreen> {
               Expanded(child: _amountLabel('Your contribution', _money(group['myTotalContribution']))),
             ]),
             const SizedBox(height: 12),
-            LinearProgressIndicator(value: progress, minHeight: 7, borderRadius: BorderRadius.circular(8), color: _green, backgroundColor: const Color(0xFFE8F0EA)),
+            LinearProgressIndicator(value: progress, minHeight: 7, borderRadius: BorderRadius.circular(8), color: _green, backgroundColor: ServicePayColors.surface),
             const SizedBox(height: 8),
-            Text('${_money(amount)} • ${group['frequency'] ?? 'MONTHLY'} • ${group['memberCount'] ?? members.length} member(s)', style: const TextStyle(color: Colors.black54, fontSize: 12)),
+            Text('${_money(amount)} • ${group['frequency'] ?? 'MONTHLY'} • ${group['memberCount'] ?? members.length} member(s)', style: const TextStyle(color: ServicePayColors.muted, fontSize: 12)),
           ]),
         ),
       ),
@@ -505,7 +505,7 @@ class _GroupWalletScreenState extends State<GroupWalletScreen> {
   }
 
   Widget _amountLabel(String label, String value) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(label, style: const TextStyle(color: Colors.black54, fontSize: 12)),
+        Text(label, style: const TextStyle(color: ServicePayColors.muted, fontSize: 12)),
         const SizedBox(height: 3),
         Text(value, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15)),
       ]);
@@ -565,7 +565,7 @@ class _GroupDetailSheet extends StatelessWidget {
       top: false,
       child: Container(
         height: MediaQuery.of(context).size.height * .9,
-        decoration: const BoxDecoration(color: Color(0xFFF8FAF8), borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+        decoration: const BoxDecoration(color: ServicePayColors.surface, borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
         child: ListView(padding: const EdgeInsets.fromLTRB(20, 12, 20, 28), children: [
           Center(child: Container(width: 42, height: 4, decoration: BoxDecoration(color: Colors.black26, borderRadius: BorderRadius.circular(8)))),
           const SizedBox(height: 18),
@@ -573,15 +573,15 @@ class _GroupDetailSheet extends StatelessWidget {
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(_name(), style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900)),
               const SizedBox(height: 5),
-              Text('${_money(group['contributionAmount'])} • ${group['frequency'] ?? 'MONTHLY'}', style: const TextStyle(color: Colors.black54)),
+              Text('${_money(group['contributionAmount'])} • ${group['frequency'] ?? 'MONTHLY'}', style: const TextStyle(color: ServicePayColors.muted)),
               if (group['nextContributionDate'] != null)
-                Text('Next contribution: ${group['nextContributionDate'].toString().split('T').first}', style: const TextStyle(color: Colors.black54, fontSize: 12)),
+                Text('Next contribution: ${group['nextContributionDate'].toString().split('T').first}', style: const TextStyle(color: ServicePayColors.muted, fontSize: 12)),
             ])),
             _StatusChip(status: group['status']?.toString() ?? 'ACTIVE'),
           ]),
           if ((group['description']?.toString() ?? '').isNotEmpty) ...[
             const SizedBox(height: 8),
-            Text(group['description'].toString(), style: const TextStyle(color: Colors.black54)),
+            Text(group['description'].toString(), style: const TextStyle(color: ServicePayColors.muted)),
           ],
           const SizedBox(height: 18),
           Row(children: [
@@ -623,7 +623,7 @@ class _GroupDetailSheet extends StatelessWidget {
               contentPadding: EdgeInsets.zero,
               leading: CircleAvatar(
                 backgroundColor: ServicePayColors.brandSoft,
-                foregroundColor: ServicePayColors.brand,
+                foregroundColor: ServicePayColors.accent,
                 child: Text(memberName.substring(0, 1).toUpperCase()),
               ),
               title: Text(memberName, style: const TextStyle(fontWeight: FontWeight.w700)),
@@ -634,7 +634,7 @@ class _GroupDetailSheet extends StatelessWidget {
           const SizedBox(height: 22),
           _sectionTitle('Contribution history'),
           if (contributions.isEmpty)
-            const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Text('No contributions have been recorded yet.', style: TextStyle(color: Colors.black54)))
+            const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Text('No contributions have been recorded yet.', style: TextStyle(color: ServicePayColors.muted)))
           else
             ...contributions.map((item) {
               final member = item['member'] is Map ? Map<String, dynamic>.from(item['member']) : <String, dynamic>{};
@@ -644,7 +644,7 @@ class _GroupDetailSheet extends StatelessWidget {
                   backgroundColor: ServicePayColors.brandSoft,
                   child: Icon(
                     Icons.payments_rounded,
-                    color: ServicePayColors.brand,
+                    color: ServicePayColors.accent,
                   ),
                 ),
                 title: Text(_money(item['amount']), style: const TextStyle(fontWeight: FontWeight.w800)),
@@ -654,7 +654,7 @@ class _GroupDetailSheet extends StatelessWidget {
           const SizedBox(height: 22),
           _sectionTitle('Pooled ledger'),
           if (ledger.isEmpty)
-            const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Text('No ledger entries yet.', style: TextStyle(color: Colors.black54)))
+            const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Text('No ledger entries yet.', style: TextStyle(color: ServicePayColors.muted)))
           else
             ...ledger.map((item) => ListTile(
               contentPadding: EdgeInsets.zero,
@@ -662,7 +662,7 @@ class _GroupDetailSheet extends StatelessWidget {
                 backgroundColor: ServicePayColors.brandSoft,
                 child: Icon(
                   Icons.account_balance_wallet_outlined,
-                  color: ServicePayColors.brand,
+                  color: ServicePayColors.accent,
                 ),
               ),
               title: Text('${item['type'] ?? 'CREDIT'} • ${_money(item['amount'])}', style: const TextStyle(fontWeight: FontWeight.w800)),
@@ -671,14 +671,14 @@ class _GroupDetailSheet extends StatelessWidget {
           const SizedBox(height: 22),
           _sectionTitle('Group activity'),
           if (activity.isEmpty)
-            const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Text('No activity yet.', style: TextStyle(color: Colors.black54)))
+            const Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Text('No activity yet.', style: TextStyle(color: ServicePayColors.muted)))
           else
             ...activity.take(12).map(
               (item) => ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(
                   Icons.history_rounded,
-                  color: ServicePayColors.brand,
+                  color: ServicePayColors.accent,
                 ),
                 title: Text(item['message']?.toString() ?? 'Group activity'),
               ),
@@ -690,9 +690,9 @@ class _GroupDetailSheet extends StatelessWidget {
 
   Widget _metric(String label, String value) => Container(
         padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+        decoration: BoxDecoration(color: ServicePayColors.surface, borderRadius: BorderRadius.circular(16)),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(label, style: const TextStyle(color: Colors.black54, fontSize: 12)),
+          Text(label, style: const TextStyle(color: ServicePayColors.muted, fontSize: 12)),
           const SizedBox(height: 4),
           Text(value, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
         ]),

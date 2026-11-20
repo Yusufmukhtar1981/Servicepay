@@ -197,7 +197,7 @@ class _AccountStatementScreenState extends State<AccountStatementScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7F6),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(title: const Text('Account Statement'), centerTitle: true),
       body: SafeArea(
         child: Column(children: <Widget>[
@@ -206,7 +206,16 @@ class _AccountStatementScreenState extends State<AccountStatementScreen> {
             child: SingleChildScrollView(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
               child:
-                  RepaintBoundary(key: _statementKey, child: _statementBody()),
+                  RepaintBoundary(
+                    key: _statementKey,
+                    child: Theme(
+                      data: ServicePayTheme.light(),
+                      child: Material(
+                        type: MaterialType.transparency,
+                        child: _statementBody(),
+                      ),
+                    ),
+                  ),
             ),
           ),
           Padding(
@@ -220,7 +229,7 @@ class _AccountStatementScreenState extends State<AccountStatementScreen> {
                       'Choose a shorter range to download an image statement '
                       '(maximum 100 transactions).',
                       textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.black54, fontSize: 12),
+                      style: TextStyle(color: ServicePayColors.muted, fontSize: 12),
                     ),
                   ),
                 SizedBox(
@@ -293,7 +302,7 @@ class _AccountStatementScreenState extends State<AccountStatementScreen> {
           children: <Widget>[
             const Text('ServicePay',
                 style: TextStyle(
-                    fontSize: 22, color: _green, fontWeight: FontWeight.w900)),
+                    fontSize: 22, color: Color(0xFF087A45), fontWeight: FontWeight.w900)),
             const SizedBox(height: 6),
             const Text('Account statement',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
@@ -325,7 +334,7 @@ class _AccountStatementScreenState extends State<AccountStatementScreen> {
       child:
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
         Icon(credit ? Icons.south_west_rounded : Icons.north_east_rounded,
-            color: credit ? _green : const Color(0xFF9A6700)),
+            color: credit ? const Color(0xFF087A45) : const Color(0xFF9A6700)),
         const SizedBox(width: 12),
         Expanded(
             child: Column(
@@ -344,7 +353,7 @@ class _AccountStatementScreenState extends State<AccountStatementScreen> {
         Text('${credit ? '+' : '-'}₦${item.amount}',
             style: TextStyle(
                 fontWeight: FontWeight.w800,
-                color: credit ? _green : Colors.black87)),
+                color: credit ? const Color(0xFF087A45) : Colors.black87)),
       ]),
     );
   }

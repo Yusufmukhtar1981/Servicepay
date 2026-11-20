@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'services/amana_api_service.dart';
+import 'servicepay_theme.dart';
 
 class AmanaScreen extends StatefulWidget {
   const AmanaScreen({super.key});
@@ -63,7 +64,7 @@ class _AmanaScreenState extends State<AmanaScreen> {
       );
     }
     return Card(
-      color: const Color(0xFFEFFAF8),
+      color: ServicePayColors.brandSoft,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
@@ -73,7 +74,7 @@ class _AmanaScreenState extends State<AmanaScreen> {
               child: Image.memory(file.bytes, height: 180, width: double.infinity, fit: BoxFit.cover),
             ),
           ListTile(
-            leading: Icon(file.isPdf ? Icons.picture_as_pdf : Icons.image_outlined, color: const Color(0xFF08766D)),
+            leading: Icon(file.isPdf ? Icons.picture_as_pdf : Icons.image_outlined, color: ServicePayColors.accent),
             title: Text(file.name, maxLines: 2, overflow: TextOverflow.ellipsis),
             subtitle: Text(file.isPdf ? 'PDF document selected' : 'Image evidence selected'),
           ),
@@ -123,7 +124,7 @@ class _AmanaScreenState extends State<AmanaScreen> {
     catch (_) { if (mounted) { setState(() => _submitting = false); _notice('Unable to submit your request.', error: true); } }
   }
   Future<void> _confirmation(Map<String, dynamic> order, String? message) => showDialog<void>(context: context, builder: (BuildContext c) => AlertDialog(
-    icon: const Icon(Icons.check_circle_rounded, color: Color(0xFF08766D), size: 46), title: const Text('Request submitted'),
+    icon: const Icon(Icons.check_circle_rounded, color: ServicePayColors.accent, size: 46), title: const Text('Request submitted'),
     content: Text('${message ?? 'Your Amana request has been received.'}\n\nReference: ${_text(order['reference'], 'Pending assignment')}'),
     actions: <Widget>[FilledButton(onPressed: () => Navigator.pop(c), child: const Text('View history'))],
   ));
@@ -179,7 +180,7 @@ class _AmanaScreenState extends State<AmanaScreen> {
       Text(_text(item['title'], 'Amana request'), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800)),
       const SizedBox(height: 12), _line('Reference', _text(item['reference'])), _line('Status', _text(item['status'])), _line('Amount', '₦${_text(item['amount'] ?? item['totalAmount'], '0')}'), _line('Beneficiary', _text(beneficiary['fullName'])),
       const SizedBox(height: 8), const Text('Status timeline', style: TextStyle(fontWeight: FontWeight.w800)),
-      if (timeline.isEmpty) Padding(padding: const EdgeInsets.only(top: 8), child: Text('Current status: ${_text(item['status'])}')) else ...timeline.whereType<Map>().map((Map event) => ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.check_circle_outline, color: Color(0xFF08766D)), title: Text(_text(event['status'] ?? event['title'])), subtitle: Text(_text(event['createdAt'] ?? event['date'] ?? event['note'], '')))),
+      if (timeline.isEmpty) Padding(padding: const EdgeInsets.only(top: 8), child: Text('Current status: ${_text(item['status'])}')) else ...timeline.whereType<Map>().map((Map event) => ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.check_circle_outline, color: ServicePayColors.accent), title: Text(_text(event['status'] ?? event['title'])), subtitle: Text(_text(event['createdAt'] ?? event['date'] ?? event['note'], '')))),
       const SizedBox(height: 8), const Text('Supporting evidence', style: TextStyle(fontWeight: FontWeight.w800)),
       if (evidenceDocuments.isEmpty) const Padding(padding: EdgeInsets.only(top: 8), child: Text('No supporting evidence attached.')) else ...evidenceDocuments.map((dynamic document) => _evidenceLink(document)),
       if (receipt.isNotEmpty) Padding(padding: const EdgeInsets.only(top: 8), child: OutlinedButton.icon(onPressed: () => _openLink(receipt), icon: const Icon(Icons.receipt_long_outlined), label: const Text('Open receipt / proof'))),
@@ -206,16 +207,16 @@ class _AmanaScreenState extends State<AmanaScreen> {
       ),
     );
   }
-  Widget _line(String label, String value) => Padding(padding: const EdgeInsets.only(bottom: 8), child: Row(children: <Widget>[SizedBox(width: 100, child: Text(label, style: const TextStyle(color: Color(0xFF667085)))), Expanded(child: Text(value, style: const TextStyle(fontWeight: FontWeight.w600)))]));
+  Widget _line(String label, String value) => Padding(padding: const EdgeInsets.only(bottom: 8), child: Row(children: <Widget>[SizedBox(width: 100, child: Text(label, style: const TextStyle(color: ServicePayColors.muted))), Expanded(child: Text(value, style: const TextStyle(fontWeight: FontWeight.w600)))]));
   Widget _field(String key, String label, {bool required = true, TextInputType? type, int lines = 1}) => Padding(padding: const EdgeInsets.only(bottom: 12), child: TextFormField(controller: _fields[key], validator: required ? _required : null, keyboardType: type, maxLines: lines, decoration: InputDecoration(labelText: label, border: const OutlineInputBorder())));
   List<Widget> _specificFields() {
     if (_category == 'SCHOOL_FEES') return <Widget>[_field('schoolName', 'School name'), _field('studentName', 'Student name'), _field('classLevel', 'Class level'), _field('termSession', 'Term / session')];
     if (_category == 'MEDICAL_SUPPORT') return <Widget>[_field('facilityName', 'Facility / pharmacy name'), _field('patientName', 'Patient name'), _field('treatmentDescription', 'Treatment description', lines: 3)];
     return <Widget>[_field('householdSize', 'Household size', type: TextInputType.number), _field('foodItems', 'Requested food items', lines: 2)];
   }
-  @override Widget build(BuildContext context) => Scaffold(backgroundColor: const Color(0xFFF5F8F8), appBar: AppBar(title: const Text('ServicePay Amana'), actions: <Widget>[IconButton(onPressed: _load, icon: const Icon(Icons.refresh))]), body: RefreshIndicator(onRefresh: _load, child: ListView(padding: const EdgeInsets.all(16), children: <Widget>[
+  @override Widget build(BuildContext context) => Scaffold(backgroundColor: ServicePayColors.canvas, appBar: AppBar(title: const Text('ServicePay Amana'), actions: <Widget>[IconButton(onPressed: _load, icon: const Icon(Icons.refresh))]), body: RefreshIndicator(onRefresh: _load, child: ListView(padding: const EdgeInsets.all(16), children: <Widget>[
     const Text('Support your loved ones', style: TextStyle(fontSize: 23, fontWeight: FontWeight.w800)), const SizedBox(height: 5), const Text('Choose a protected support category. You can track every request and receive proof when it is completed.'), const SizedBox(height: 16),
-    ..._categories.map((Map<String, dynamic> item) => Card(child: ListTile(onTap: () => setState(() { _category = item['id'].toString(); _formOpen = true; _fields['title']!.text = item['name'].toString(); }), leading: CircleAvatar(backgroundColor: const Color(0xFFE4F5F2), child: Icon(item['icon'] as IconData, color: const Color(0xFF08766D))), title: Text(item['name'].toString()), subtitle: Text(item['description'].toString()), trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16)))),
+    ..._categories.map((Map<String, dynamic> item) => Card(child: ListTile(onTap: () => setState(() { _category = item['id'].toString(); _formOpen = true; _fields['title']!.text = item['name'].toString(); }), leading: CircleAvatar(backgroundColor: ServicePayColors.brandSoft, child: Icon(item['icon'] as IconData, color: ServicePayColors.accent)), title: Text(item['name'].toString()), subtitle: Text(item['description'].toString()), trailing: const Icon(Icons.arrow_forward_ios_rounded, size: 16)))),
     if (_formOpen) Card(margin: const EdgeInsets.only(top: 16), child: Padding(padding: const EdgeInsets.all(16), child: Form(key: _form, child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: <Widget>[
       Text('Create ${_categoryName(_category)} request', style: const TextStyle(fontSize: 19, fontWeight: FontWeight.w800)), const SizedBox(height: 16),
       _field('title', 'Request title'), _field('description', 'Describe what is needed', lines: 3), _field('amount', 'Requested amount (₦)', type: const TextInputType.numberWithOptions(decimal: true)),

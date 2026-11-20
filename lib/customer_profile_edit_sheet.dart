@@ -345,9 +345,9 @@ class _CustomerProfileEditSheetState extends State<CustomerProfileEditSheet> {
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF1F7F3),
+        color: ServicePayColors.brandSoft,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFD7E8DD)),
+        border: Border.all(color: ServicePayColors.border),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('Verify your new $label',
@@ -398,7 +398,7 @@ class _CustomerProfileEditSheetState extends State<CustomerProfileEditSheet> {
         padding: EdgeInsets.fromLTRB(
             18, 18, 18, MediaQuery.of(context).viewInsets.bottom + 20),
         decoration: const BoxDecoration(
-          color: Color(0xFFFCFDFC),
+          color: ServicePayColors.surface,
           borderRadius: BorderRadius.vertical(top: Radius.circular(26)),
         ),
         child: SafeArea(
@@ -424,7 +424,7 @@ class _CustomerProfileEditSheetState extends State<CustomerProfileEditSheet> {
                     const SizedBox(height: 5),
                     const Text(
                         'Your wallet and verified identity details stay protected.',
-                        style: TextStyle(color: Color(0xFF65736A))),
+                        style: TextStyle(color: ServicePayColors.muted)),
                     if (!widget.contactsEnabled)
                       const Padding(
                         padding: EdgeInsets.only(top: 12),
@@ -432,7 +432,7 @@ class _CustomerProfileEditSheetState extends State<CustomerProfileEditSheet> {
                           'Phone and email changes are temporarily unavailable while secure verification is configured.',
                           key: Key('profile-contact-changes-disabled'),
                           style: TextStyle(
-                            color: Color(0xFF8A5A00),
+                            color: Color(0xFFF9D38B),
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -445,7 +445,7 @@ class _CustomerProfileEditSheetState extends State<CustomerProfileEditSheet> {
                         width: double.infinity,
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFFFF7E8),
+                          color: const Color(0xFF4B3916),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: const Text(
@@ -508,10 +508,10 @@ class _CustomerProfileEditSheetState extends State<CustomerProfileEditSheet> {
                         margin: const EdgeInsets.only(bottom: 12),
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                            color: const Color(0xFFFFF1F0),
+                            color: const Color(0xFF4B1916),
                             borderRadius: BorderRadius.circular(12)),
                         child: Text(_error!,
-                            style: const TextStyle(color: Color(0xFFB42318))),
+                            style: const TextStyle(color: Color(0xFFF19A93))),
                       ),
                     SizedBox(
                       width: double.infinity,

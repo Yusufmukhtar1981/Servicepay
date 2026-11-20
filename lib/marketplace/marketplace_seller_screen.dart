@@ -464,11 +464,11 @@ class _MarketplaceSellerScreenState extends State<MarketplaceSellerScreen> {
           style: TextStyle(fontWeight: FontWeight.w700),
         ),
       ),
-      backgroundColor: const Color(0xFFF7F9F8),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         title: const Text('Marketplace Seller'),
-        backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF15201B),
+        backgroundColor: ServicePayColors.canvas,
+        foregroundColor: ServicePayColors.accent,
         elevation: 0,
         actions: [
           IconButton(
@@ -738,7 +738,7 @@ class _MarketplaceSellerScreenState extends State<MarketplaceSellerScreen> {
                         Text(
                           '${products.length} products',
                           style: const TextStyle(
-                            color: Colors.black54,
+                            color: ServicePayColors.muted,
                           ),
                         ),
                       ],
@@ -772,14 +772,14 @@ class _MarketplaceSellerScreenState extends State<MarketplaceSellerScreen> {
                                           fit: BoxFit.cover,
                                           errorBuilder: (_, __, ___) =>
                                               const ColoredBox(
-                                            color: Color(0xFFE8F5F1),
+                                            color: ServicePayColors.brandSoft,
                                             child: Icon(
                                               Icons.inventory_2_outlined,
                                             ),
                                           ),
                                         )
                                       : const ColoredBox(
-                                          color: Color(0xFFE8F5F1),
+                                          color: ServicePayColors.brandSoft,
                                           child: Icon(
                                             Icons.inventory_2_outlined,
                                           ),

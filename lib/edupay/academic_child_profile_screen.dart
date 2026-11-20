@@ -178,7 +178,7 @@ class _AcademicChildProfileScreenState extends State<AcademicChildProfileScreen>
               style: const TextStyle(
                 fontSize: 28,
                 fontWeight: FontWeight.w800,
-                color: ServicePayColors.brand,
+                color: ServicePayColors.accent,
               ),
             ),
           ),
@@ -193,7 +193,7 @@ class _AcademicChildProfileScreenState extends State<AcademicChildProfileScreen>
           Center(
             child: Text(
               _schoolName(),
-              style: TextStyle(color: Colors.grey.shade700),
+              style: TextStyle(color: ServicePayColors.muted),
             ),
           ),
           const SizedBox(height: 24),
@@ -219,7 +219,7 @@ class _AcademicChildProfileScreenState extends State<AcademicChildProfileScreen>
 
   Widget _quick(String title, IconData icon, int index) => Card(
         child: ListTile(
-          leading: Icon(icon, color: ServicePayColors.brand),
+          leading: Icon(icon, color: ServicePayColors.accent),
           title:
               Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
           trailing: const Icon(Icons.chevron_right),
@@ -234,7 +234,7 @@ class _AcademicChildProfileScreenState extends State<AcademicChildProfileScreen>
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(icon, color: ServicePayColors.brand),
+              Icon(icon, color: ServicePayColors.accent),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
@@ -468,7 +468,7 @@ class _AcademicChildProfileScreenState extends State<AcademicChildProfileScreen>
           child: ListTile(
             leading: const Icon(
               Icons.campaign_outlined,
-              color: ServicePayColors.brand,
+              color: ServicePayColors.accent,
             ),
             title: Text(
               '${row['title'] ?? row['name'] ?? 'School update'}',
@@ -495,7 +495,7 @@ class _AcademicChildProfileScreenState extends State<AcademicChildProfileScreen>
       ...rows.map(
         (row) => Card(
           child: ListTile(
-            leading: const Icon(Icons.schedule, color: ServicePayColors.brand),
+            leading: const Icon(Icons.schedule, color: ServicePayColors.accent),
             title: Text(
               '${row['day'] ?? 'School day'}',
               style: const TextStyle(fontWeight: FontWeight.w700),
@@ -541,7 +541,7 @@ class _AcademicChildProfileScreenState extends State<AcademicChildProfileScreen>
             children: [
               Text(
                 label,
-                style: TextStyle(color: Colors.grey.shade700, fontSize: 12),
+                style: TextStyle(color: ServicePayColors.muted, fontSize: 12),
               ),
               const SizedBox(height: 5),
               Text(value, style: const TextStyle(fontWeight: FontWeight.w800)),
@@ -559,7 +559,7 @@ class _Notice extends StatelessWidget {
   Widget build(BuildContext context) => Card(
         color: ServicePayColors.brandSoft,
         child: ListTile(
-          leading: Icon(icon, color: ServicePayColors.brand),
+          leading: Icon(icon, color: ServicePayColors.accent),
           title: Text(text),
         ),
       );
@@ -614,7 +614,7 @@ class _ProfileSkeleton extends StatelessWidget {
             height: 76,
             width: 76,
             decoration: const BoxDecoration(
-              color: Color(0xffdce5e0),
+              color: ServicePayColors.surface,
               shape: BoxShape.circle,
             ),
           ),
@@ -625,7 +625,7 @@ class _ProfileSkeleton extends StatelessWidget {
               child: Container(
                 height: 64,
                 decoration: BoxDecoration(
-                  color: const Color(0xffe1e9e5),
+                  color: ServicePayColors.surface,
                   borderRadius: BorderRadius.circular(14),
                 ),
               ),

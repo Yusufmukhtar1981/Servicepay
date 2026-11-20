@@ -20,12 +20,13 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   test('customer theme keeps controls touch-friendly and consistent', () {
-    final ThemeData theme = ServicePayTheme.light();
+    final ThemeData theme = ServicePayTheme.customer();
 
-    expect(ServicePayColors.brand, const Color(0xFF087A45));
-    expect(ServicePayColors.brandSoft, const Color(0xFFE8F5EC));
-    expect(theme.colorScheme.primary, ServicePayColors.brand);
-    expect(theme.colorScheme.onPrimary, Colors.white);
+    expect(ServicePayColors.canvas, const Color(0xFF003D30));
+    expect(ServicePayColors.accent, const Color(0xFF00DB91));
+    expect(ServicePayColors.brand, const Color(0xFF087F68));
+    expect(theme.colorScheme.primary, ServicePayColors.accent);
+    expect(theme.colorScheme.onPrimary, ServicePayColors.onAccent);
     expect(theme.scaffoldBackgroundColor, ServicePayColors.canvas);
     expect(theme.cardTheme.elevation, greaterThan(0));
     expect(
@@ -38,14 +39,27 @@ void main() {
   test('green brand and readable text meet contrast targets', () {
     expect(_contrastRatio(Colors.white, ServicePayColors.brand),
         greaterThanOrEqualTo(4.5));
-    expect(_contrastRatio(ServicePayColors.ink, Colors.white),
+    expect(_contrastRatio(ServicePayColors.onAccent, ServicePayColors.accent),
         greaterThanOrEqualTo(4.5));
-    expect(_contrastRatio(ServicePayColors.muted, Colors.white),
-        greaterThanOrEqualTo(4.5));
-    expect(
-      _contrastRatio(ServicePayColors.brand, ServicePayColors.brandSoft),
-      greaterThanOrEqualTo(4.5),
-    );
+    for (final Color background in <Color>[
+      ServicePayColors.canvas,
+      ServicePayColors.surface,
+      ServicePayColors.surfaceRaised,
+    ]) {
+      expect(_contrastRatio(ServicePayColors.ink, background),
+          greaterThanOrEqualTo(4.5));
+      expect(_contrastRatio(ServicePayColors.muted, background),
+          greaterThanOrEqualTo(4.5));
+      expect(_contrastRatio(ServicePayColors.accent, background),
+          greaterThanOrEqualTo(4.5));
+      for (final Color semantic in <Color>[
+        ServicePayColors.danger,
+        ServicePayColors.warning,
+        ServicePayColors.info,
+      ]) {
+        expect(_contrastRatio(semantic, background), greaterThanOrEqualTo(4.5));
+      }
+    }
   });
 
   testWidgets('help and support forms fit required responsive widths',

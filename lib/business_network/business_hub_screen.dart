@@ -123,17 +123,17 @@ class _BusinessHubScreenState extends State<BusinessHubScreen> {
       backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         backgroundColor: ServicePayColors.canvas,
-        foregroundColor: const Color(0xFF18372A),
+        foregroundColor: ServicePayColors.accent,
         titleTextStyle: const TextStyle(
-          color: Color(0xFF18372A),
+          color: ServicePayColors.accent,
           fontWeight: FontWeight.w800,
         ),
-        iconTheme: const IconThemeData(color: Color(0xFF18372A)),
-        actionsIconTheme: const IconThemeData(color: Color(0xFF18372A)),
+        iconTheme: const IconThemeData(color: ServicePayColors.accent),
+        actionsIconTheme: const IconThemeData(color: ServicePayColors.accent),
         title: Text(
           title,
           style: const TextStyle(
-            color: Color(0xFF18372A),
+            color: ServicePayColors.accent,
             fontWeight: FontWeight.w800,
           ),
         ),
@@ -143,7 +143,7 @@ class _BusinessHubScreenState extends State<BusinessHubScreen> {
                 onPressed: () => _open('hub'),
                 icon: const Icon(
                   Icons.arrow_back,
-                  color: Color(0xFF18372A),
+                  color: ServicePayColors.accent,
                 )),
         actions: [
           IconButton(
@@ -151,7 +151,7 @@ class _BusinessHubScreenState extends State<BusinessHubScreen> {
               tooltip: 'Refresh',
               icon: const Icon(
                 Icons.refresh,
-                color: Color(0xFF18372A),
+                color: ServicePayColors.accent,
               ))
         ],
       ),
@@ -957,7 +957,7 @@ class _BusinessDashboardState extends State<_BusinessDashboard> {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: const Color(0xFFE8F3EC),
+                color: ServicePayColors.brandSoft,
                 borderRadius: BorderRadius.circular(14),
               ),
               child: const Text(
@@ -1082,7 +1082,7 @@ class _BusinessDashboardState extends State<_BusinessDashboard> {
             _InlineError(message: _error!, retry: _refreshDashboard),
           Text(
               '${profile?['details']?['businessName'] ?? 'Approved profile'}  ·  ${profile?['networkId'] ?? ''}',
-              style: const TextStyle(color: Color(0xFF53645B))),
+              style: const TextStyle(color: ServicePayColors.muted)),
           const SizedBox(height: 12),
           SegmentedButton<String>(
               segments: const [
@@ -1238,7 +1238,7 @@ class _BusinessDashboardState extends State<_BusinessDashboard> {
                 padding: EdgeInsets.only(top: 8),
                 child: Text(
                     'Use your own existing ServicePay wallet and bill-payment flow. Never use a customer’s wallet.',
-                    style: TextStyle(fontSize: 12, color: Color(0xFF59685F)))),
+                    style: TextStyle(fontSize: 12, color: ServicePayColors.muted))),
           ],
         ]));
   }
@@ -1703,7 +1703,7 @@ class _MerchantManagementState extends State<_MerchantManagement> {
     }
     if (!_loaded) return const LinearProgressIndicator();
     return Card(
-        color: Colors.white,
+        color: ServicePayColors.surface,
         child: Padding(
             padding: const EdgeInsets.all(14),
             child:
@@ -1714,7 +1714,7 @@ class _MerchantManagementState extends State<_MerchantManagement> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(_error!, style: const TextStyle(color: Colors.red)),
+                    Text(_error!, style: const TextStyle(color: Color(0xFFF9928B))),
                     TextButton.icon(
                         onPressed: _load,
                         icon: const Icon(Icons.refresh),
@@ -1727,7 +1727,7 @@ class _MerchantManagementState extends State<_MerchantManagement> {
                 Text(
                   _managementReason(const ['branchManagement', 'branches'])!,
                   style:
-                      const TextStyle(fontSize: 12, color: Color(0xFF59685F)),
+                      const TextStyle(fontSize: 12, color: ServicePayColors.muted),
                 ),
               ..._branches.map((raw) {
                 final branch = Map<String, dynamic>.from(raw as Map);
@@ -1789,7 +1789,7 @@ class _MerchantManagementState extends State<_MerchantManagement> {
                 Text(
                   _managementReason(const ['staffManagement', 'staff'])!,
                   style:
-                      const TextStyle(fontSize: 12, color: Color(0xFF59685F)),
+                      const TextStyle(fontSize: 12, color: ServicePayColors.muted),
                 ),
               Wrap(spacing: 8, children: [
                 OutlinedButton.icon(
@@ -1808,7 +1808,7 @@ class _MerchantManagementState extends State<_MerchantManagement> {
               ]),
               const Text(
                   'Pausing a branch revokes member access; resuming it does not restore suspended memberships. Staff must accept changed access again. Permissions do not grant finance approval or funds authority.',
-                  style: TextStyle(fontSize: 11, color: Color(0xFF59685F))),
+                  style: TextStyle(fontSize: 11, color: ServicePayColors.muted)),
             ])));
   }
 }
@@ -2007,11 +2007,11 @@ class _StaffInvitationState extends State<_StaffInvitation> {
 
   @override
   Widget build(BuildContext context) => Card(
-        color: Colors.white,
+        color: ServicePayColors.surface,
         child: ListTile(
           leading: const Icon(
             Icons.mail_outline,
-            color: ServicePayColors.brand,
+            color: ServicePayColors.accent,
           ),
           title: Text(widget.invitation['businessName']?.toString() ??
               widget.invitation['profileName']?.toString() ??
@@ -2089,7 +2089,7 @@ class _CommissionCard extends StatelessWidget {
   final Map<String, dynamic> totals;
   @override
   Widget build(BuildContext context) => Card(
-      color: const Color(0xFFE8F3EC),
+      color: ServicePayColors.brandSoft,
       child: Padding(
           padding: const EdgeInsets.all(14),
           child:
@@ -2132,9 +2132,9 @@ class _PricingContextNotice extends StatelessWidget {
       margin: const EdgeInsets.only(top: 12),
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
-        color: const Color(0xFFEAF3ED),
+        color: ServicePayColors.brandSoft,
         borderRadius: BorderRadius.circular(15),
-        border: Border.all(color: const Color(0xFFD5E5D9)),
+        border: Border.all(color: ServicePayColors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2184,7 +2184,7 @@ class _FeatureNotice extends StatelessWidget {
           return ListTile(
             leading: Icon(
               enabled ? Icons.info_outline : Icons.lock_outline,
-              color: const Color(0xFF59685F),
+              color: ServicePayColors.muted,
             ),
             title: Text(label),
             subtitle: Text(enabled
@@ -2203,10 +2203,10 @@ class _MetricBox extends StatelessWidget {
       width: MediaQuery.sizeOf(context).width < 380 ? 145 : 160,
       padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
-          color: Colors.white, borderRadius: BorderRadius.circular(15)),
+          color: ServicePayColors.surface, borderRadius: BorderRadius.circular(15)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(label,
-            style: const TextStyle(fontSize: 12, color: Color(0xFF66756D))),
+            style: const TextStyle(fontSize: 12, color: ServicePayColors.muted)),
         const SizedBox(height: 5),
         Text(value,
             style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800))
@@ -2224,7 +2224,7 @@ class _HubAction extends StatelessWidget {
   final VoidCallback onTap;
   @override
   Widget build(BuildContext context) => Card(
-      color: Colors.white,
+      color: ServicePayColors.surface,
       elevation: 0,
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
@@ -2233,9 +2233,9 @@ class _HubAction extends StatelessWidget {
               width: 42,
               height: 42,
               decoration: BoxDecoration(
-                  color: const Color(0xFFE8F3EC),
+                  color: ServicePayColors.brandSoft,
                   borderRadius: BorderRadius.circular(13)),
-              child: Icon(icon, color: ServicePayColors.brand)),
+              child: Icon(icon, color: ServicePayColors.accent)),
           title:
               Text(title, style: const TextStyle(fontWeight: FontWeight.w700)),
           subtitle: Text(detail),
@@ -2251,7 +2251,7 @@ class _SectionLabel extends StatelessWidget {
           letterSpacing: 1.1,
           fontWeight: FontWeight.w800,
           fontSize: 11,
-          color: Color(0xFF738178)));
+          color: ServicePayColors.muted));
 }
 
 class _EmptyState extends StatelessWidget {
@@ -2261,9 +2261,9 @@ class _EmptyState extends StatelessWidget {
   Widget build(BuildContext context) => Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-          color: Colors.white, borderRadius: BorderRadius.circular(16)),
+          color: ServicePayColors.surface, borderRadius: BorderRadius.circular(16)),
       child: Text(text,
-          style: const TextStyle(color: Color(0xFF53645B), height: 1.4)));
+          style: const TextStyle(color: ServicePayColors.muted, height: 1.4)));
 }
 
 class _BusinessLoading extends StatelessWidget {
@@ -2274,7 +2274,7 @@ class _BusinessLoading extends StatelessWidget {
         Container(
             height: 130,
             decoration: BoxDecoration(
-                color: const Color(0xFFE5EEE8),
+                color: ServicePayColors.surface,
                 borderRadius: BorderRadius.circular(20))),
         const SizedBox(height: 16),
         ...List.generate(
@@ -2283,7 +2283,7 @@ class _BusinessLoading extends StatelessWidget {
                 height: 60,
                 margin: const EdgeInsets.only(bottom: 10),
                 decoration: BoxDecoration(
-                    color: const Color(0xFFE5EEE8),
+                    color: ServicePayColors.surface,
                     borderRadius: BorderRadius.circular(14))))
       ]);
 }
@@ -2312,7 +2312,7 @@ class _InlineError extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Row(children: [
         Expanded(
-            child: Text(message, style: const TextStyle(color: Colors.red))),
+            child: Text(message, style: const TextStyle(color: Color(0xFFF9928B)))),
         TextButton(onPressed: retry, child: const Text('Retry'))
       ]);
 }

@@ -76,7 +76,7 @@ class _TrustSearchScreenState extends State<TrustSearchScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: const Color(0xFFF5F7FA),
+        backgroundColor: ServicePayColors.canvas,
         appBar: AppBar(
           title: const Text('ServicePay Trust'),
           backgroundColor: ServicePayColors.brand,
@@ -110,7 +110,7 @@ class _TrustSearchScreenState extends State<TrustSearchScreen> {
                               width: double.infinity,
                               padding: const EdgeInsets.all(14),
                               decoration: BoxDecoration(
-                                color: const Color(0xFFEAF7F0),
+                                color: ServicePayColors.brandSoft,
                                 borderRadius: BorderRadius.circular(14),
                               ),
                               child: const Column(
@@ -119,7 +119,7 @@ class _TrustSearchScreenState extends State<TrustSearchScreen> {
                                   Text(
                                     'Verify Before You Pay',
                                     style: TextStyle(
-                                      color: ServicePayColors.brand,
+                                      color: ServicePayColors.accent,
                                       fontWeight: FontWeight.w800,
                                       fontSize: 18,
                                     ),
@@ -133,7 +133,7 @@ class _TrustSearchScreenState extends State<TrustSearchScreen> {
                                   Text(
                                     'Trust information helps you make a more informed decision. It is not a guarantee against fraud.',
                                     style: TextStyle(
-                                        color: Color(0xFF405047), fontSize: 12),
+                                        color: ServicePayColors.muted, fontSize: 12),
                                   ),
                                 ],
                               ),
@@ -150,7 +150,7 @@ class _TrustSearchScreenState extends State<TrustSearchScreen> {
                                         onPressed: _search,
                                         icon: const Icon(Icons.arrow_forward)),
                                     filled: true,
-                                    fillColor: Colors.white,
+                                    fillColor: ServicePayColors.surface,
                                     border: OutlineInputBorder(
                                         borderRadius: BorderRadius.circular(14),
                                         borderSide: BorderSide.none))),
@@ -192,7 +192,7 @@ class _TrustSearchScreenState extends State<TrustSearchScreen> {
                     Padding(
                         padding: const EdgeInsets.all(16),
                         child: Text(_error!,
-                            style: const TextStyle(color: Colors.red))),
+                            style: const TextStyle(color: Color(0xFFF9928B)))),
                   Expanded(
                       child: _profiles.isEmpty && !_loading
                           ? Center(
@@ -215,7 +215,7 @@ class _TrustSearchScreenState extends State<TrustSearchScreen> {
                                               horizontal: 14, vertical: 6),
                                       leading: CircleAvatar(
                                         backgroundColor:
-                                            const Color(0xFFEAF7F0),
+                                            ServicePayColors.brandSoft,
                                         backgroundImage: p.profilePhotoUrl ==
                                                 null
                                             ? null
@@ -270,13 +270,13 @@ class _TrustSearchScreenState extends State<TrustSearchScreen> {
   Widget _levelBadge(String level) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
-          color: const Color(0xFFEAF7F0),
+          color: ServicePayColors.brandSoft,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Text(
           level.replaceAll('_', ' '),
           style: const TextStyle(
-            color: ServicePayColors.brand,
+            color: ServicePayColors.accent,
             fontSize: 11,
             fontWeight: FontWeight.w700,
           ),
@@ -292,7 +292,7 @@ class _TrustSearchScreenState extends State<TrustSearchScreen> {
         child: Text(
           '✓ $label',
           style: const TextStyle(
-            color: ServicePayColors.brand,
+            color: ServicePayColors.accent,
             fontSize: 11,
             fontWeight: FontWeight.w700,
           ),

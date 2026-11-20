@@ -99,7 +99,7 @@ class _HubAction extends StatelessWidget {
             contentPadding: const EdgeInsets.all(16),
             leading: CircleAvatar(
                 backgroundColor: ServicePayColors.brandSoft,
-                child: Icon(icon, color: ServicePayColors.brand)),
+                child: Icon(icon, color: ServicePayColors.accent)),
             title: Text(title,
                 style: const TextStyle(fontWeight: FontWeight.w800)),
             subtitle: Padding(
@@ -944,7 +944,7 @@ class _InterstateShipmentWizardState extends State<InterstateShipmentWizard> {
             padding: const EdgeInsets.only(top: 12),
             child: Text(_routeSelectionError,
                 key: const Key('interstate-unsupported-route'),
-                style: const TextStyle(color: Colors.red)),
+                style: const TextStyle(color: Color(0xFFF9928B))),
           ),
         const SizedBox(height: 12),
       ],
@@ -1097,7 +1097,7 @@ class _InterstateShipmentWizardState extends State<InterstateShipmentWizard> {
         _QuoteCard(quote: _quote ?? <String, dynamic>{}),
         const SizedBox(height: 18),
         const ListTile(
-            leading: Icon(Icons.lock_outline, color: ServicePayColors.brand),
+            leading: Icon(Icons.lock_outline, color: ServicePayColors.accent),
             title: Text('Secure wallet payment'),
             subtitle: Text(
                 'Your PIN is requested only after the shipment is created. Do not share it.'))
@@ -1136,7 +1136,7 @@ class _InterstateShipmentWizardState extends State<InterstateShipmentWizard> {
                 style: const TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.w800,
-                    color: ServicePayColors.brand)),
+                    color: ServicePayColors.accent)),
             const SizedBox(height: 16),
             FilledButton.icon(
               onPressed: () => Navigator.of(context).push(
@@ -1219,7 +1219,7 @@ class _StepHeader extends StatelessWidget {
             Text('Step ${step + 1} of 7 • ${_labels[step]}',
                 style: const TextStyle(
                     fontWeight: FontWeight.w800,
-                    color: ServicePayColors.brand)),
+                    color: ServicePayColors.accent)),
             const SizedBox(height: 8),
             LinearProgressIndicator(value: (step + 1) / 7)
           ]));
@@ -1278,7 +1278,7 @@ class _QuoteCard extends StatelessWidget {
                     style: const TextStyle(
                         fontWeight: FontWeight.w800,
                         fontSize: 17,
-                        color: ServicePayColors.brand))
+                        color: ServicePayColors.accent))
               ])
             ])));
   }
@@ -1412,7 +1412,7 @@ class _TrackingResult extends StatelessWidget {
                   ...timeline.map((Map<String, dynamic> event) => ListTile(
                       contentPadding: EdgeInsets.zero,
                       leading: const Icon(Icons.radio_button_checked,
-                          color: ServicePayColors.brand),
+                          color: ServicePayColors.accent),
                       title: Text(
                           InterstateLogisticsContracts.customerStatusLabel(
                               event['status'])),
@@ -1528,7 +1528,7 @@ class _MyInterstateShipmentsScreenState
                               child: ListTile(
                             contentPadding: const EdgeInsets.all(16),
                             leading: const Icon(Icons.inventory_2_outlined,
-                                color: ServicePayColors.brand),
+                                color: ServicePayColors.accent),
                             title: Text(
                                 '${shipment['trackingNumber'] ?? 'Shipment'}',
                                 style: const TextStyle(

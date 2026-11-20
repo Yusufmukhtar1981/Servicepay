@@ -374,7 +374,7 @@ class _SupportTicketDetailScreenState extends State<SupportTicketDetailScreen> {
                               _TicketTimeline(status: t.status),
                               if (t.transactionContext != null)
                                 Card(
-                                  color: Colors.blue.shade50,
+                                  color: Color(0xFF16354B),
                                   child: Padding(
                                     padding: const EdgeInsets.all(12),
                                     child: Text(
@@ -396,7 +396,7 @@ class _SupportTicketDetailScreenState extends State<SupportTicketDetailScreen> {
                               ),
                               if (t.resolution.isNotEmpty)
                                 Card(
-                                    color: Colors.green.shade50,
+                                    color: ServicePayColors.brandSoft,
                                     child: Padding(
                                         padding: const EdgeInsets.all(12),
                                         child: Text(
@@ -466,7 +466,7 @@ class _SupportTicketDetailScreenState extends State<SupportTicketDetailScreen> {
                                 child: Text(
                                   'ServicePay Support will never ask for your password, OTP or transaction PIN.',
                                   style: TextStyle(
-                                    color: Color(0xFF9A3412),
+                                    color: Color(0xFFF2AA91),
                                     fontSize: 12,
                                   ),
                                 ),
@@ -555,7 +555,7 @@ class _TicketTimeline extends StatelessWidget {
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 10,
-                    color: active ? Colors.green.shade800 : Colors.grey,
+                    color: active ? ServicePayColors.accent : Colors.grey,
                   ),
                 ),
               ],

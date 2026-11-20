@@ -187,14 +187,14 @@ class _TransactionPinScreenState extends State<TransactionPinScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F8F7),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         title: const Text(
           'Transaction PIN',
         ),
         centerTitle: true,
-        backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF1F2937),
+        backgroundColor: ServicePayColors.canvas,
+        foregroundColor: const Color(0xFFA0BCE3),
         elevation: 0,
       ),
       body: SafeArea(
@@ -212,13 +212,13 @@ class _TransactionPinScreenState extends State<TransactionPinScreen> {
                 height: 84,
                 width: 84,
                 decoration: const BoxDecoration(
-                  color: Color(0xFFE8F5E9),
+                  color: ServicePayColors.brandSoft,
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
                   Icons.lock_outline_rounded,
                   size: 42,
-                  color: ServicePayColors.brand,
+                  color: ServicePayColors.accent,
                 ),
               ),
               const SizedBox(
@@ -230,7 +230,7 @@ class _TransactionPinScreenState extends State<TransactionPinScreen> {
                 style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF1F2937),
+                  color: Color(0xFFA0BCE3),
                 ),
               ),
               const SizedBox(
@@ -242,7 +242,7 @@ class _TransactionPinScreenState extends State<TransactionPinScreen> {
                 style: TextStyle(
                   fontSize: 15,
                   height: 1.5,
-                  color: Color(0xFF6B7280),
+                  color: ServicePayColors.muted,
                 ),
               ),
               const SizedBox(
@@ -273,7 +273,7 @@ class _TransactionPinScreenState extends State<TransactionPinScreen> {
                     ),
                   ),
                   filled: true,
-                  fillColor: Colors.white,
+                  fillColor: ServicePayColors.surface,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(
                       14,
@@ -310,7 +310,7 @@ class _TransactionPinScreenState extends State<TransactionPinScreen> {
                     ),
                   ),
                   filled: true,
-                  fillColor: Colors.white,
+                  fillColor: ServicePayColors.surface,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(
                       14,
@@ -361,7 +361,7 @@ class _TransactionPinScreenState extends State<TransactionPinScreen> {
                   16,
                 ),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFFF8E1),
+                  color: const Color(0xFF4B3F16),
                   borderRadius: BorderRadius.circular(
                     14,
                   ),
@@ -382,7 +382,7 @@ class _TransactionPinScreenState extends State<TransactionPinScreen> {
                         style: TextStyle(
                           fontSize: 14,
                           height: 1.4,
-                          color: Color(0xFF6B7280),
+                          color: ServicePayColors.muted,
                         ),
                       ),
                     ),

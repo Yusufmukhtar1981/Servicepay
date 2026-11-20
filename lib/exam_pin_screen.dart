@@ -581,7 +581,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
               const Text(
                 'The amount will be deducted from your ServicePay wallet.',
                 style: TextStyle(
-                  color: Color(0xFF6B7280),
+                  color: ServicePayColors.muted,
                   height: 1.4,
                 ),
               ),
@@ -628,7 +628,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
             child: Text(
               label,
               style: const TextStyle(
-                color: Color(0xFF6B7280),
+                color: ServicePayColors.muted,
               ),
             ),
           ),
@@ -638,7 +638,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
               value,
               textAlign: TextAlign.right,
               style: TextStyle(
-                color: important ? primaryGreen : const Color(0xFF17211A),
+                color: important ? ServicePayColors.accent : const Color(0xFF17211A),
                 fontWeight: important ? FontWeight.w900 : FontWeight.w700,
               ),
             ),
@@ -667,7 +667,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
           ) {
             return Container(
               decoration: const BoxDecoration(
-                color: Color(0xFFF7F8FA),
+                color: ServicePayColors.surface,
                 borderRadius: BorderRadius.vertical(
                   top: Radius.circular(28),
                 ),
@@ -681,7 +681,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
                       width: 50,
                       height: 5,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFD1D5DB),
+                        color: ServicePayColors.surface,
                         borderRadius: BorderRadius.circular(10),
                       ),
                     ),
@@ -689,7 +689,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
                   const SizedBox(height: 18),
                   const Icon(
                     Icons.verified_rounded,
-                    color: primaryGreen,
+                    color: ServicePayColors.accent,
                     size: 62,
                   ),
                   const SizedBox(height: 8),
@@ -707,7 +707,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
                         'Your Exam PIN is ready.',
                     textAlign: TextAlign.center,
                     style: const TextStyle(
-                      color: Color(0xFF6B7280),
+                      color: ServicePayColors.muted,
                     ),
                   ),
                   const SizedBox(height: 20),
@@ -726,7 +726,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
                     Container(
                       padding: const EdgeInsets.all(18),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: ServicePayColors.surface,
                         borderRadius: BorderRadius.circular(18),
                       ),
                       child: const Text(
@@ -786,10 +786,10 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(17),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: ServicePayColors.surface,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: const Color(0xFFD6EDE7),
+          color: ServicePayColors.border,
         ),
       ),
       child: Column(
@@ -802,7 +802,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
                 child: Text(
                   '$index',
                   style: const TextStyle(
-                    color: primaryGreen,
+                    color: ServicePayColors.accent,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
@@ -828,7 +828,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
                 },
                 icon: const Icon(
                   Icons.share_rounded,
-                  color: primaryGreen,
+                  color: ServicePayColors.accent,
                 ),
               ),
             ],
@@ -864,7 +864,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
       margin: const EdgeInsets.only(bottom: 9),
       padding: const EdgeInsets.all(13),
       decoration: BoxDecoration(
-        color: const Color(0xFFF0FAF7),
+        color: ServicePayColors.brandSoft,
         borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
@@ -876,7 +876,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
                 Text(
                   label.toUpperCase(),
                   style: const TextStyle(
-                    color: Color(0xFF6B7280),
+                    color: ServicePayColors.muted,
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
                   ),
@@ -885,7 +885,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
                 SelectableText(
                   value,
                   style: const TextStyle(
-                    color: Color(0xFF17211A),
+                    color: ServicePayColors.ink,
                     fontSize: 17,
                     fontWeight: FontWeight.w900,
                     letterSpacing: 0.8,
@@ -908,7 +908,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
             },
             icon: const Icon(
               Icons.copy_rounded,
-              color: primaryGreen,
+              color: ServicePayColors.accent,
             ),
           ),
         ],
@@ -922,7 +922,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
     return Container(
       padding: const EdgeInsets.all(17),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: ServicePayColors.surface,
         borderRadius: BorderRadius.circular(18),
       ),
       child: Column(
@@ -981,7 +981,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
         border: showDivider
             ? const Border(
                 bottom: BorderSide(
-                  color: Color(0xFFE5E7EB),
+                  color: ServicePayColors.border,
                 ),
               )
             : null,
@@ -992,7 +992,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
             child: Text(
               label,
               style: const TextStyle(
-                color: Color(0xFF6B7280),
+                color: ServicePayColors.muted,
               ),
             ),
           ),
@@ -1041,7 +1041,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
           ) {
             return Container(
               decoration: const BoxDecoration(
-                color: Color(0xFFF7F8FA),
+                color: ServicePayColors.surface,
                 borderRadius: BorderRadius.vertical(
                   top: Radius.circular(28),
                 ),
@@ -1055,7 +1055,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
                       width: 50,
                       height: 5,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFD1D5DB),
+                        color: ServicePayColors.surface,
                         borderRadius: BorderRadius.circular(10),
                       ),
                     ),
@@ -1076,7 +1076,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
                     ),
                     textAlign: TextAlign.center,
                     style: const TextStyle(
-                      color: Color(0xFF6B7280),
+                      color: ServicePayColors.muted,
                     ),
                   ),
                   const SizedBox(height: 18),
@@ -1090,7 +1090,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
                     Container(
                       padding: const EdgeInsets.all(18),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: ServicePayColors.surface,
                         borderRadius: BorderRadius.circular(18),
                       ),
                       child: const Text(
@@ -1102,7 +1102,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
                   Container(
                     padding: const EdgeInsets.all(17),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: ServicePayColors.surface,
                       borderRadius: BorderRadius.circular(18),
                     ),
                     child: Column(
@@ -1159,17 +1159,17 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
       return Container(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-          color: const Color(0xFFFFF7ED),
+          color: const Color(0xFF4B3316),
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: const Color(0xFFFED7AA),
+            color: const Color(0xFFAB702B),
           ),
         ),
         child: Column(
           children: [
             const Icon(
               Icons.error_outline_rounded,
-              color: Color(0xFFEA580C),
+              color: Color(0xFFF9B08B),
               size: 38,
             ),
             const SizedBox(height: 8),
@@ -1177,7 +1177,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
               errorMessage,
               textAlign: TextAlign.center,
               style: const TextStyle(
-                color: Color(0xFF7C2D12),
+                color: Color(0xFFEFAB94),
               ),
             ),
             const SizedBox(height: 12),
@@ -1232,7 +1232,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
                 duration: const Duration(milliseconds: 200),
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: selected ? const Color(0xFFEAF9F4) : Colors.white,
+                  color: selected ? ServicePayColors.brandSoft : ServicePayColors.surface,
                   borderRadius: BorderRadius.circular(18),
                   border: Border.all(
                     color: selected ? primaryGreen : const Color(0xFFE5E7EB),
@@ -1266,7 +1266,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
                           const Text(
                             'Delivered instantly after successful purchase',
                             style: TextStyle(
-                              color: Color(0xFF6B7280),
+                              color: ServicePayColors.muted,
                               fontSize: 12,
                             ),
                           ),
@@ -1277,7 +1277,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
                     Text(
                       formatMoney(price),
                       style: const TextStyle(
-                        color: primaryGreen,
+                        color: ServicePayColors.accent,
                         fontSize: 16,
                         fontWeight: FontWeight.w900,
                       ),
@@ -1306,7 +1306,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
       return Container(
         padding: const EdgeInsets.all(22),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: ServicePayColors.surface,
           borderRadius: BorderRadius.circular(18),
         ),
         child: const Column(
@@ -1348,11 +1348,11 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
           return Card(
             margin: const EdgeInsets.only(bottom: 10),
             elevation: 0,
-            color: Colors.white,
+            color: ServicePayColors.surface,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
               side: const BorderSide(
-                color: Color(0xFFE5E7EB),
+                color: ServicePayColors.border,
               ),
             ),
             child: ListTile(
@@ -1360,10 +1360,10 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
                 openHistoryRecord(record);
               },
               leading: const CircleAvatar(
-                backgroundColor: Color(0xFFE6F7F4),
+                backgroundColor: ServicePayColors.brandSoft,
                 child: Icon(
                   Icons.confirmation_number_outlined,
-                  color: primaryGreen,
+                  color: ServicePayColors.accent,
                 ),
               ),
               title: Text(
@@ -1446,7 +1446,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F8FA),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         title: const Text(
           'Exam PIN',
@@ -1534,7 +1534,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
               const Text(
                 'Prices are retrieved directly from the provider.',
                 style: TextStyle(
-                  color: Color(0xFF6B7280),
+                  color: ServicePayColors.muted,
                 ),
               ),
               const SizedBox(height: 14),
@@ -1556,7 +1556,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
                     Icons.phone_android_rounded,
                   ),
                   filled: true,
-                  fillColor: Colors.white,
+                  fillColor: ServicePayColors.surface,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),
@@ -1583,7 +1583,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
                   ),
                   helperText: 'You can purchase up to 5 PINs at once.',
                   filled: true,
-                  fillColor: Colors.white,
+                  fillColor: ServicePayColors.surface,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(16),
                   ),
@@ -1593,10 +1593,10 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
               Container(
                 padding: const EdgeInsets.all(17),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFEAF9F4),
+                  color: ServicePayColors.brandSoft,
                   borderRadius: BorderRadius.circular(18),
                   border: Border.all(
-                    color: const Color(0xFFBCE5D9),
+                    color: ServicePayColors.border,
                   ),
                 ),
                 child: Row(
@@ -1605,7 +1605,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
                       child: Text(
                         'Total Amount',
                         style: TextStyle(
-                          color: Color(0xFF4B635A),
+                          color: ServicePayColors.muted,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
@@ -1613,7 +1613,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
                     Text(
                       formatMoney(totalAmount),
                       style: const TextStyle(
-                        color: primaryGreen,
+                        color: ServicePayColors.accent,
                         fontSize: 21,
                         fontWeight: FontWeight.w900,
                       ),
@@ -1667,7 +1667,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
               const Text(
                 'Tap a purchase to view, copy or share the PIN.',
                 style: TextStyle(
-                  color: Color(0xFF6B7280),
+                  color: ServicePayColors.muted,
                 ),
               ),
               const SizedBox(height: 14),

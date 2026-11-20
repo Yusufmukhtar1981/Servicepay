@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import 'login_screen.dart';
+import 'servicepay_theme.dart';
 
 class ResetPasswordScreen extends StatefulWidget {
   final String token;
@@ -228,7 +229,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
     BuildContext context,
   ) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F7FA),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -251,7 +252,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
               child: Card(
                 elevation: 8,
                 shadowColor: Colors.black12,
-                color: Colors.white,
+                color: ServicePayColors.surface,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(24),
                 ),
@@ -294,7 +295,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                 ),
                 child: const Icon(
                   Icons.password_rounded,
-                  color: primaryGreen,
+                  color: ServicePayColors.accent,
                   size: 48,
                 ),
               ),
@@ -304,7 +305,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
               'Create a new password',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Color(0xFF1F2937),
+                color: Color(0xFFA0BCE3),
                 fontSize: 24,
                 fontWeight: FontWeight.w900,
               ),
@@ -315,7 +316,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
               'ServicePay account.',
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Colors.grey.shade600,
+                color: ServicePayColors.muted,
                 height: 1.5,
               ),
             ),
@@ -349,14 +350,14 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                   ),
                 ),
                 filled: true,
-                fillColor: const Color(0xFFF8FAFC),
+                fillColor: ServicePayColors.surface,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
                   borderSide: const BorderSide(
-                    color: Color(0xFFE2E8F0),
+                    color: Color(0xFF49668D),
                   ),
                 ),
                 focusedBorder: OutlineInputBorder(
@@ -403,14 +404,14 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                   ),
                 ),
                 filled: true,
-                fillColor: const Color(0xFFF8FAFC),
+                fillColor: ServicePayColors.surface,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
                   borderSide: const BorderSide(
-                    color: Color(0xFFE2E8F0),
+                    color: Color(0xFF49668D),
                   ),
                 ),
                 focusedBorder: OutlineInputBorder(
@@ -429,7 +430,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                 Icon(
                   Icons.info_outline_rounded,
                   size: 20,
-                  color: Color(0xFF64748B),
+                  color: ServicePayColors.muted,
                 ),
                 SizedBox(width: 8),
                 Expanded(
@@ -437,7 +438,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                     'Your password must contain at '
                     'least 6 characters.',
                     style: TextStyle(
-                      color: Color(0xFF64748B),
+                      color: ServicePayColors.muted,
                       height: 1.4,
                     ),
                   ),
@@ -511,7 +512,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
             ),
             child: const Icon(
               Icons.verified_rounded,
-              color: primaryGreen,
+              color: ServicePayColors.accent,
               size: 52,
             ),
           ),
@@ -521,7 +522,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
           'Password changed',
           textAlign: TextAlign.center,
           style: TextStyle(
-            color: Color(0xFF1F2937),
+            color: Color(0xFFA0BCE3),
             fontSize: 25,
             fontWeight: FontWeight.w900,
           ),
@@ -533,7 +534,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
           'in with your new password.',
           textAlign: TextAlign.center,
           style: TextStyle(
-            color: Colors.grey.shade700,
+            color: ServicePayColors.muted,
             height: 1.5,
           ),
         ),
@@ -570,7 +571,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
       children: [
         const Icon(
           Icons.link_off_rounded,
-          color: Color(0xFFDC2626),
+          color: Color(0xFFEE9696),
           size: 72,
         ),
         const SizedBox(height: 18),
@@ -578,7 +579,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
           'Invalid reset link',
           textAlign: TextAlign.center,
           style: TextStyle(
-            color: Color(0xFF1F2937),
+            color: Color(0xFFA0BCE3),
             fontSize: 24,
             fontWeight: FontWeight.w900,
           ),
@@ -590,7 +591,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
           'the ServicePay login page.',
           textAlign: TextAlign.center,
           style: TextStyle(
-            color: Colors.grey.shade700,
+            color: ServicePayColors.muted,
             height: 1.5,
           ),
         ),

@@ -86,11 +86,11 @@ class _SolarScreenState extends State<SolarScreen> {
       SolarFinanceScreen(api: _api),
     ];
     return Scaffold(
-      backgroundColor: const Color(0xFFF7FAF8),
+      backgroundColor: ServicePayColors.canvas,
       body: SafeArea(child: pages[_tab]),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _tab,
-        indicatorColor: const Color(0xFFDDF4E6),
+        indicatorColor: ServicePayColors.brandSoft,
         onDestinationSelected: (int value) => setState(() => _tab = value),
         destinations: const <Widget>[
           NavigationDestination(
@@ -179,8 +179,8 @@ class _SolarHome extends StatelessWidget {
                       child: FilledButton.icon(
                         onPressed: onApply,
                         style: FilledButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: _solarGreen,
+                          backgroundColor: ServicePayColors.surface,
+                          foregroundColor: ServicePayColors.accent,
                           minimumSize: const Size.fromHeight(50),
                         ),
                         icon: const Icon(Icons.assignment_rounded),
@@ -214,7 +214,7 @@ class _SolarHome extends StatelessWidget {
                         padding: EdgeInsets.all(36),
                         child: Center(
                             child:
-                                CircularProgressIndicator(color: _solarGreen)));
+                                CircularProgressIndicator(color: ServicePayColors.accent)));
                   }
                   if (snapshot.hasError) {
                     return _StateCard(
@@ -233,7 +233,7 @@ class _SolarHome extends StatelessWidget {
                             padding: EdgeInsets.all(24),
                             child: Center(
                                 child: CircularProgressIndicator(
-                                    color: _solarGreen)));
+                                    color: ServicePayColors.accent)));
                       }
                       final List<Map<String, dynamic>> applications = _items(
                           plans.data?[0],
@@ -268,7 +268,7 @@ class _SolarHome extends StatelessWidget {
                             const SizedBox(height: 4),
                             const Text(
                                 'Select a package that fits your energy needs.',
-                                style: TextStyle(color: Color(0xFF68776E))),
+                                style: TextStyle(color: ServicePayColors.muted)),
                             const SizedBox(height: 14),
                             ...items.map((Map<String, dynamic> item) => Padding(
                                 padding: const EdgeInsets.only(bottom: 12),
@@ -309,15 +309,15 @@ class _ExistingSolarPlan extends StatelessWidget {
     return Container(
         padding: const EdgeInsets.all(18),
         decoration: BoxDecoration(
-            color: Colors.white,
+            color: ServicePayColors.surface,
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: const Color(0xFFBFE4CA))),
+            border: Border.all(color: ServicePayColors.border)),
         child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               Row(children: <Widget>[
                 const Icon(Icons.account_balance_wallet_rounded,
-                    color: _solarGreen),
+                    color: ServicePayColors.accent),
                 const SizedBox(width: 10),
                 const Expanded(
                     child: Text('Your Solar plan',
@@ -325,7 +325,7 @@ class _ExistingSolarPlan extends StatelessWidget {
                             fontSize: 18, fontWeight: FontWeight.w900))),
                 Chip(
                     label: Text(status.replaceAll('_', ' ')),
-                    backgroundColor: const Color(0xFFDDF4E6))
+                    backgroundColor: ServicePayColors.brandSoft)
               ]),
               const SizedBox(height: 10),
               Text(_packageName(plan, 'ServicePay Solar')),
@@ -381,16 +381,16 @@ class _PackageCard extends StatelessWidget {
       child: Ink(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-            color: Colors.white,
+            color: ServicePayColors.surface,
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: const Color(0xFFE0EAE4))),
+            border: Border.all(color: ServicePayColors.border)),
         child: Row(children: <Widget>[
           Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                   color: ServicePayColors.brandSoft,
                   borderRadius: BorderRadius.circular(14)),
-              child: const Icon(Icons.solar_power_rounded, color: _solarGreen)),
+              child: const Icon(Icons.solar_power_rounded, color: ServicePayColors.accent)),
           const SizedBox(width: 13),
           Expanded(
               child: Column(
@@ -406,15 +406,15 @@ class _PackageCard extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
-                        color: Color(0xFF68776E), fontSize: 12)),
+                        color: ServicePayColors.muted, fontSize: 12)),
                 const SizedBox(height: 8),
                 Text(
                     _money(
                         item['price'] ?? item['amount'] ?? item['cashPrice']),
                     style: const TextStyle(
-                        color: _solarGreen, fontWeight: FontWeight.w900)),
+                        color: ServicePayColors.accent, fontWeight: FontWeight.w900)),
               ])),
-          const Icon(Icons.chevron_right_rounded, color: _solarGreen),
+          const Icon(Icons.chevron_right_rounded, color: ServicePayColors.accent),
         ]),
       ),
     );
@@ -435,10 +435,10 @@ class SolarPackageSelectionScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        backgroundColor: const Color(0xFFF7FAF8),
+        backgroundColor: ServicePayColors.canvas,
         appBar: AppBar(
           title: const Text('Choose a Solar package'),
-          backgroundColor: const Color(0xFFF7FAF8),
+          backgroundColor: ServicePayColors.canvas,
           surfaceTintColor: Colors.transparent,
         ),
         body: FutureBuilder<Map<String, dynamic>>(
@@ -447,7 +447,7 @@ class SolarPackageSelectionScreen extends StatelessWidget {
               AsyncSnapshot<Map<String, dynamic>> snapshot) {
             if (snapshot.connectionState != ConnectionState.done) {
               return const Center(
-                  child: CircularProgressIndicator(color: _solarGreen));
+                  child: CircularProgressIndicator(color: ServicePayColors.accent));
             }
             if (snapshot.hasError) {
               return _StateCard(
@@ -475,7 +475,7 @@ class SolarPackageSelectionScreen extends StatelessWidget {
                 const SizedBox(height: 6),
                 const Text(
                   'You can review the package details before completing your application.',
-                  style: TextStyle(color: Color(0xFF68776E)),
+                  style: TextStyle(color: ServicePayColors.muted),
                 ),
                 const SizedBox(height: 16),
                 ...items.map(
@@ -518,9 +518,9 @@ class SolarPackageDetailsScreen extends StatelessWidget {
     final List<dynamic> features =
         rawFeatures is List ? rawFeatures : const <dynamic>[];
     return Scaffold(
-      backgroundColor: const Color(0xFFF7FAF8),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
-          backgroundColor: const Color(0xFFF7FAF8),
+          backgroundColor: ServicePayColors.canvas,
           title: const Text('Package details'),
           surfaceTintColor: Colors.transparent),
       body: ListView(padding: const EdgeInsets.all(20), children: <Widget>[
@@ -553,7 +553,7 @@ class SolarPackageDetailsScreen extends StatelessWidget {
         Text(
             _text(package, <String>['description', 'summary'],
                 'A dependable solar solution for your everyday power needs.'),
-            style: const TextStyle(height: 1.5, color: Color(0xFF46554C))),
+            style: const TextStyle(height: 1.5, color: ServicePayColors.muted)),
         const SizedBox(height: 20),
         const Text('Finance summary',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
@@ -597,7 +597,7 @@ class SolarPackageDetailsScreen extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
                     const Icon(Icons.check_circle,
-                        color: _solarGreen, size: 20),
+                        color: ServicePayColors.accent, size: 20),
                     const SizedBox(width: 9),
                     Expanded(child: Text(feature.toString()))
                   ])))
@@ -911,7 +911,7 @@ class _SolarApplicationFormScreenState
             _section('Guarantor', <Widget>[
               const Text(
                 'Optional unless requested during review.',
-                style: TextStyle(color: Color(0xFF68776E)),
+                style: TextStyle(color: ServicePayColors.muted),
               ),
               const SizedBox(height: 8),
               _input('guarantorName', 'Guarantor full name', required: false),
@@ -1045,7 +1045,7 @@ class _ApplicationTile extends StatelessWidget {
                   if (depositDue != null && depositDue > 0)
                     Text('Deposit due: ${_money(depositDue)}',
                         style: const TextStyle(
-                            color: _solarGreen, fontWeight: FontWeight.w800)),
+                            color: ServicePayColors.accent, fontWeight: FontWeight.w800)),
                   if (solarCanPayDeposit(item) &&
                       id.isNotEmpty &&
                       depositDue != null &&
@@ -1280,7 +1280,7 @@ class _FinanceActivity extends StatelessWidget {
                   if (snapshot.connectionState != ConnectionState.done) {
                     return const Padding(
                         padding: EdgeInsets.all(12),
-                        child: CircularProgressIndicator(color: _solarGreen));
+                        child: CircularProgressIndicator(color: ServicePayColors.accent));
                   }
                   if (snapshot.hasError) {
                     return Text('Schedule unavailable: ${snapshot.error}');
@@ -1324,7 +1324,7 @@ class _FinanceActivity extends StatelessWidget {
                                   contentPadding: EdgeInsets.zero,
                                   leading: const Icon(
                                       Icons.check_circle_outline,
-                                      color: _solarGreen),
+                                      color: ServicePayColors.accent),
                                   title: Text(_text(
                                       row,
                                       <String>['reference', 'type'],
@@ -1386,9 +1386,9 @@ class _PackageFinanceSummary extends StatelessWidget {
     return Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-            color: Colors.white,
+            color: ServicePayColors.surface,
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: const Color(0xFFE0EAE4))),
+            border: Border.all(color: ServicePayColors.border)),
         child: Column(
             children: facts
                 .map((List<String> fact) => Padding(
@@ -1397,7 +1397,7 @@ class _PackageFinanceSummary extends StatelessWidget {
                       Expanded(
                           child: Text(fact.first,
                               style:
-                                  const TextStyle(color: Color(0xFF68776E)))),
+                                  const TextStyle(color: ServicePayColors.muted))),
                       Flexible(
                           child: Text(fact.last,
                               textAlign: TextAlign.end,
@@ -1495,7 +1495,7 @@ class _AsyncList extends StatelessWidget {
           return const Padding(
               padding: EdgeInsets.all(32),
               child:
-                  Center(child: CircularProgressIndicator(color: _solarGreen)));
+                  Center(child: CircularProgressIndicator(color: ServicePayColors.accent)));
         }
         if (snapshot.hasError) {
           return _StateCard(
@@ -1525,11 +1525,11 @@ class _QuickLink extends StatelessWidget {
       child: Ink(
           padding: const EdgeInsets.all(15),
           decoration: BoxDecoration(
-              color: Colors.white,
+              color: ServicePayColors.surface,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFE0EAE4))),
+              border: Border.all(color: ServicePayColors.border)),
           child: Column(children: <Widget>[
-            Icon(icon, color: _solarGreen),
+            Icon(icon, color: ServicePayColors.accent),
             const SizedBox(height: 8),
             Text(label,
                 textAlign: TextAlign.center,
@@ -1548,9 +1548,9 @@ class _StateCard extends StatelessWidget {
       padding: const EdgeInsets.all(24),
       alignment: Alignment.center,
       decoration: BoxDecoration(
-          color: Colors.white, borderRadius: BorderRadius.circular(16)),
+          color: ServicePayColors.surface, borderRadius: BorderRadius.circular(16)),
       child: Column(children: <Widget>[
-        const Icon(Icons.wb_sunny_outlined, color: _solarGreen, size: 32),
+        const Icon(Icons.wb_sunny_outlined, color: ServicePayColors.accent, size: 32),
         const SizedBox(height: 10),
         Text(message, textAlign: TextAlign.center),
         if (action != null) TextButton(onPressed: onTap, child: Text(action!))

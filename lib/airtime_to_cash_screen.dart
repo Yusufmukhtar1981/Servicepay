@@ -273,13 +273,13 @@ class _AirtimeToCashScreenState extends State<AirtimeToCashScreen> {
         networkSetting is Map ? networkSetting['maxAmount'] : null;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF7FAF8),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         title: const Text(
           'Airtime to Cash',
         ),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black87,
+        backgroundColor: ServicePayColors.canvas,
+        foregroundColor: ServicePayColors.ink,
         elevation: 0,
       ),
       body: ListView(
@@ -296,7 +296,7 @@ class _AirtimeToCashScreenState extends State<AirtimeToCashScreen> {
               children: [
                 Icon(
                   Icons.currency_exchange_rounded,
-                  color: primaryGreen,
+                  color: ServicePayColors.accent,
                   size: 42,
                 ),
                 SizedBox(height: 14),
@@ -311,7 +311,7 @@ class _AirtimeToCashScreenState extends State<AirtimeToCashScreen> {
                 Text(
                   'Send supported airtime to ServicePay and receive the approved cash value in your ServicePay wallet after verification.',
                   style: TextStyle(
-                    color: Colors.black54,
+                    color: ServicePayColors.muted,
                     height: 1.5,
                   ),
                 ),
@@ -330,7 +330,7 @@ class _AirtimeToCashScreenState extends State<AirtimeToCashScreen> {
             value: selectedNetwork,
             decoration: InputDecoration(
               filled: true,
-              fillColor: Colors.white,
+              fillColor: ServicePayColors.surface,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
               ),
@@ -369,7 +369,7 @@ class _AirtimeToCashScreenState extends State<AirtimeToCashScreen> {
               labelText: 'Airtime Sender Phone Number',
               hintText: '08012345678',
               filled: true,
-              fillColor: Colors.white,
+              fillColor: ServicePayColors.surface,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
               ),
@@ -391,7 +391,7 @@ class _AirtimeToCashScreenState extends State<AirtimeToCashScreen> {
                   ? 'Minimum ₦$minAmount • Maximum ₦$maxAmount'
                   : null,
               filled: true,
-              fillColor: Colors.white,
+              fillColor: ServicePayColors.surface,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
               ),
@@ -401,10 +401,10 @@ class _AirtimeToCashScreenState extends State<AirtimeToCashScreen> {
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: ServicePayColors.surface,
               borderRadius: BorderRadius.circular(18),
               border: Border.all(
-                color: const Color(0xFFE3ECE7),
+                color: ServicePayColors.border,
               ),
             ),
             child: Column(
@@ -462,7 +462,7 @@ class _AirtimeToCashScreenState extends State<AirtimeToCashScreen> {
             'Important: Your wallet will only be credited after ServicePay confirms that the airtime was received successfully.',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Colors.black54,
+              color: ServicePayColors.muted,
               fontSize: 12,
               height: 1.5,
             ),
@@ -483,14 +483,14 @@ class _AirtimeToCashScreenState extends State<AirtimeToCashScreen> {
           child: Text(
             label,
             style: const TextStyle(
-              color: Colors.black54,
+              color: ServicePayColors.muted,
             ),
           ),
         ),
         Text(
           value,
           style: TextStyle(
-            color: bold ? primaryGreen : Colors.black87,
+            color: bold ? ServicePayColors.accent : Colors.black87,
             fontSize: bold ? 19 : 15,
             fontWeight: bold ? FontWeight.w900 : FontWeight.w700,
           ),

@@ -11,6 +11,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 
 import 'voice_call_models.dart';
+import 'servicepay_theme.dart';
 
 class VoiceCallScreen extends StatefulWidget {
   const VoiceCallScreen({super.key, this.client});
@@ -675,11 +676,11 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
     final callMode =
         _state != VoiceCallState.idle && _state != VoiceCallState.searching;
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F8F5),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
           title: const Text('ServicePay Call'),
-          backgroundColor: const Color(0xFFF4F8F5),
-          foregroundColor: const Color(0xFF123B2A),
+          backgroundColor: ServicePayColors.canvas,
+          foregroundColor: ServicePayColors.accent,
           elevation: 0),
       body: SafeArea(child: callMode ? _callView() : _directoryView()),
     );
@@ -722,7 +723,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
                       hintText: 'Phone number or account ID',
                       prefixIcon: const Icon(Icons.search),
                       filled: true,
-                      fillColor: Colors.white,
+                      fillColor: ServicePayColors.surface,
                       border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(16),
                           borderSide: BorderSide.none))),
@@ -734,7 +735,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
                   style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w800,
-                      color: Color(0xFF18382A))),
+                      color: ServicePayColors.accent)),
               const SizedBox(height: 8),
               if (_loading)
                 ...List.generate(
@@ -753,15 +754,15 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
       );
 
   Widget _historyTile(CallRecord record) => Card(
-        color: Colors.white,
+        color: ServicePayColors.surface,
         elevation: 0,
         margin: const EdgeInsets.only(bottom: 8),
         child: ListTile(
           leading: CircleAvatar(
-            backgroundColor: const Color(0xFFDDF2E4),
+            backgroundColor: ServicePayColors.brandSoft,
             child: Text(record.initials,
                 style: const TextStyle(
-                    color: Color(0xFF14733E), fontWeight: FontWeight.bold)),
+                    color: ServicePayColors.accent, fontWeight: FontWeight.bold)),
           ),
           title: Text(record.name,
               style: const TextStyle(fontWeight: FontWeight.w700)),
@@ -769,7 +770,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
           trailing: IconButton(
             tooltip: 'Call again',
             onPressed: () => _start(record),
-            icon: const Icon(Icons.call_rounded, color: Color(0xFF14733E)),
+            icon: const Icon(Icons.call_rounded, color: ServicePayColors.accent),
           ),
         ),
       );
@@ -780,18 +781,18 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
           child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
             CircleAvatar(
                 radius: 48,
-                backgroundColor: const Color(0xFFDDF2E4),
+                backgroundColor: ServicePayColors.brandSoft,
                 child: Text(_selected?.initials ?? '?',
                     style: const TextStyle(
                         fontSize: 30,
-                        color: Color(0xFF14733E),
+                        color: ServicePayColors.accent,
                         fontWeight: FontWeight.w800))),
             const SizedBox(height: 18),
             Text(_selected?.name ?? 'ServicePay customer',
                 style: const TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF123B2A))),
+                    color: ServicePayColors.accent)),
             const SizedBox(height: 8),
             Text(
                 _state == VoiceCallState.active
@@ -801,7 +802,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
                         : (_state == VoiceCallState.ended
                             ? _terminalMessage
                             : 'Calling securely')),
-                style: const TextStyle(color: Color(0xFF5D7467), fontSize: 16)),
+                style: const TextStyle(color: ServicePayColors.muted, fontSize: 16)),
             const SizedBox(height: 42),
             if (_state == VoiceCallState.incoming) ...[
               FilledButton.icon(
@@ -843,7 +844,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
                     : (_state == VoiceCallState.error ? _error : 'End call'),
                 textAlign: TextAlign.center,
                 style: const TextStyle(
-                    color: Color(0xFFB42318), fontWeight: FontWeight.w700)),
+                    color: Color(0xFFF19A93), fontWeight: FontWeight.w700)),
             if (_state == VoiceCallState.ended ||
                 _state == VoiceCallState.error) ...[
               const SizedBox(height: 18),
@@ -925,13 +926,13 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-          color: const Color(0xFFEAF3EC),
+          color: ServicePayColors.brandSoft,
           borderRadius: BorderRadius.circular(14)),
       child: Row(children: [
-        Icon(icon, color: const Color(0xFF14733E)),
+        Icon(icon, color: ServicePayColors.accent),
         const SizedBox(width: 10),
         Expanded(
-            child: Text(text, style: const TextStyle(color: Color(0xFF365244))))
+            child: Text(text, style: const TextStyle(color: ServicePayColors.accent)))
       ]));
 
   void _showPrivacy() => showModalBottomSheet<void>(

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'servicepay_theme.dart';
 
 class FlightBookingScreen extends StatefulWidget {
   const FlightBookingScreen({super.key});
@@ -132,7 +133,7 @@ class _FlightBookingScreenState extends State<FlightBookingScreen> {
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      backgroundColor: Colors.white,
+      backgroundColor: ServicePayColors.surface,
       builder: (bottomSheetContext) {
         return StatefulBuilder(
           builder: (context, setModalState) {
@@ -159,7 +160,7 @@ class _FlightBookingScreenState extends State<FlightBookingScreen> {
                     Text(
                       'Choose the number of passengers.',
                       style: TextStyle(
-                        color: Colors.grey.shade600,
+                        color: ServicePayColors.muted,
                       ),
                     ),
                     const SizedBox(height: 20),
@@ -262,7 +263,7 @@ class _FlightBookingScreenState extends State<FlightBookingScreen> {
               Text(
                 subtitle,
                 style: TextStyle(
-                  color: Colors.grey.shade600,
+                  color: ServicePayColors.muted,
                 ),
               ),
             ],
@@ -308,8 +309,8 @@ class _FlightBookingScreenState extends State<FlightBookingScreen> {
   }) {
     return Material(
       color: enabled
-          ? const Color(0xFFE8F5EA)
-          : Colors.grey.shade100,
+          ? ServicePayColors.brandSoft
+          : ServicePayColors.surface,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: enabled ? onPressed : null,
@@ -320,7 +321,7 @@ class _FlightBookingScreenState extends State<FlightBookingScreen> {
           child: Icon(
             icon,
             color: enabled
-                ? const Color(0xFF2E8B3C)
+                ? ServicePayColors.accent
                 : Colors.grey.shade400,
           ),
         ),
@@ -400,7 +401,7 @@ class _FlightBookingScreenState extends State<FlightBookingScreen> {
     const primaryColor = Color(0xFF2E8B3C);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F9F7),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         elevation: 0,
         backgroundColor: primaryColor,
@@ -521,10 +522,10 @@ class _FlightBookingScreenState extends State<FlightBookingScreen> {
     return Container(
       padding: const EdgeInsets.all(5),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: ServicePayColors.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: Colors.grey.shade200,
+          color: ServicePayColors.border,
         ),
       ),
       child: Row(
@@ -730,17 +731,17 @@ class _FlightBookingScreenState extends State<FlightBookingScreen> {
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: const Color(0xFFF8FAF8),
+          color: ServicePayColors.surface,
           borderRadius: BorderRadius.circular(15),
           border: Border.all(
-            color: Colors.grey.shade200,
+            color: ServicePayColors.border,
           ),
         ),
         child: Row(
           children: [
             Icon(
               icon,
-              color: const Color(0xFF2E8B3C),
+              color: ServicePayColors.accent,
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -751,7 +752,7 @@ class _FlightBookingScreenState extends State<FlightBookingScreen> {
                   Text(
                     label,
                     style: TextStyle(
-                      color: Colors.grey.shade600,
+                      color: ServicePayColors.muted,
                       fontSize: 12,
                     ),
                   ),
@@ -785,17 +786,17 @@ class _FlightBookingScreenState extends State<FlightBookingScreen> {
             child: Container(
               padding: const EdgeInsets.all(15),
               decoration: BoxDecoration(
-                color: const Color(0xFFF8FAF8),
+                color: ServicePayColors.surface,
                 borderRadius: BorderRadius.circular(15),
                 border: Border.all(
-                  color: Colors.grey.shade200,
+                  color: ServicePayColors.border,
                 ),
               ),
               child: Row(
                 children: [
                   const Icon(
                     Icons.groups_2_outlined,
-                    color: Color(0xFF2E8B3C),
+                    color: ServicePayColors.accent,
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -850,10 +851,10 @@ class _FlightBookingScreenState extends State<FlightBookingScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(17),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: ServicePayColors.surface,
         borderRadius: BorderRadius.circular(21),
         border: Border.all(
-          color: Colors.grey.shade200,
+          color: ServicePayColors.border,
         ),
         boxShadow: [
           BoxShadow(
@@ -871,7 +872,7 @@ class _FlightBookingScreenState extends State<FlightBookingScreen> {
               Icon(
                 icon,
                 size: 21,
-                color: const Color(0xFF2E8B3C),
+                color: ServicePayColors.accent,
               ),
               const SizedBox(width: 8),
               Text(
@@ -898,20 +899,20 @@ class _FlightBookingScreenState extends State<FlightBookingScreen> {
       labelText: label,
       prefixIcon: Icon(
         icon,
-        color: const Color(0xFF2E8B3C),
+        color: ServicePayColors.accent,
       ),
       filled: true,
-      fillColor: const Color(0xFFF8FAF8),
+      fillColor: ServicePayColors.surface,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(15),
         borderSide: BorderSide(
-          color: Colors.grey.shade200,
+          color: ServicePayColors.border,
         ),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(15),
         borderSide: BorderSide(
-          color: Colors.grey.shade200,
+          color: ServicePayColors.border,
         ),
       ),
       focusedBorder: OutlineInputBorder(
@@ -963,10 +964,10 @@ class _FlightBookingScreenState extends State<FlightBookingScreen> {
     return Container(
       padding: const EdgeInsets.all(17),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF8E6),
+        color: const Color(0xFF4B3C16),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: const Color(0xFFFFE29A),
+          color: const Color(0xFFAB862B),
         ),
       ),
       child: const Row(
@@ -981,7 +982,7 @@ class _FlightBookingScreenState extends State<FlightBookingScreen> {
             child: Text(
               'Secure booking, transparent prices and easy payment through Servicepay.',
               style: TextStyle(
-                color: Color(0xFF69511B),
+                color: Color(0xFFE6D09E),
                 height: 1.45,
               ),
             ),
@@ -1017,7 +1018,7 @@ class FlightResultsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F9F7),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         backgroundColor: const Color(0xFF2E8B3C),
         foregroundColor: Colors.white,
@@ -1037,21 +1038,21 @@ class FlightResultsScreen extends StatelessWidget {
             ),
             padding: const EdgeInsets.all(24),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: ServicePayColors.surface,
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
-                color: Colors.grey.shade200,
+                color: ServicePayColors.border,
               ),
             ),
             child: Column(
               children: [
                 const CircleAvatar(
                   radius: 38,
-                  backgroundColor: Color(0xFFE8F5EA),
+                  backgroundColor: ServicePayColors.brandSoft,
                   child: Icon(
                     Icons.flight_rounded,
                     size: 38,
-                    color: Color(0xFF2E8B3C),
+                    color: ServicePayColors.accent,
                   ),
                 ),
                 const SizedBox(height: 18),
@@ -1093,14 +1094,14 @@ class FlightResultsScreen extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(15),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFFF8E6),
+                    color: const Color(0xFF4B3C16),
                     borderRadius: BorderRadius.circular(15),
                   ),
                   child: const Text(
                     'Real airline results will appear here after we connect the flight booking API.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: Color(0xFF69511B),
+                      color: Color(0xFFE6D09E),
                       height: 1.45,
                     ),
                   ),
@@ -1123,7 +1124,7 @@ class FlightResultsScreen extends StatelessWidget {
           Text(
             title,
             style: TextStyle(
-              color: Colors.grey.shade600,
+              color: ServicePayColors.muted,
             ),
           ),
           const Spacer(),

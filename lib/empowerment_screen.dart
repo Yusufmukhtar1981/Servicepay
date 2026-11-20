@@ -158,7 +158,7 @@ class _EmpowermentScreenState extends State<EmpowermentScreen>
                   const SizedBox(height: 6),
                   const Text(
                     'Organizations are verified by ServicePay before programs can be created.',
-                    style: TextStyle(color: Color(0xFF667085)),
+                    style: TextStyle(color: ServicePayColors.muted),
                   ),
                   const SizedBox(height: 16),
                   _formField(fields['name']!, 'Organization name'),
@@ -769,7 +769,7 @@ class _EmpowermentScreenState extends State<EmpowermentScreen>
           children: <Widget>[
             SizedBox(
               width: 138,
-              child: Text(label, style: const TextStyle(color: Color(0xFF667085))),
+              child: Text(label, style: const TextStyle(color: ServicePayColors.muted)),
             ),
             Expanded(
               child: Text(value, style: const TextStyle(fontWeight: FontWeight.w700)),
@@ -815,7 +815,7 @@ class _EmpowermentScreenState extends State<EmpowermentScreen>
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
-            Text(label, style: const TextStyle(fontSize: 11, color: Color(0xFF557064))),
+            Text(label, style: const TextStyle(fontSize: 11, color: ServicePayColors.muted)),
             Text(_text(value, '0'),
                 style: const TextStyle(fontWeight: FontWeight.w900)),
           ],
@@ -827,13 +827,13 @@ class _EmpowermentScreenState extends State<EmpowermentScreen>
   Widget _chip(String value) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
         decoration: BoxDecoration(
-          color: const Color(0xFFEAF7F0),
+          color: ServicePayColors.brandSoft,
           borderRadius: BorderRadius.circular(20),
         ),
         child: Text(
           value.replaceAll('_', ' '),
           style: const TextStyle(
-            color: Color(0xFF08783E),
+            color: ServicePayColors.accent,
             fontSize: 10,
             fontWeight: FontWeight.w800,
           ),
@@ -849,7 +849,7 @@ class _EmpowermentScreenState extends State<EmpowermentScreen>
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
-        side: const BorderSide(color: Color(0xFFE4ECE6)),
+        side: const BorderSide(color: ServicePayColors.border),
       ),
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -862,7 +862,7 @@ class _EmpowermentScreenState extends State<EmpowermentScreen>
                   backgroundColor: ServicePayColors.brandSoft,
                   child: Icon(
                     Icons.volunteer_activism_outlined,
-                    color: ServicePayColors.brand,
+                    color: ServicePayColors.accent,
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -878,13 +878,13 @@ class _EmpowermentScreenState extends State<EmpowermentScreen>
             if (_text(program['description']).isNotEmpty) ...<Widget>[
               const SizedBox(height: 10),
               Text(_text(program['description']),
-                  style: const TextStyle(color: Color(0xFF667085))),
+                  style: const TextStyle(color: ServicePayColors.muted)),
             ],
             const SizedBox(height: 12),
             Text(
               '${_currency(program['amountPerBeneficiary'])} per beneficiary',
               style: const TextStyle(
-                color: ServicePayColors.brand,
+                color: ServicePayColors.accent,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -918,7 +918,7 @@ class _EmpowermentScreenState extends State<EmpowermentScreen>
           backgroundColor: ServicePayColors.brandSoft,
           child: Icon(
             Icons.account_balance_outlined,
-            color: ServicePayColors.brand,
+            color: ServicePayColors.accent,
           ),
         ),
         title: Text(_text(organization['name'])),
@@ -940,7 +940,7 @@ class _EmpowermentScreenState extends State<EmpowermentScreen>
           backgroundColor: ServicePayColors.brandSoft,
           child: Icon(
             Icons.assignment_turned_in_outlined,
-            color: ServicePayColors.brand,
+            color: ServicePayColors.accent,
           ),
         ),
         title: Text(_text(program['name'], 'Empowerment application')),
@@ -964,10 +964,10 @@ class _EmpowermentScreenState extends State<EmpowermentScreen>
       child: ListTile(
         leading: CircleAvatar(
           backgroundColor:
-              paid ? const Color(0xFFEAF7F0) : const Color(0xFFFFF7DF),
+              paid ? ServicePayColors.brandSoft : const Color(0xFF4B3E16),
           child: Icon(
             paid ? Icons.account_balance_wallet_rounded : Icons.schedule_rounded,
-            color: paid ? const Color(0xFF08783E) : const Color(0xFFB54708),
+            color: paid ? ServicePayColors.accent : const Color(0xFFF9B38B),
           ),
         ),
         title: Text(_text(program['name'], 'Empowerment benefit')),

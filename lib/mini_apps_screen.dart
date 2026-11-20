@@ -227,11 +227,11 @@ class _MiniAppsScreenState extends State<MiniAppsScreen> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F8F7),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         elevation: 0,
-        backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF101828),
+        backgroundColor: ServicePayColors.canvas,
+        foregroundColor: const Color(0xFFA0B7E3),
         title: const Text(
           'Mini Apps',
           style: TextStyle(
@@ -355,7 +355,7 @@ class _MiniAppsScreenState extends State<MiniAppsScreen> {
                             Icons.search_rounded,
                           ),
                           filled: true,
-                          fillColor: Colors.white,
+                          fillColor: ServicePayColors.surface,
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(
                               18,
@@ -409,7 +409,7 @@ class _MiniAppsScreenState extends State<MiniAppsScreen> {
                           Text(
                             '${filteredApps.length} apps',
                             style: TextStyle(
-                              color: Colors.grey.shade600,
+                              color: ServicePayColors.muted,
                             ),
                           ),
                         ],
@@ -462,7 +462,7 @@ class _MiniAppsScreenState extends State<MiniAppsScreen> {
                                 16,
                               ),
                               decoration: BoxDecoration(
-                                color: Colors.white,
+                                color: ServicePayColors.surface,
                                 borderRadius: BorderRadius.circular(
                                   22,
                                 ),
@@ -488,7 +488,7 @@ class _MiniAppsScreenState extends State<MiniAppsScreen> {
                                       iconFor(
                                         app['icon']?.toString(),
                                       ),
-                                      color: ServicePayColors.brand,
+                                      color: ServicePayColors.accent,
                                     ),
                                   ),
                                   const Spacer(),
@@ -511,7 +511,7 @@ class _MiniAppsScreenState extends State<MiniAppsScreen> {
                                     style: TextStyle(
                                       fontSize: 11.5,
                                       height: 1.35,
-                                      color: Colors.grey.shade600,
+                                      color: ServicePayColors.muted,
                                     ),
                                   ),
                                   const SizedBox(
@@ -525,7 +525,7 @@ class _MiniAppsScreenState extends State<MiniAppsScreen> {
                                       fontSize: 11,
                                       fontWeight: FontWeight.w700,
                                        color: isUnavailable
-                                          ? Colors.orange.shade800
+                                          ? Color(0xFFF9BC8B)
                                           : ServicePayColors.brand,
                                     ),
                                   ),

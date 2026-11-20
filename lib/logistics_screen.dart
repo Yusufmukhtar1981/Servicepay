@@ -21,8 +21,8 @@ class LogisticsScreen extends StatelessWidget {
           ),
         ),
         centerTitle: true,
-        backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF111827),
+        backgroundColor: ServicePayColors.canvas,
+        foregroundColor: const Color(0xFFA0B6E3),
         elevation: 0,
       ),
       body: SafeArea(
@@ -38,7 +38,7 @@ class LogisticsScreen extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 19,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF111827),
+                  color: Color(0xFFA0B6E3),
                 ),
               ),
               const SizedBox(height: 14),
@@ -211,7 +211,7 @@ class LogisticsScreen extends StatelessWidget {
     required VoidCallback onTap,
   }) {
     return Material(
-      color: Colors.white,
+      color: ServicePayColors.surface,
       borderRadius: BorderRadius.circular(18),
       child: InkWell(
         onTap: onTap,
@@ -236,7 +236,7 @@ class LogisticsScreen extends StatelessWidget {
                 ),
                 child: Icon(
                   icon,
-                  color: ServicePayColors.brand,
+                  color: ServicePayColors.accent,
                   size: 27,
                 ),
               ),
@@ -250,7 +250,7 @@ class LogisticsScreen extends StatelessWidget {
                       style: const TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
-                        color: Color(0xFF111827),
+                        color: Color(0xFFA0B6E3),
                       ),
                     ),
                     const SizedBox(height: 5),
@@ -258,7 +258,7 @@ class LogisticsScreen extends StatelessWidget {
                       subtitle,
                       style: const TextStyle(
                         fontSize: 13,
-                        color: Color(0xFF6B7280),
+                        color: ServicePayColors.muted,
                         height: 1.4,
                       ),
                     ),
@@ -283,10 +283,10 @@ class LogisticsScreen extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(17),
       decoration: BoxDecoration(
-        color: const Color(0xFFFFF8E1),
+        color: const Color(0xFF4B3F16),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: const Color(0xFFFFE082),
+          color: const Color(0xFFAB8B2B),
         ),
       ),
       child: const Row(
@@ -302,7 +302,7 @@ class LogisticsScreen extends StatelessWidget {
               'Delivery fees will be provided after your request has been reviewed.',
               style: TextStyle(
                 fontSize: 13,
-                color: Color(0xFF6B4F00),
+                color: Color(0xFFF9DC8B),
                 height: 1.5,
               ),
             ),

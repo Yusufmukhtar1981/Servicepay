@@ -190,7 +190,7 @@ class _DeliveryHistoryScreenState
         return AlertDialog(
           icon: const Icon(
             Icons.account_balance_wallet_rounded,
-            color: ServicePayColors.brand,
+            color: ServicePayColors.accent,
             size: 48,
           ),
           title: const Text(
@@ -615,12 +615,12 @@ class _DeliveryHistoryScreenState
           const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(17),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: ServicePayColors.surface,
         borderRadius:
             BorderRadius.circular(18),
         border: Border.all(
           color:
-              const Color(0xFFE5E7EB),
+              ServicePayColors.border,
         ),
         boxShadow: [
           BoxShadow(
@@ -665,7 +665,7 @@ class _DeliveryHistoryScreenState
                         fontWeight:
                             FontWeight.w800,
                         color:
-                            Color(0xFF111827),
+                            Color(0xFFA0B6E3),
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -677,7 +677,7 @@ class _DeliveryHistoryScreenState
                           const TextStyle(
                         fontSize: 12,
                         color:
-                            Color(0xFF6B7280),
+                            ServicePayColors.muted,
                         fontWeight:
                             FontWeight.w600,
                       ),
@@ -771,7 +771,7 @@ class _DeliveryHistoryScreenState
                   Icons
                       .account_balance_wallet_outlined,
                   size: 19,
-                  color: ServicePayColors.brand,
+                  color: ServicePayColors.accent,
                 ),
                 const SizedBox(width: 10),
                 const SizedBox(
@@ -781,7 +781,7 @@ class _DeliveryHistoryScreenState
                     style: TextStyle(
                       fontSize: 12,
                       color:
-                          Color(0xFF6B7280),
+                          ServicePayColors.muted,
                     ),
                   ),
                 ),
@@ -831,12 +831,12 @@ class _DeliveryHistoryScreenState
                   const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color:
-                    const Color(0xFFFFF8E1),
+                    const Color(0xFF4B3F16),
                 borderRadius:
                     BorderRadius.circular(12),
                 border: Border.all(
                   color:
-                      const Color(0xFFFFE082),
+                      const Color(0xFFAB8B2B),
                 ),
               ),
               child: const Row(
@@ -854,7 +854,7 @@ class _DeliveryHistoryScreenState
                       style: TextStyle(
                         fontSize: 12,
                         color:
-                            Color(0xFF6B4F00),
+                            Color(0xFFF9DC8B),
                         height: 1.4,
                       ),
                     ),
@@ -920,7 +920,7 @@ class _DeliveryHistoryScreenState
                   const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color:
-                    const Color(0xFFE8F5E9),
+                    ServicePayColors.brandSoft,
                 borderRadius:
                     BorderRadius.circular(12),
               ),
@@ -939,7 +939,7 @@ class _DeliveryHistoryScreenState
                       style: TextStyle(
                         fontSize: 12,
                         color:
-                            Color(0xFF166534),
+                            ServicePayColors.accent,
                         fontWeight:
                             FontWeight.w700,
                       ),
@@ -965,7 +965,7 @@ class _DeliveryHistoryScreenState
                 ),
                 style:
                     OutlinedButton.styleFrom(
-                  foregroundColor: Colors.red,
+                  foregroundColor: Color(0xFFF9928B),
                   side: const BorderSide(
                     color: Colors.red,
                   ),
@@ -998,7 +998,7 @@ class _DeliveryHistoryScreenState
           Icon(
             icon,
             size: 19,
-            color: ServicePayColors.brand,
+            color: ServicePayColors.accent,
           ),
           const SizedBox(width: 10),
           SizedBox(
@@ -1008,7 +1008,7 @@ class _DeliveryHistoryScreenState
               style: const TextStyle(
                 fontSize: 12,
                 color:
-                    Color(0xFF6B7280),
+                    ServicePayColors.muted,
               ),
             ),
           ),
@@ -1018,7 +1018,7 @@ class _DeliveryHistoryScreenState
               style: const TextStyle(
                 fontSize: 13,
                 color:
-                    Color(0xFF111827),
+                    Color(0xFFA0B6E3),
                 fontWeight:
                     FontWeight.w600,
                 height: 1.35,
@@ -1051,7 +1051,7 @@ class _DeliveryHistoryScreenState
               child: const Icon(
                 Icons.local_shipping_outlined,
                 size: 46,
-                color: ServicePayColors.brand,
+                color: ServicePayColors.accent,
               ),
             ),
             const SizedBox(height: 20),
@@ -1062,7 +1062,7 @@ class _DeliveryHistoryScreenState
                 fontWeight:
                     FontWeight.w800,
                 color:
-                    Color(0xFF111827),
+                    Color(0xFFA0B6E3),
               ),
             ),
             const SizedBox(height: 8),
@@ -1071,7 +1071,7 @@ class _DeliveryHistoryScreenState
               textAlign: TextAlign.center,
               style: TextStyle(
                 color:
-                    Color(0xFF6B7280),
+                    ServicePayColors.muted,
                 height: 1.5,
               ),
             ),
@@ -1093,7 +1093,7 @@ class _DeliveryHistoryScreenState
           children: [
             const Icon(
               Icons.error_outline,
-              color: Colors.red,
+              color: Color(0xFFF9928B),
               size: 58,
             ),
             const SizedBox(height: 15),
@@ -1103,7 +1103,7 @@ class _DeliveryHistoryScreenState
               textAlign: TextAlign.center,
               style: const TextStyle(
                 color:
-                    Color(0xFF6B7280),
+                    ServicePayColors.muted,
                 height: 1.5,
               ),
             ),
@@ -1135,7 +1135,7 @@ class _DeliveryHistoryScreenState
           ),
         ),
         centerTitle: true,
-        backgroundColor: Colors.white,
+        backgroundColor: ServicePayColors.canvas,
         foregroundColor:
             ServicePayColors.ink,
         iconTheme: const IconThemeData(

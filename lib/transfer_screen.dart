@@ -467,7 +467,7 @@ class _TransferScreenState extends State<TransferScreen> {
                             ),
                             child: const Icon(
                               Icons.person_rounded,
-                              color: primaryGreen,
+                              color: ServicePayColors.accent,
                               size: 30,
                             ),
                           ),
@@ -530,7 +530,7 @@ class _TransferScreenState extends State<TransferScreen> {
                           Text(
                             '₦${amount.toStringAsFixed(2)}',
                             style: const TextStyle(
-                              color: primaryGreen,
+                              color: ServicePayColors.accent,
                               fontSize: 27,
                               fontWeight: FontWeight.w900,
                             ),
@@ -572,7 +572,7 @@ class _TransferScreenState extends State<TransferScreen> {
                         counterText: '',
                         prefixIcon: const Icon(
                           Icons.pin_outlined,
-                          color: primaryGreen,
+                          color: ServicePayColors.accent,
                         ),
                         suffixIcon: IconButton(
                           onPressed: () {
@@ -877,7 +877,7 @@ class _TransferScreenState extends State<TransferScreen> {
             ),
             icon: const Icon(
               Icons.check_circle_rounded,
-              color: primaryGreen,
+              color: ServicePayColors.accent,
               size: 64,
             ),
             title: const Text(
@@ -927,7 +927,7 @@ class _TransferScreenState extends State<TransferScreen> {
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                       fontSize: 12,
-                      color: Color(0xFF6B7280),
+                      color: ServicePayColors.muted,
                     ),
                   ),
                 ],
@@ -937,7 +937,7 @@ class _TransferScreenState extends State<TransferScreen> {
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     fontSize: 12,
-                    color: Color(0xFF6B7280),
+                    color: ServicePayColors.muted,
                   ),
                 ),
               ],
@@ -1165,10 +1165,10 @@ class _TransferScreenState extends State<TransferScreen> {
                   counterText: '',
                   prefixIcon: const Icon(
                     Icons.phone_outlined,
-                    color: primaryGreen,
+                    color: ServicePayColors.accent,
                   ),
                   filled: true,
-                  fillColor: Colors.white,
+                  fillColor: ServicePayColors.surface,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(
                       14,
@@ -1211,10 +1211,10 @@ class _TransferScreenState extends State<TransferScreen> {
                   prefixText: '₦ ',
                   prefixIcon: const Icon(
                     Icons.payments_outlined,
-                    color: primaryGreen,
+                    color: ServicePayColors.accent,
                   ),
                   filled: true,
-                  fillColor: Colors.white,
+                  fillColor: ServicePayColors.surface,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(
                       14,
@@ -1247,7 +1247,7 @@ class _TransferScreenState extends State<TransferScreen> {
                   children: [
                     Icon(
                       Icons.verified_user_outlined,
-                      color: primaryGreen,
+                      color: ServicePayColors.accent,
                     ),
                     SizedBox(
                       width: 10,

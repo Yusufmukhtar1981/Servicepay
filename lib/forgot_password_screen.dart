@@ -384,7 +384,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               style: TextStyle(
                 fontSize: 32,
                 fontWeight: FontWeight.w900,
-                color: primaryColor,
+                color: ServicePayColors.accent,
               ),
             ),
           );
@@ -464,7 +464,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           ),
         ),
         centerTitle: true,
-        backgroundColor: Colors.white,
+        backgroundColor: ServicePayColors.canvas,
         foregroundColor: const Color(
           0xFF172033,
         ),
@@ -483,7 +483,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               ),
               child: Container(
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: ServicePayColors.surface,
                   borderRadius: BorderRadius.circular(
                     26,
                   ),
@@ -552,7 +552,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             'Enter the email address registered with your ServicePay account to request a secure password reset link.',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Colors.grey.shade600,
+              color: ServicePayColors.muted,
               fontSize: 14,
               height: 1.5,
             ),
@@ -623,7 +623,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           const Text(
             'Use your verified phone',
             style: TextStyle(
-              color: Color(0xFF172033),
+              color: Color(0xFFA0B6E3),
               fontSize: 17,
               fontWeight: FontWeight.w800,
             ),
@@ -632,7 +632,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           Text(
             'If your account has an eligible verified phone, we will send a secure recovery code. This does not change your contact details.',
             style: TextStyle(
-              color: Colors.grey.shade700,
+              color: ServicePayColors.muted,
               fontSize: 13,
               height: 1.45,
             ),
@@ -684,7 +684,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             const Text(
               'Phone recovery is currently unavailable. Use the email recovery option above.',
               key: Key('phone-recovery-unavailable'),
-              style: TextStyle(color: Color(0xFF7C2D12), height: 1.4),
+              style: TextStyle(color: Color(0xFFEFAB94), height: 1.4),
             ),
           ],
           const SizedBox(height: 12),
@@ -723,7 +723,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: _pendingRecoveryExpired
-                    ? const Color(0xFFFFF7ED)
+                    ? const Color(0xFF4B3316)
                     : primaryColor.withValues(alpha: 0.07),
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -773,7 +773,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             label: const Text(
               'Back to Sign In',
               style: TextStyle(
-                color: primaryColor,
+                color: ServicePayColors.accent,
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -798,7 +798,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               children: [
                 Icon(
                   Icons.verified_user_rounded,
-                  color: primaryColor,
+                  color: ServicePayColors.accent,
                   size: 20,
                 ),
                 SizedBox(
@@ -828,7 +828,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 12,
-              color: Colors.grey.shade600,
+              color: ServicePayColors.muted,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -860,7 +860,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           ),
           child: const Icon(
             Icons.mark_email_read_outlined,
-            color: primaryColor,
+            color: ServicePayColors.accent,
             size: 46,
           ),
         ),
@@ -886,7 +886,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           key: const Key('forgot-password-success-message'),
           textAlign: TextAlign.center,
           style: TextStyle(
-            color: Colors.grey.shade700,
+            color: ServicePayColors.muted,
             fontSize: 14,
             height: 1.5,
           ),
@@ -983,7 +983,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                     ? 'Request another link in ${resendCooldownSeconds}s'
                     : 'Send another link',
             style: const TextStyle(
-              color: primaryColor,
+              color: ServicePayColors.accent,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -996,7 +996,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 12,
-            color: Colors.grey.shade600,
+            color: ServicePayColors.muted,
             fontWeight: FontWeight.w700,
           ),
         ),

@@ -373,13 +373,13 @@ class _PayByLinkScreenState extends State<PayByLinkScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7FAF8),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         title: const Text(
           'Pay-by-Link Merchant',
         ),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black87,
+        backgroundColor: ServicePayColors.canvas,
+        foregroundColor: ServicePayColors.ink,
       ),
       body: ListView(
         padding: const EdgeInsets.all(18),
@@ -395,7 +395,7 @@ class _PayByLinkScreenState extends State<PayByLinkScreen> {
           const Text(
             'Create a simple ServicePay payment link for your customer.',
             style: TextStyle(
-              color: Colors.black54,
+              color: ServicePayColors.muted,
             ),
           ),
           const SizedBox(height: 20),
@@ -454,7 +454,7 @@ class _PayByLinkScreenState extends State<PayByLinkScreen> {
           const Text(
             'Paste a payment link sent to you or enter the payment code.',
             style: TextStyle(
-              color: Colors.black54,
+              color: ServicePayColors.muted,
             ),
           ),
           const SizedBox(height: 14),
@@ -512,7 +512,7 @@ class _PayByLinkScreenState extends State<PayByLinkScreen> {
                 child: ListTile(
                   leading: const Icon(
                     Icons.link_rounded,
-                    color: primaryGreen,
+                    color: ServicePayColors.accent,
                   ),
                   title: Text(
                     item['title']?.toString() ?? 'Payment',

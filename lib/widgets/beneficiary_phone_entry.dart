@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/data_phone.dart';
 import '../services/phone_network_suggestion.dart';
+import '../servicepay_theme.dart';
 
 class BeneficiaryPhoneEntry extends StatefulWidget {
   const BeneficiaryPhoneEntry({
@@ -216,7 +217,7 @@ class _BeneficiaryPhoneEntryState extends State<BeneficiaryPhoneEntry> {
                   style: TextStyle(
                     fontSize: 12,
                     color: widget.suggestions.suggestedNetwork == null
-                        ? Colors.black54
+                        ? ServicePayColors.muted
                         : const Color(0xFF08783E),
                     fontWeight: FontWeight.w500,
                   ),
@@ -230,7 +231,7 @@ class _BeneficiaryPhoneEntryState extends State<BeneficiaryPhoneEntry> {
             padding: EdgeInsets.only(top: 2, left: 2),
             child: Text(
               'Contacts are unavailable here. Enter the number manually.',
-              style: TextStyle(fontSize: 12, color: Colors.black54),
+              style: TextStyle(fontSize: 12, color: ServicePayColors.muted),
             ),
           ),
       ],

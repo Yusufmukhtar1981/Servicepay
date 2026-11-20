@@ -338,7 +338,7 @@ class _PartnerApplicationScreenState extends State<PartnerApplicationScreen> {
       builder: (context) => AlertDialog(
         title: const Row(
           children: [
-            Icon(Icons.security_rounded, color: _green),
+            Icon(Icons.security_rounded, color: ServicePayColors.accent),
             SizedBox(width: 10),
             Expanded(child: Text('Save your API Secret')),
           ],
@@ -379,7 +379,7 @@ class _PartnerApplicationScreenState extends State<PartnerApplicationScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF1F5F9),
+        color: ServicePayColors.surface,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -495,18 +495,18 @@ class _PartnerApplicationScreenState extends State<PartnerApplicationScreen> {
       width: 155,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: ServicePayColors.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        border: Border.all(color: const Color(0xFF49668D)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 20, color: _green),
+          Icon(icon, size: 20, color: ServicePayColors.accent),
           const SizedBox(height: 10),
-          Text(label, style: const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+          Text(label, style: const TextStyle(fontSize: 11, color: ServicePayColors.muted)),
           const SizedBox(height: 4),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFF0F172A))),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w900, color: Color(0xFFA0B4E3))),
         ],
       ),
     );
@@ -525,7 +525,7 @@ class _PartnerApplicationScreenState extends State<PartnerApplicationScreen> {
           if (activationPending) ...[
             const Text(
               'Your application is approved. Activate your credentials to receive your one-time API Secret.',
-              style: TextStyle(height: 1.45, color: Color(0xFF475569)),
+              style: TextStyle(height: 1.45, color: Color(0xFFA0BCE3)),
             ),
             const SizedBox(height: 12),
             FilledButton.icon(
@@ -537,18 +537,18 @@ class _PartnerApplicationScreenState extends State<PartnerApplicationScreen> {
             const SizedBox(height: 8),
             const Text(
               'ServicePay will not display the API Secret again after this one-time secure delivery.',
-              style: TextStyle(fontSize: 12, height: 1.4, color: Color(0xFF64748B)),
+              style: TextStyle(fontSize: 12, height: 1.4, color: ServicePayColors.muted),
             ),
           ] else ...[
-          const Text('API Key', style: TextStyle(fontSize: 12, color: Color(0xFF64748B), fontWeight: FontWeight.w700)),
+          const Text('API Key', style: TextStyle(fontSize: 12, color: ServicePayColors.muted, fontWeight: FontWeight.w700)),
           const SizedBox(height: 6),
           Container(
             width: double.infinity,
             padding: const EdgeInsets.fromLTRB(12, 9, 8, 9),
             decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
+              color: ServicePayColors.surface,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFFE2E8F0)),
+              border: Border.all(color: const Color(0xFF49668D)),
             ),
             child: Row(
               children: [
@@ -574,7 +574,7 @@ class _PartnerApplicationScreenState extends State<PartnerApplicationScreen> {
           const SizedBox(height: 12),
           const Text(
             'Your API Secret is never stored in this portal. Regeneration immediately invalidates both current credentials.',
-            style: TextStyle(fontSize: 12, height: 1.4, color: Color(0xFF64748B)),
+            style: TextStyle(fontSize: 12, height: 1.4, color: ServicePayColors.muted),
           ),
           const SizedBox(height: 14),
           Wrap(
@@ -587,7 +587,7 @@ class _PartnerApplicationScreenState extends State<PartnerApplicationScreen> {
                 label: const Text('Regenerate'),
               ),
               TextButton.icon(
-                style: TextButton.styleFrom(foregroundColor: const Color(0xFFB42318)),
+                style: TextButton.styleFrom(foregroundColor: const Color(0xFFF19A93)),
                 onPressed: actionLoading || partnerStatus != 'ACTIVE' ? null : _revokeAccess,
                 icon: const Icon(Icons.block_rounded),
                 label: const Text('Revoke access'),
@@ -617,13 +617,13 @@ class _PartnerApplicationScreenState extends State<PartnerApplicationScreen> {
                 : partnerStatus == 'SUSPENDED'
                     ? 'Your API access is temporarily suspended. Contact ServicePay Head Office for a review.'
                     : 'Your API credentials no longer have access. Transaction history remains available for reconciliation.',
-            style: const TextStyle(height: 1.45, color: Color(0xFF475569)),
+            style: const TextStyle(height: 1.45, color: Color(0xFFA0BCE3)),
           ),
         ),
         const SizedBox(height: 14),
         _credentialsCard(),
         const SizedBox(height: 14),
-        const Text('Wallet & limits', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFF0F172A))),
+        const Text('Wallet & limits', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Color(0xFFA0B4E3))),
         const SizedBox(height: 10),
         Wrap(
           spacing: 10,
@@ -644,13 +644,13 @@ class _PartnerApplicationScreenState extends State<PartnerApplicationScreen> {
           title: 'Approved live services',
           icon: Icons.rocket_launch_rounded,
           child: permissions.isEmpty
-              ? const Text('No live services are assigned yet. ServicePay Head Office must assign a supported service before you can make API requests.', style: TextStyle(height: 1.45, color: Color(0xFF64748B)))
+              ? const Text('No live services are assigned yet. ServicePay Head Office must assign a supported service before you can make API requests.', style: TextStyle(height: 1.45, color: ServicePayColors.muted))
               : Wrap(
                   spacing: 8,
                   runSpacing: 8,
                   children: permissions
                       .map((permission) => Chip(
-                            avatar: const Icon(Icons.check_circle_rounded, color: _green, size: 18),
+                            avatar: const Icon(Icons.check_circle_rounded, color: ServicePayColors.accent, size: 18),
                             label: Text(permission.toString()),
                           ))
                       .toList(),
@@ -682,7 +682,7 @@ class _PartnerApplicationScreenState extends State<PartnerApplicationScreen> {
           SizedBox(height: 5),
           Text('GET  /api/partner/profile\\nGET  /api/partner/balance\\nGET  /api/partner/transactions\\nGET  /api/partner/data-plans/:network  (DATA)\\nPOST /api/partner/airtime  (AIRTIME)\\nPOST /api/partner/data  (DATA)', style: TextStyle(fontFamily: 'monospace', fontSize: 12, height: 1.55)),
           SizedBox(height: 13),
-          Text('Airtime body: network, phone, amount. Data body: network, phone, planCode. Every purchase requires an Idempotency-Key and is restricted by your wallet, permissions, daily and per-transaction limits.', style: TextStyle(fontSize: 12, height: 1.45, color: Color(0xFF64748B))),
+          Text('Airtime body: network, phone, amount. Data body: network, phone, planCode. Every purchase requires an Idempotency-Key and is restricted by your wallet, permissions, daily and per-transaction limits.', style: TextStyle(fontSize: 12, height: 1.45, color: ServicePayColors.muted)),
           SizedBox(height: 12),
           Text('Airtime request example', style: TextStyle(fontWeight: FontWeight.w900)),
           SizedBox(height: 5),
@@ -701,7 +701,7 @@ class _PartnerApplicationScreenState extends State<PartnerApplicationScreen> {
       title: 'Recent API activity',
       icon: Icons.history_rounded,
       child: activity.isEmpty
-          ? const Text('No Partner API requests yet. Successful and reversed requests will appear here.', style: TextStyle(color: Color(0xFF64748B)))
+          ? const Text('No Partner API requests yet. Successful and reversed requests will appear here.', style: TextStyle(color: ServicePayColors.muted))
           : Column(
               children: activity.take(8).map((item) {
                 final map = item is Map ? Map<String, dynamic>.from(item) : <String, dynamic>{};
@@ -722,7 +722,7 @@ class _PartnerApplicationScreenState extends State<PartnerApplicationScreen> {
                           children: [
                             Text('${map['service'] ?? 'API request'} · ${_money(map['amount'])}', style: const TextStyle(fontWeight: FontWeight.w800)),
                             const SizedBox(height: 2),
-                            Text((map['reference'] ?? '').toString(), style: const TextStyle(fontFamily: 'monospace', fontSize: 10, color: Color(0xFF64748B))),
+                            Text((map['reference'] ?? '').toString(), style: const TextStyle(fontFamily: 'monospace', fontSize: 10, color: ServicePayColors.muted)),
                           ],
                         ),
                       ),
@@ -745,8 +745,8 @@ class _PartnerApplicationScreenState extends State<PartnerApplicationScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(17),
       decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border.all(color: const Color(0xFFE2E8F0)),
+        color: ServicePayColors.surface,
+        border: Border.all(color: const Color(0xFF49668D)),
         borderRadius: BorderRadius.circular(18),
       ),
       child: Column(
@@ -754,9 +754,9 @@ class _PartnerApplicationScreenState extends State<PartnerApplicationScreen> {
         children: [
           Row(
             children: [
-              Icon(icon, color: _green),
+              Icon(icon, color: ServicePayColors.accent),
               const SizedBox(width: 8),
-              Expanded(child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF0F172A)))),
+              Expanded(child: Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFFA0B4E3)))),
               if (trailing != null) trailing,
             ],
           ),
@@ -786,7 +786,7 @@ class _PartnerApplicationScreenState extends State<PartnerApplicationScreen> {
             applicationStatus == 'PENDING'
                 ? 'ServicePay Head Office is reviewing your application. API credentials cannot be used until approval.'
                 : 'This application was not approved. Contact ServicePay support if you need clarification before applying again.',
-            style: const TextStyle(height: 1.45, color: Color(0xFF475569)),
+            style: const TextStyle(height: 1.45, color: Color(0xFFA0BCE3)),
           ),
         ],
       ),
@@ -800,7 +800,7 @@ class _PartnerApplicationScreenState extends State<PartnerApplicationScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Submit your business details for Head Office review before credentials and service permissions are issued.', style: TextStyle(height: 1.45, color: Color(0xFF64748B))),
+          const Text('Submit your business details for Head Office review before credentials and service permissions are issued.', style: TextStyle(height: 1.45, color: ServicePayColors.muted)),
           const SizedBox(height: 16),
           _field(businessNameController, 'Business / Company name', Icons.business_rounded),
           _field(contactNameController, 'Contact person', Icons.person_rounded),
@@ -837,8 +837,8 @@ class _PartnerApplicationScreenState extends State<PartnerApplicationScreen> {
           labelText: label,
           prefixIcon: Icon(icon),
           filled: true,
-          fillColor: const Color(0xFFF8FAFC),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+          fillColor: ServicePayColors.surface,
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: const BorderSide(color: Color(0xFF49668D))),
         ),
       ),
     );
@@ -847,7 +847,7 @@ class _PartnerApplicationScreenState extends State<PartnerApplicationScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         title: const Text('Partner API'),
         backgroundColor: _green,
@@ -868,8 +868,8 @@ class _PartnerApplicationScreenState extends State<PartnerApplicationScreen> {
                   if (error.isNotEmpty) ...[
                     Container(
                       padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(color: const Color(0xFFFFF3F2), borderRadius: BorderRadius.circular(14)),
-                      child: Text(error, style: const TextStyle(color: Color(0xFFB42318))),
+                      decoration: BoxDecoration(color: const Color(0xFF4B1A16), borderRadius: BorderRadius.circular(14)),
+                      child: Text(error, style: const TextStyle(color: Color(0xFFF19A93))),
                     ),
                     const SizedBox(height: 14),
                   ],

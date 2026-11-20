@@ -7,15 +7,15 @@ class PrivacyPolicyScreen extends StatelessWidget {
 
   static const Color primaryGreen = ServicePayColors.brand;
   static const Color darkGreen = ServicePayColors.brandDeep;
-  static const Color pageBackground = Color(0xFFF8FAF9);
+  static const Color pageBackground = ServicePayColors.surface;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: pageBackground,
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        foregroundColor: darkGreen,
+        backgroundColor: ServicePayColors.canvas,
+        foregroundColor: ServicePayColors.accent,
         elevation: 0,
         titleSpacing: 24,
         title: Row(
@@ -52,7 +52,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
               constraints: const BoxConstraints(maxWidth: 900),
               child: Card(
                 elevation: 0,
-                color: Colors.white,
+                color: ServicePayColors.surface,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(24),
                 ),
@@ -78,7 +78,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
         const Text(
           'Privacy Policy',
           style: TextStyle(
-            color: darkGreen,
+            color: ServicePayColors.accent,
             fontSize: 38,
             fontWeight: FontWeight.w900,
             height: 1.15,
@@ -87,7 +87,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
         const SizedBox(height: 12),
         const Text(
           'Last updated: 2 September 2026',
-          style: TextStyle(color: Colors.black54, fontWeight: FontWeight.w600),
+          style: TextStyle(color: ServicePayColors.muted, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 24),
         const Text(
@@ -270,7 +270,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
           Text(
             title,
             style: const TextStyle(
-              color: darkGreen,
+              color: ServicePayColors.accent,
               fontSize: 21,
               fontWeight: FontWeight.w800,
               height: 1.3,
@@ -291,7 +291,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
                       child: Icon(
                         Icons.circle,
                         size: 6,
-                        color: primaryGreen,
+                        color: ServicePayColors.accent,
                       ),
                     ),
                     Expanded(child: Text(bullet, style: _bodyStyle)),
@@ -310,7 +310,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
   }
 
   static const TextStyle _bodyStyle = TextStyle(
-    color: Color(0xFF26352D),
+    color: ServicePayColors.ink,
     fontSize: 16,
     height: 1.65,
   );

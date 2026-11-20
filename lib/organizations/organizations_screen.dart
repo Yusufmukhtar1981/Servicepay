@@ -151,8 +151,8 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
                       FilledButton.icon(
                         onPressed: _create,
                         style: FilledButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: const Color(0xFF0B6B3A),
+                          backgroundColor: ServicePayColors.surface,
+                          foregroundColor: ServicePayColors.accent,
                           minimumSize: const Size(0, 48),
                         ),
                         icon: const Icon(Icons.add_rounded),
@@ -218,7 +218,7 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
                           )
                         : null,
                     filled: true,
-                    fillColor: Colors.white,
+                    fillColor: ServicePayColors.surface,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(16),
                       borderSide: BorderSide.none,
@@ -250,16 +250,16 @@ class _EmptyOrganization extends StatelessWidget {
     margin: const EdgeInsets.only(top: 4),
     padding: const EdgeInsets.all(20),
     decoration: BoxDecoration(
-      color: Colors.white,
+      color: ServicePayColors.surface,
       borderRadius: BorderRadius.circular(20),
-      border: Border.all(color: const Color(0xFFD8E9DE)),
+      border: Border.all(color: ServicePayColors.border),
     ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Icon(
           Icons.groups_2_outlined,
-          color: ServicePayColors.brand,
+          color: ServicePayColors.accent,
           size: 32,
         ),
         const SizedBox(height: 12),
@@ -270,7 +270,7 @@ class _EmptyOrganization extends StatelessWidget {
         const SizedBox(height: 6),
         const Text(
           'Create a trusted home for your association, cooperative, NGO, company, foundation, or club, or explore organizations you already belong to.',
-          style: TextStyle(color: Colors.black54, height: 1.4),
+          style: TextStyle(color: ServicePayColors.muted, height: 1.4),
         ),
       ],
     ),
@@ -344,13 +344,13 @@ class _Action extends StatelessWidget {
       width: (MediaQuery.sizeOf(context).width - 42) / 2,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: ServicePayColors.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE0EBE4)),
+        border: Border.all(color: ServicePayColors.border),
       ),
       child: Row(
         children: [
-          Icon(icon, color: ServicePayColors.brand, size: 21),
+          Icon(icon, color: ServicePayColors.accent, size: 21),
           const SizedBox(width: 9),
           Expanded(
             child: Text(
@@ -520,7 +520,7 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
     builder: (_) => AlertDialog(
       icon: const Icon(
         Icons.check_circle_rounded,
-        color: Color(0xFF08783E),
+        color: ServicePayColors.accent,
         size: 42,
       ),
       title: const Text('Organization submitted'),
@@ -559,7 +559,7 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
       decoration: InputDecoration(
         labelText: label,
         filled: true,
-        fillColor: Colors.white,
+        fillColor: ServicePayColors.surface,
       ),
       validator: (v) {
         if (required && (v == null || v.trim().isEmpty)) return 'Required';
@@ -702,7 +702,7 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
             ),
             child: const Text(
               'Secure documents are not requested in this onboarding flow. ServicePay will verify your organization through its secure review process.',
-              style: TextStyle(color: Color(0xFF145C38), height: 1.4),
+              style: TextStyle(color: ServicePayColors.accent, height: 1.4),
             ),
           ),
         ],
@@ -713,10 +713,10 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: const Color(0xFFF5F8F6),
+    backgroundColor: ServicePayColors.canvas,
     appBar: AppBar(
       title: const Text('Create organization'),
-      backgroundColor: Colors.white,
+      backgroundColor: ServicePayColors.canvas,
     ),
     body: Form(
       key: form,
@@ -726,14 +726,14 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
           Text(
             'Step ${step + 1} of 5',
             style: const TextStyle(
-              color: ServicePayColors.brand,
+              color: ServicePayColors.accent,
               fontWeight: FontWeight.w800,
             ),
           ),
           const SizedBox(height: 8),
           LinearProgressIndicator(
             value: (step + 1) / 5,
-            color: ServicePayColors.brand,
+            color: ServicePayColors.accent,
           ),
           const SizedBox(height: 26),
           Text(
@@ -755,7 +755,7 @@ class _CreateOrganizationScreenState extends State<CreateOrganizationScreen> {
               'Registration is optional; documents are not requested.',
               'Check everything before sending for verification.',
             ][step],
-            style: const TextStyle(color: Colors.black54),
+            style: const TextStyle(color: ServicePayColors.muted),
           ),
           const SizedBox(height: 22),
           _stepBody(),
@@ -830,7 +830,7 @@ class _Review extends StatelessWidget {
           const SizedBox(height: 12),
           const Text(
             'No documents are requested. Your organization will be reviewed securely by ServicePay.',
-            style: TextStyle(color: Colors.black54, height: 1.4),
+            style: TextStyle(color: ServicePayColors.muted, height: 1.4),
           ),
         ],
       ),
@@ -843,7 +843,7 @@ class _Review extends StatelessWidget {
       children: [
         SizedBox(
           width: 110,
-          child: Text(label, style: const TextStyle(color: Colors.black54)),
+          child: Text(label, style: const TextStyle(color: ServicePayColors.muted)),
         ),
         Expanded(
           child: Text(
@@ -1055,7 +1055,7 @@ class _OrganizationProfileScreenState extends State<OrganizationProfileScreen> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.amber.shade50,
+                  color: Color(0xFF4B3F16),
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: const Row(
@@ -1073,7 +1073,7 @@ class _OrganizationProfileScreenState extends State<OrganizationProfileScreen> {
               ),
               if (org.registrationDue != null)
                 Card(
-                  color: Colors.orange.shade50,
+                  color: Color(0xFF4B3616),
                   child: ListTile(
                     leading: const Icon(Icons.payments_outlined),
                     title: const Text('Registration fee due'),
@@ -1290,7 +1290,7 @@ class _OrganizationMemberScreenState extends State<OrganizationMemberScreen> {
                     const SizedBox(height: 24),
                     Container(
                       padding: const EdgeInsets.all(10),
-                      color: Colors.white,
+                      color: ServicePayColors.surface,
                       child: Text(
                         '${serverCard['verificationUrl'] ?? serverCard['cardNumber'] ?? serverCard['membershipNumber'] ?? 'Card details issued by ServicePay'}',
                         style: const TextStyle(
@@ -1310,13 +1310,13 @@ class _OrganizationMemberScreenState extends State<OrganizationMemberScreen> {
               ),
             const Text(
               'Public verification details (not a QR code).',
-              style: TextStyle(color: Colors.black54),
+              style: TextStyle(color: ServicePayColors.muted),
             ),
             if (serverCard['expiryDate'] != null)
               Text('Expiry: ${serverCard['expiryDate']}'),
             const Text(
               'Show this card when your organization requests membership verification. Private contact and wallet data are never displayed.',
-              style: TextStyle(color: Colors.black54, height: 1.4),
+              style: TextStyle(color: ServicePayColors.muted, height: 1.4),
             ),
           ],
         );
@@ -1480,7 +1480,7 @@ class _JoinDialogState extends State<_JoinDialog> {
             children: [
               Text(
                 'Your application will be reviewed by the organization.',
-                style: TextStyle(color: Colors.grey.shade700),
+                style: TextStyle(color: ServicePayColors.muted),
               ),
               _applicationField('fullName', 'Full name', required: true),
               _applicationField('phone', 'Phone number', required: true),
@@ -1497,7 +1497,7 @@ class _JoinDialogState extends State<_JoinDialog> {
                   padding: EdgeInsets.only(top: 12),
                   child: Text(
                     'Document fields require a secure verified upload flow and are not available in this application.',
-                    style: TextStyle(color: Colors.black54),
+                    style: TextStyle(color: ServicePayColors.muted),
                   ),
                 ),
             ],
@@ -1572,7 +1572,7 @@ class _JoinDialogState extends State<_JoinDialog> {
                   .toList(),
             ),
             if (state.hasError)
-              Text(state.errorText!, style: const TextStyle(color: Colors.red)),
+              Text(state.errorText!, style: const TextStyle(color: Color(0xFFF9928B))),
           ],
         ),
       );
@@ -1690,7 +1690,7 @@ class _OrganizationTile extends StatelessWidget {
         child: Text(
           org.name.isEmpty ? '?' : org.name[0].toUpperCase(),
           style: const TextStyle(
-            color: ServicePayColors.brand,
+            color: ServicePayColors.accent,
             fontWeight: FontWeight.bold,
           ),
         ),
@@ -1707,7 +1707,7 @@ class _OrganizationTile extends StatelessWidget {
             const Icon(
               Icons.verified_rounded,
               size: 18,
-              color: Color(0xFF08783E),
+              color: ServicePayColors.accent,
             ),
         ],
       ),
@@ -1732,14 +1732,14 @@ class _InfoRow extends StatelessWidget {
   @override
   Widget build(BuildContext c) => Row(
     children: [
-      Icon(icon, color: ServicePayColors.brand),
+      Icon(icon, color: ServicePayColors.accent),
       const SizedBox(width: 12),
       Expanded(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
-            Text(detail, style: const TextStyle(color: Colors.black54)),
+            Text(detail, style: const TextStyle(color: ServicePayColors.muted)),
           ],
         ),
       ),
@@ -1753,7 +1753,7 @@ class _Empty extends StatelessWidget {
   @override
   Widget build(BuildContext c) => Padding(
     padding: const EdgeInsets.symmetric(vertical: 22),
-    child: Text(label, style: const TextStyle(color: Colors.black54)),
+    child: Text(label, style: const TextStyle(color: ServicePayColors.muted)),
   );
 }
 
@@ -1786,7 +1786,7 @@ class _Skeleton extends StatelessWidget {
     height: 78,
     margin: const EdgeInsets.only(bottom: 12),
     decoration: BoxDecoration(
-      color: Colors.white,
+      color: ServicePayColors.surface,
       borderRadius: BorderRadius.circular(16),
     ),
   );

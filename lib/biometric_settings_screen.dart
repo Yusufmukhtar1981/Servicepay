@@ -188,7 +188,7 @@ class _BiometricSettingsScreenState extends State<BiometricSettingsScreen> {
                       ),
                     ] else if (error != null)
                       Text(error!,
-                          style: TextStyle(color: Colors.red.shade700)),
+                          style: TextStyle(color: Color(0xFFEA9A9A))),
                     if (webUnavailable)
                       const Card(
                         child: Padding(

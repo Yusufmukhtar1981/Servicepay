@@ -486,7 +486,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                         Icons.sim_card_outlined,
                       ),
                       filled: true,
-                      fillColor: Colors.white,
+                      fillColor: ServicePayColors.surface,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -514,7 +514,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                   if (_catalogLoading) const LinearProgressIndicator(),
                   if (_catalogError != null) ...[
                     Text(_catalogError!,
-                        style: const TextStyle(color: Colors.red)),
+                        style: const TextStyle(color: Color(0xFFF9928B))),
                     TextButton(
                         onPressed: _catalogAuthenticationRequired
                             ? () => signInForPurchaseRecovery(context)
@@ -545,7 +545,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                         Icons.phone_outlined,
                       ),
                       filled: true,
-                      fillColor: Colors.white,
+                      fillColor: ServicePayColors.surface,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -580,7 +580,7 @@ class _AirtimeScreenState extends State<AirtimeScreen> {
                         Icons.payments_outlined,
                       ),
                       filled: true,
-                      fillColor: Colors.white,
+                      fillColor: ServicePayColors.surface,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),

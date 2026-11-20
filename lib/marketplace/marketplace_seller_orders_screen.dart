@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import '../servicepay_theme.dart';
 
 class MarketplaceSellerOrdersScreen extends StatefulWidget {
   const MarketplaceSellerOrdersScreen({super.key});
@@ -429,14 +430,14 @@ class _MarketplaceSellerOrdersScreenState
                 children: [
                   Icon(
                     Icons.local_shipping_outlined,
-                    color: Colors.blue,
+                    color: Color(0xFF8BC8F9),
                   ),
                   SizedBox(width: 7),
                   Expanded(
                     child: Text(
                       'Shipped — delivery confirmation is managed outside the seller dashboard.',
                       style: TextStyle(
-                        color: Colors.blue,
+                        color: Color(0xFF8BC8F9),
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -473,7 +474,7 @@ class _MarketplaceSellerOrdersScreenState
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F8F7),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         title: const Text(
           'My Store Orders',

@@ -204,11 +204,11 @@ class _MarketplaceMyOrdersScreenState extends State<MarketplaceMyOrdersScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F9F8),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         title: const Text('My Marketplace Orders'),
-        backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF15201B),
+        backgroundColor: ServicePayColors.canvas,
+        foregroundColor: ServicePayColors.accent,
         elevation: 0,
       ),
       body: RefreshIndicator(
@@ -244,7 +244,7 @@ class _MarketplaceMyOrdersScreenState extends State<MarketplaceMyOrdersScreen> {
                           Center(
                             child: Text(
                               'Your Marketplace orders will appear here.',
-                              style: TextStyle(color: Color(0xFF637069)),
+                              style: TextStyle(color: ServicePayColors.muted),
                             ),
                           ),
                         ],
@@ -277,10 +277,10 @@ class _MarketplaceMyOrdersScreenState extends State<MarketplaceMyOrdersScreen> {
                           return Container(
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
-                              color: Colors.white,
+                              color: ServicePayColors.surface,
                               borderRadius: BorderRadius.circular(18),
                               border: Border.all(
-                                color: const Color(0xFFE3EAE6),
+                                color: ServicePayColors.border,
                               ),
                             ),
                             child: Column(
@@ -323,7 +323,7 @@ class _MarketplaceMyOrdersScreenState extends State<MarketplaceMyOrdersScreen> {
                                 Text(
                                   '$itemCount item${itemCount == 1 ? '' : 's'} · ${_money(order['totalAmount'])}',
                                   style: const TextStyle(
-                                    color: Color(0xFF56635C),
+                                    color: ServicePayColors.muted,
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
@@ -335,7 +335,7 @@ class _MarketplaceMyOrdersScreenState extends State<MarketplaceMyOrdersScreen> {
                                            ? 'Wallet payment refunded.'
                                            : 'Payment held safely until delivery is confirmed.',
                                    style: const TextStyle(
-                                     color: Color(0xFF718078),
+                                     color: ServicePayColors.muted,
                                      fontSize: 12,
                                    ),
                                  ),
@@ -347,7 +347,7 @@ class _MarketplaceMyOrdersScreenState extends State<MarketplaceMyOrdersScreen> {
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: const TextStyle(
-                                        color: Color(0xFF718078),
+                                        color: ServicePayColors.muted,
                                         fontSize: 12,
                                       ),
                                     ),

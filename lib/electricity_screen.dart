@@ -537,17 +537,17 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
                       width: double.infinity,
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF0FDF4),
+                        color: ServicePayColors.brandSoft,
                         borderRadius: BorderRadius.circular(15),
                         border: Border.all(
-                          color: const Color(0xFFBBF7D0),
+                          color: ServicePayColors.border,
                         ),
                       ),
                       child: Column(
                         children: [
                           const Icon(
                             Icons.electric_bolt_rounded,
-                            color: primaryGreen,
+                            color: ServicePayColors.accent,
                             size: 42,
                           ),
                           const SizedBox(height: 8),
@@ -569,14 +569,14 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
                             '${selectedMeterType['name']}',
                             textAlign: TextAlign.center,
                             style: const TextStyle(
-                              color: Color(0xFF6B7280),
+                              color: ServicePayColors.muted,
                             ),
                           ),
                           const SizedBox(height: 4),
                           Text(
                             meterController.text.trim(),
                             style: const TextStyle(
-                              color: Color(0xFF6B7280),
+                              color: ServicePayColors.muted,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
@@ -589,14 +589,14 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
                           const Text(
                             'Amount',
                             style: TextStyle(
-                              color: Color(0xFF6B7280),
+                              color: ServicePayColors.muted,
                             ),
                           ),
                           const SizedBox(height: 3),
                           Text(
                             '₦${amount.toStringAsFixed(2)}',
                             style: const TextStyle(
-                              color: primaryGreen,
+                              color: ServicePayColors.accent,
                               fontSize: 27,
                               fontWeight: FontWeight.w900,
                             ),
@@ -632,7 +632,7 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
                         counterText: '',
                         prefixIcon: const Icon(
                           Icons.pin_outlined,
-                          color: primaryGreen,
+                          color: ServicePayColors.accent,
                         ),
                         suffixIcon: IconButton(
                           onPressed: () {
@@ -648,7 +648,7 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
                         ),
                         errorText: errorMessage.isEmpty ? null : errorMessage,
                         filled: true,
-                        fillColor: const Color(0xFFF8FAFC),
+                        fillColor: ServicePayColors.surface,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(14),
                         ),
@@ -661,14 +661,14 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
                         Icon(
                           Icons.lock_outline_rounded,
                           size: 18,
-                          color: Color(0xFF6B7280),
+                          color: ServicePayColors.muted,
                         ),
                         SizedBox(width: 7),
                         Expanded(
                           child: Text(
                             'Confirm the customer name and meter number before entering your PIN.',
                             style: TextStyle(
-                              color: Color(0xFF6B7280),
+                              color: ServicePayColors.muted,
                               fontSize: 12,
                               height: 1.4,
                             ),
@@ -1138,17 +1138,17 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFFFFBEB),
+                      color: const Color(0xFF4B4016),
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: const Color(0xFFFDE68A),
+                        color: const Color(0xFFAB922B),
                       ),
                     ),
                     child: const Text(
                       'Do not make another payment for this meter until you check the Transactions page.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
-                        color: Color(0xFF92400E),
+                        color: Color(0xFFF4B68F),
                         height: 1.4,
                       ),
                     ),
@@ -1188,16 +1188,16 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
       hintText: hint,
       prefixIcon: Icon(
         icon,
-        color: primaryGreen,
+        color: ServicePayColors.accent,
       ),
       suffixIcon: suffixIcon,
       prefixText: prefixText,
       filled: true,
-      fillColor: Colors.white,
+      fillColor: ServicePayColors.surface,
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(14),
         borderSide: const BorderSide(
-          color: Color(0xFFE5E7EB),
+          color: ServicePayColors.border,
         ),
       ),
       focusedBorder: OutlineInputBorder(
@@ -1425,13 +1425,13 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
                               height: 19,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                color: primaryGreen,
+                                color: ServicePayColors.accent,
                               ),
                             )
                           : const Text(
                               'Verify',
                               style: TextStyle(
-                                color: primaryGreen,
+                                color: ServicePayColors.accent,
                                 fontWeight: FontWeight.w800,
                               ),
                             ),
@@ -1443,19 +1443,19 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
                   Container(
                     padding: const EdgeInsets.all(15),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFF0FDF4),
+                      color: ServicePayColors.brandSoft,
                       borderRadius: BorderRadius.circular(15),
                       border: Border.all(
-                        color: const Color(0xFFBBF7D0),
+                        color: ServicePayColors.border,
                       ),
                     ),
                     child: Row(
                       children: [
                         const CircleAvatar(
-                          backgroundColor: Color(0xFFDCFCE7),
+                          backgroundColor: ServicePayColors.brandSoft,
                           child: Icon(
                             Icons.person_rounded,
-                            color: primaryGreen,
+                            color: ServicePayColors.accent,
                           ),
                         ),
                         const SizedBox(width: 12),
@@ -1466,7 +1466,7 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
                               const Text(
                                 'Meter Customer',
                                 style: TextStyle(
-                                  color: Color(0xFF6B7280),
+                                  color: ServicePayColors.muted,
                                   fontSize: 12,
                                 ),
                               ),
@@ -1483,7 +1483,7 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
                                 '${selectedDisco['shortName']} • '
                                 '${selectedMeterType['name']}',
                                 style: const TextStyle(
-                                  color: Color(0xFF6B7280),
+                                  color: ServicePayColors.muted,
                                 ),
                               ),
                             ],
@@ -1491,7 +1491,7 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
                         ),
                         const Icon(
                           Icons.verified_rounded,
-                          color: primaryGreen,
+                          color: ServicePayColors.accent,
                         ),
                       ],
                     ),
@@ -1560,10 +1560,10 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
                 Container(
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFFFBEB),
+                    color: const Color(0xFF4B4016),
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
-                      color: const Color(0xFFFDE68A),
+                      color: const Color(0xFFAB922B),
                     ),
                   ),
                   child: const Row(
@@ -1571,14 +1571,14 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
                     children: [
                       Icon(
                         Icons.info_outline_rounded,
-                        color: Color(0xFFD97706),
+                        color: Color(0xFFF9C68B),
                       ),
                       SizedBox(width: 9),
                       Expanded(
                         child: Text(
                           'ServicePay entry minimum is ₦1,000; this is not proof of the provider minimum. Verify the meter account before continuing.',
                           style: TextStyle(
-                            color: Color(0xFF92400E),
+                            color: Color(0xFFF4B68F),
                             height: 1.4,
                           ),
                         ),
@@ -1627,7 +1627,7 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
                   children: [
                     Icon(
                       Icons.lock_outline_rounded,
-                      color: Color(0xFF6B7280),
+                      color: ServicePayColors.muted,
                       size: 19,
                     ),
                     SizedBox(width: 8),
@@ -1635,7 +1635,7 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
                       child: Text(
                         'Electricity payments are protected with meter verification and your transaction PIN.',
                         style: TextStyle(
-                          color: Color(0xFF6B7280),
+                          color: ServicePayColors.muted,
                           height: 1.4,
                         ),
                       ),
@@ -1677,7 +1677,7 @@ class _ReceiptRow extends StatelessWidget {
         border: showDivider
             ? const Border(
                 bottom: BorderSide(
-                  color: Color(0xFFE5E7EB),
+                  color: ServicePayColors.border,
                 ),
               )
             : null,
@@ -1690,7 +1690,7 @@ class _ReceiptRow extends StatelessWidget {
             child: Text(
               label,
               style: const TextStyle(
-                color: Color(0xFF6B7280),
+                color: ServicePayColors.muted,
                 fontWeight: FontWeight.w600,
               ),
             ),

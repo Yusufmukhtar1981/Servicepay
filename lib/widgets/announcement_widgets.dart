@@ -31,7 +31,7 @@ class AnnouncementBanner extends StatelessWidget {
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: ServicePayColors.surface,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: accent.withValues(alpha: .25)),
         boxShadow: const [
@@ -52,7 +52,7 @@ class AnnouncementBanner extends StatelessWidget {
                 children: [
                   Text(announcement.title,
                       style: const TextStyle(
-                          color: Color(0xFF17382B),
+                          color: ServicePayColors.accent,
                           fontSize: 14,
                           fontWeight: FontWeight.w900)),
                   const SizedBox(height: 4),
@@ -67,7 +67,7 @@ class AnnouncementBanner extends StatelessWidget {
                       onPressed: onAction,
                       style: TextButton.styleFrom(
                           padding: EdgeInsets.zero,
-                          foregroundColor: ServicePayColors.brandDeep),
+                          foregroundColor: ServicePayColors.accent),
                       child: Text(announcement.ctaText!,
                           style: const TextStyle(fontWeight: FontWeight.w900)),
                     ),
@@ -77,7 +77,7 @@ class AnnouncementBanner extends StatelessWidget {
                       onPressed: onAcknowledge,
                       style: TextButton.styleFrom(
                           padding: EdgeInsets.zero,
-                          foregroundColor: ServicePayColors.brandDeep),
+                          foregroundColor: ServicePayColors.accent),
                       child: const Text('Acknowledge',
                           style: TextStyle(fontWeight: FontWeight.w900)),
                     ),
@@ -644,7 +644,7 @@ class _ReferralPromotionCard extends StatelessWidget {
           container: true,
           label: 'Refer and Earn. ${policy.message}',
           child: Material(
-            color: const Color(0xFF082D21),
+            color: ServicePayColors.card,
             clipBehavior: Clip.antiAlias,
             borderRadius: BorderRadius.circular(20),
             child: Stack(
@@ -678,7 +678,7 @@ class _ReferralPromotionCard extends StatelessWidget {
                               Text(
                                 policy.message,
                                 style: const TextStyle(
-                                  color: Color(0xFFD4EBDD),
+                                  color: ServicePayColors.muted,
                                   fontSize: 13,
                                   height: 1.3,
                                   fontWeight: FontWeight.w600,
@@ -691,8 +691,8 @@ class _ReferralPromotionCard extends StatelessWidget {
                                   key: const Key('referral-promotion-cta'),
                                   onPressed: onTap,
                                   style: FilledButton.styleFrom(
-                                    backgroundColor: const Color(0xFF39E875),
-                                    foregroundColor: const Color(0xFF052619),
+                                    backgroundColor: ServicePayColors.brandSoft,
+                                    foregroundColor: ServicePayColors.accent,
                                     minimumSize: const Size(0, 44),
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 14,
@@ -714,7 +714,7 @@ class _ReferralPromotionCard extends StatelessWidget {
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
-                                  color: Color(0xFFA7C5B1),
+                                  color: ServicePayColors.muted,
                                   fontSize: 9,
                                   height: 1.2,
                                 ),
@@ -758,7 +758,7 @@ class _ReferralArtworkPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final Paint ring = Paint()
-      ..color = const Color(0xFF56EB84).withValues(alpha: .14)
+      ..color = const Color(0xFF00DB91).withValues(alpha: .14)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.2;
     canvas.drawCircle(
@@ -774,7 +774,7 @@ class _ReferralArtworkPainter extends CustomPainter {
       ..lineTo(size.width * .23, size.height * .55)
       ..close();
     canvas.drawPath(mouth, cone);
-    final Paint bell = Paint()..color = const Color(0xFF37E875);
+    final Paint bell = Paint()..color = const Color(0xFF00DB91);
     canvas.drawPath(
       Path()
         ..moveTo(size.width * .61, size.height * .29)
@@ -792,13 +792,13 @@ class _ReferralArtworkPainter extends CustomPainter {
             size.width * .18, size.height * .13),
         const Radius.circular(5),
       ),
-      Paint()..color = const Color(0xFF16894B),
+      Paint()..color = const Color(0xFF06604F),
     );
     canvas.drawLine(
       Offset(size.width * .37, size.height * .59),
       Offset(size.width * .47, size.height * .78),
       Paint()
-        ..color = const Color(0xFF36E875)
+        ..color = const Color(0xFF00DB91)
         ..strokeWidth = 5
         ..strokeCap = StrokeCap.round,
     );
@@ -816,7 +816,7 @@ class _ReferralArtworkPainter extends CustomPainter {
         text: TextSpan(
           text: reward,
           style: const TextStyle(
-            color: Color(0xFF3A2A08),
+            color: Color(0xFFF0D293),
             fontSize: 11,
             fontWeight: FontWeight.w900,
           ),
@@ -1067,7 +1067,7 @@ class _ImagePromotionCard extends StatelessWidget {
         final bool wide = constraints.maxWidth >= 560;
         final Widget image = ColoredBox(
           key: const Key('announcement-promotion-image-area'),
-          color: Colors.white,
+          color: ServicePayColors.surface,
           child: SizedBox.expand(
             child: Image.network(
               announcement.imageUrl!,
@@ -1076,7 +1076,7 @@ class _ImagePromotionCard extends StatelessWidget {
               alignment: Alignment.center,
               errorBuilder: (_, __, ___) => const Icon(
                 Icons.campaign_outlined,
-                color: ServicePayColors.brandDeep,
+                color: ServicePayColors.accent,
                 size: 38,
               ),
             ),
@@ -1099,7 +1099,7 @@ class _ImagePromotionCard extends StatelessWidget {
                             ? 'SERVICEPAY PROMOTION'
                             : 'SERVICEPAY UPDATE',
                         style: const TextStyle(
-                          color: CustomerDashboardPalette.royalBlue,
+                          color: CustomerDashboardPalette.text,
                           fontSize: 10,
                           fontWeight: FontWeight.w900,
                           letterSpacing: .8,
@@ -1112,7 +1112,7 @@ class _ImagePromotionCard extends StatelessWidget {
                         onPressed: onDismiss,
                         visualDensity: VisualDensity.compact,
                         iconSize: 18,
-                        color: ServicePayColors.brandDeep,
+                        color: Colors.white,
                         icon: const Icon(Icons.close_rounded),
                       ),
                   ],
@@ -1286,8 +1286,8 @@ class AnnouncementPopup extends StatelessWidget {
         children: [
           const CircleAvatar(
             radius: 20,
-            backgroundColor: Color(0xFFEAF7F0),
-            child: Icon(Icons.shield_rounded, color: ServicePayColors.brand),
+            backgroundColor: ServicePayColors.brandSoft,
+            child: Icon(Icons.shield_rounded, color: ServicePayColors.accent),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -1297,7 +1297,7 @@ class AnnouncementPopup extends StatelessWidget {
                 const Text(
                   'ServicePay',
                   style: TextStyle(
-                    color: ServicePayColors.brand,
+                    color: ServicePayColors.accent,
                     fontSize: 12,
                     fontWeight: FontWeight.w900,
                   ),
@@ -1306,7 +1306,7 @@ class AnnouncementPopup extends StatelessWidget {
                 Text(
                   announcement.title,
                   style: const TextStyle(
-                    color: Color(0xFF17382B),
+                    color: ServicePayColors.accent,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
@@ -1511,7 +1511,7 @@ class _AnnouncementSkeletonLine extends StatelessWidget {
         child: Container(
           height: 11,
           decoration: BoxDecoration(
-            color: const Color(0xFFE8F5EC),
+            color: ServicePayColors.brandSoft,
             borderRadius: BorderRadius.circular(8),
           ),
         ),

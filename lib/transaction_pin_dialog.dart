@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'servicepay_theme.dart';
 
 Future<String?> showTransactionPinDialog(
   BuildContext context,
@@ -35,7 +36,7 @@ Future<String?> showTransactionPinDialog(
                   'Enter your 4-digit ServicePay Transaction PIN to continue.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: Colors.black54,
+                    color: ServicePayColors.muted,
                   ),
                 ),
                 const SizedBox(height: 18),

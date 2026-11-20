@@ -13,8 +13,8 @@ class AirtimeDataScreen extends StatelessWidget {
       backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         title: const Text('Airtime & Data'),
-        backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF13251A),
+        backgroundColor: ServicePayColors.canvas,
+        foregroundColor: ServicePayColors.accent,
         elevation: 0,
       ),
       body: ListView(
@@ -107,7 +107,7 @@ class _ServiceChoice extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white,
+      color: ServicePayColors.surface,
       borderRadius: BorderRadius.circular(20),
       child: InkWell(
         onTap: onTap,
@@ -116,7 +116,7 @@ class _ServiceChoice extends StatelessWidget {
           padding: const EdgeInsets.all(18),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: const Color(0xFFE1EAE4)),
+            border: Border.all(color: ServicePayColors.border),
           ),
           child: Row(
             children: [
@@ -127,7 +127,7 @@ class _ServiceChoice extends StatelessWidget {
                   color: ServicePayColors.brandSoft,
                   borderRadius: BorderRadius.circular(16),
                 ),
-                child: Icon(icon, color: ServicePayColors.brand),
+                child: Icon(icon, color: ServicePayColors.accent),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -145,7 +145,7 @@ class _ServiceChoice extends StatelessWidget {
                     Text(
                       subtitle,
                       style: TextStyle(
-                        color: Colors.grey.shade600,
+                        color: ServicePayColors.muted,
                         height: 1.35,
                       ),
                     ),

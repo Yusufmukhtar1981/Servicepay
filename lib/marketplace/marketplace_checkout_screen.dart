@@ -370,7 +370,7 @@ class _MarketplaceCheckoutScreenState extends State<MarketplaceCheckoutScreen> {
               backgroundColor: softGreen,
               child: Icon(
                 Icons.check_circle_rounded,
-                color: primary,
+                color: ServicePayColors.accent,
                 size: 38,
               ),
             ),
@@ -434,17 +434,17 @@ class _MarketplaceCheckoutScreenState extends State<MarketplaceCheckoutScreen> {
       hintText: hint,
       prefixIcon: Icon(icon),
       filled: true,
-      fillColor: Colors.white,
+      fillColor: ServicePayColors.surface,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
         borderSide: const BorderSide(
-          color: Color(0xFFE2E8F0),
+          color: Color(0xFF49668D),
         ),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(16),
         borderSide: const BorderSide(
-          color: Color(0xFFE2E8F0),
+          color: Color(0xFF49668D),
         ),
       ),
       focusedBorder: OutlineInputBorder(
@@ -460,11 +460,11 @@ class _MarketplaceCheckoutScreenState extends State<MarketplaceCheckoutScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F9F8),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         title: const Text('Checkout'),
-        backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF15201B),
+        backgroundColor: ServicePayColors.canvas,
+        foregroundColor: ServicePayColors.accent,
         elevation: 0,
       ),
       body: loadingProfile
@@ -637,14 +637,14 @@ class _MarketplaceCheckoutScreenState extends State<MarketplaceCheckoutScreen> {
                           color: softGreen,
                           borderRadius: BorderRadius.circular(18),
                           border: Border.all(
-                            color: const Color(0xFFBCE3CC),
+                            color: ServicePayColors.border,
                           ),
                         ),
                         child: const Row(
                           children: [
                             Icon(
                               Icons.account_balance_wallet_outlined,
-                              color: primary,
+                              color: ServicePayColors.accent,
                             ),
                             SizedBox(width: 12),
                             Expanded(
@@ -661,7 +661,7 @@ class _MarketplaceCheckoutScreenState extends State<MarketplaceCheckoutScreen> {
                                   Text(
                                     'Your final total is confirmed securely by ServicePay.',
                                     style: TextStyle(
-                                      color: Color(0xFF466353),
+                                      color: ServicePayColors.muted,
                                       fontSize: 12,
                                     ),
                                   ),
@@ -703,10 +703,10 @@ class _MarketplaceCheckoutScreenState extends State<MarketplaceCheckoutScreen> {
                       Container(
                         padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: Colors.white,
+                          color: ServicePayColors.surface,
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(
-                            color: const Color(0xFFE2E8F0),
+                            color: const Color(0xFF49668D),
                           ),
                         ),
                         child: Column(
@@ -741,7 +741,7 @@ class _MarketplaceCheckoutScreenState extends State<MarketplaceCheckoutScreen> {
                                   child: Text(
                                     'Subtotal',
                                     style: TextStyle(
-                                      color: Colors.black54,
+                                      color: ServicePayColors.muted,
                                     ),
                                   ),
                                 ),
@@ -768,7 +768,7 @@ class _MarketplaceCheckoutScreenState extends State<MarketplaceCheckoutScreen> {
                                 Text(
                                   _money(subtotal),
                                   style: const TextStyle(
-                                    color: primary,
+                                    color: ServicePayColors.accent,
                                     fontWeight: FontWeight.w900,
                                     fontSize: 19,
                                   ),

@@ -31,7 +31,7 @@ class ServicePayFeatureHubScreen extends StatelessWidget {
             child: ListTile(
               leading: Icon(
                 item.$2,
-                color: ServicePayColors.brand,
+                color: ServicePayColors.accent,
               ),
               title: Text(item.$1),
               trailing: const Icon(

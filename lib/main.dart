@@ -156,11 +156,14 @@ class _ServicePayBootstrapState extends State<ServicePayBootstrap> {
       return const ServicePayApp();
     }
 
-    return MaterialApp(
-      title: 'ServicePay',
-      debugShowCheckedModeBanner: false,
-      theme: ServicePayTheme.light(),
-      home: const ServicePayStartupScreen(),
+    return ValueListenableBuilder<ServicePayThemeAudience>(
+      valueListenable: ServicePayThemeSelection.audience,
+      builder: (context, audience, _) => MaterialApp(
+        title: 'ServicePay',
+        debugShowCheckedModeBanner: false,
+        theme: ServicePayThemeSelection.themeFor(audience),
+        home: const ServicePayStartupScreen(),
+      ),
     );
   }
 }
@@ -171,7 +174,7 @@ class ServicePayStartupScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Scaffold(
-      backgroundColor: Color(0xFFF7F9F8),
+      backgroundColor: ServicePayColors.canvas,
       body: Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -179,7 +182,7 @@ class ServicePayStartupScreen extends StatelessWidget {
             Text(
               'ServicePay',
               style: TextStyle(
-                color: ServicePayColors.brand,
+                color: Colors.white,
                 fontSize: 30,
                 fontWeight: FontWeight.w800,
               ),
@@ -190,13 +193,13 @@ class ServicePayStartupScreen extends StatelessWidget {
               height: 32,
               child: CircularProgressIndicator(
                 strokeWidth: 3,
-                color: ServicePayColors.brand,
+                color: ServicePayColors.accent,
               ),
             ),
             SizedBox(height: 16),
             Text(
               'Preparing your account…',
-              style: TextStyle(color: Color(0xFF52605D), fontSize: 15),
+              style: TextStyle(color: ServicePayColors.muted, fontSize: 15),
             ),
           ],
         ),
@@ -336,12 +339,16 @@ class _ServicePayAppState extends State<ServicePayApp> {
         (_) => false,
       );
     };
-    return MaterialApp(
-      title: 'ServicePay',
-      navigatorKey: servicePayNavigatorKey,
-      debugShowCheckedModeBanner: false,
-      theme: ServicePayTheme.light(),
-      home: getInitialScreen(),
+    final Widget home = getInitialScreen();
+    return ValueListenableBuilder<ServicePayThemeAudience>(
+      valueListenable: ServicePayThemeSelection.audience,
+      builder: (context, audience, _) => MaterialApp(
+        title: 'ServicePay',
+        navigatorKey: servicePayNavigatorKey,
+        debugShowCheckedModeBanner: false,
+        theme: ServicePayThemeSelection.themeFor(audience),
+        home: home,
+      ),
     );
   }
 }

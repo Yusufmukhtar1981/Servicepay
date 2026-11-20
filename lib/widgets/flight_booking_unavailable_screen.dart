@@ -10,11 +10,11 @@ class FlightBookingUnavailableScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     const Color green = ServicePayColors.brand;
     return Scaffold(
-      backgroundColor: const Color(0xFFF7FBF8),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         title: const Text('Flight Booking'),
-        backgroundColor: Colors.white,
-        foregroundColor: green,
+        backgroundColor: ServicePayColors.canvas,
+        foregroundColor: ServicePayColors.accent,
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -27,16 +27,16 @@ class FlightBookingUnavailableScreen extends StatelessWidget {
                   const SizedBox(height: 32),
                   const CircleAvatar(
                     radius: 42,
-                    backgroundColor: Color(0xFFE6F5EC),
+                    backgroundColor: ServicePayColors.brandSoft,
                     child: Icon(Icons.flight_takeoff_rounded,
-                        color: green, size: 38),
+                        color: ServicePayColors.accent, size: 38),
                   ),
                   const SizedBox(height: 24),
                   const Text(
                     'Coming soon',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                        color: green, fontSize: 24, fontWeight: FontWeight.w800),
+                        color: ServicePayColors.accent, fontSize: 24, fontWeight: FontWeight.w800),
                   ),
                   const SizedBox(height: 16),
                   const Text(
@@ -44,7 +44,7 @@ class FlightBookingUnavailableScreen extends StatelessWidget {
                     'an airline provider is connected.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                        color: Color(0xFF405348), fontSize: 16, height: 1.5),
+                        color: ServicePayColors.muted, fontSize: 16, height: 1.5),
                   ),
                   const SizedBox(height: 12),
                   const Text(

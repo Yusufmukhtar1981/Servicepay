@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../servicepay_theme.dart';
 
 bool businessFeatureAvailableForKind(
   Map<String, dynamic> feature,
@@ -44,11 +45,11 @@ class BusinessFeatureAccessPanel extends StatelessWidget {
           (entry) => Map<String, dynamic>.from(entry),
         );
     return Card(
-      color: const Color(0xFFEAF3ED),
+      color: ServicePayColors.brandSoft,
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: const BorderSide(color: Color(0xFFD5E5D9)),
+        side: const BorderSide(color: ServicePayColors.border),
       ),
       child: Padding(
         padding: const EdgeInsets.all(15),
@@ -60,7 +61,7 @@ class BusinessFeatureAccessPanel extends StatelessWidget {
                     const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
             const SizedBox(height: 5),
             const Text('Services for your account',
-                style: TextStyle(color: Color(0xFF59685F), fontSize: 12)),
+                style: TextStyle(color: ServicePayColors.muted, fontSize: 12)),
             const SizedBox(height: 5),
             ...entries.map((entry) => _FeatureAccessRow(
                   feature: entry,
@@ -115,7 +116,7 @@ class _FeatureAccessRow extends StatelessWidget {
             available ? Icons.check_circle_outline : Icons.info_outline,
             size: 19,
             color:
-                available ? const Color(0xFF08783E) : const Color(0xFF65736B),
+                available ? ServicePayColors.accent : ServicePayColors.muted,
           ),
           const SizedBox(width: 9),
           Expanded(
@@ -139,12 +140,12 @@ class _FeatureAccessRow extends StatelessWidget {
                         fontSize: 12, fontWeight: FontWeight.w700)),
                 Text(explanation,
                     style: const TextStyle(
-                        fontSize: 12, height: 1.35, color: Color(0xFF59685F))),
+                        fontSize: 12, height: 1.35, color: ServicePayColors.muted)),
                 if (history)
                   const Text(
                     'Existing history remains accessible.',
                     style: TextStyle(
-                        fontSize: 12, height: 1.35, color: Color(0xFF315B43)),
+                        fontSize: 12, height: 1.35, color: ServicePayColors.accent),
                   ),
               ],
             ),

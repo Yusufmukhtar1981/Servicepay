@@ -528,7 +528,7 @@ class _BvnVerificationScreenState extends State<BvnVerificationScreen> {
       return Container(
         padding: const EdgeInsets.all(22),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: ServicePayColors.surface,
           borderRadius: BorderRadius.circular(18),
         ),
         child: const Column(
@@ -573,12 +573,12 @@ class _BvnVerificationScreenState extends State<BvnVerificationScreen> {
 
           return Card(
             margin: const EdgeInsets.only(bottom: 10),
-            color: Colors.white,
+            color: ServicePayColors.surface,
             elevation: 0,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
               side: const BorderSide(
-                color: Color(0xFFE5E7EB),
+                color: ServicePayColors.border,
               ),
             ),
             child: ListTile(
@@ -592,10 +592,10 @@ class _BvnVerificationScreenState extends State<BvnVerificationScreen> {
                 );
               },
               leading: const CircleAvatar(
-                backgroundColor: Color(0xFFE6F7F4),
+                backgroundColor: ServicePayColors.brandSoft,
                 child: Icon(
                   Icons.account_balance_outlined,
-                  color: primaryGreen,
+                  color: ServicePayColors.accent,
                 ),
               ),
               title: Text(
@@ -629,7 +629,7 @@ class _BvnVerificationScreenState extends State<BvnVerificationScreen> {
     BuildContext context,
   ) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F8FA),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         title: const Text(
           'BVN Verification',
@@ -698,7 +698,7 @@ class _BvnVerificationScreenState extends State<BvnVerificationScreen> {
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: ServicePayColors.surface,
                   borderRadius: BorderRadius.circular(24),
                   boxShadow: [
                     BoxShadow(
@@ -714,7 +714,7 @@ class _BvnVerificationScreenState extends State<BvnVerificationScreen> {
                     const Text(
                       'BVN NUMBER',
                       style: TextStyle(
-                        color: Color(0xFF8A8A94),
+                        color: ServicePayColors.muted,
                         fontSize: 13,
                         letterSpacing: 1.2,
                         fontWeight: FontWeight.w700,
@@ -746,7 +746,7 @@ class _BvnVerificationScreenState extends State<BvnVerificationScreen> {
                           Icons.numbers_rounded,
                         ),
                         filled: true,
-                        fillColor: const Color(0xFFFAFAFB),
+                        fillColor: ServicePayColors.surface,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(18),
                         ),
@@ -756,17 +756,17 @@ class _BvnVerificationScreenState extends State<BvnVerificationScreen> {
                     Container(
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFFFF7ED),
+                        color: const Color(0xFF4B3316),
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
-                          color: const Color(0xFFFED7AA),
+                          color: const Color(0xFFAB702B),
                         ),
                       ),
                       child: const Row(
                         children: [
                           Icon(
                             Icons.account_balance_wallet_outlined,
-                            color: Color(0xFFEA580C),
+                            color: Color(0xFFF9B08B),
                           ),
                           SizedBox(width: 11),
                           Expanded(
@@ -780,7 +780,7 @@ class _BvnVerificationScreenState extends State<BvnVerificationScreen> {
                           Text(
                             '₦200',
                             style: TextStyle(
-                              color: Color(0xFFEA580C),
+                              color: Color(0xFFF9B08B),
                               fontSize: 19,
                               fontWeight: FontWeight.w900,
                             ),
@@ -798,7 +798,7 @@ class _BvnVerificationScreenState extends State<BvnVerificationScreen> {
                                 hasConsent = value ?? false;
                               });
                             },
-                      activeColor: primaryGreen,
+                      activeColor: ServicePayColors.accent,
                       controlAffinity: ListTileControlAffinity.leading,
                       contentPadding: EdgeInsets.zero,
                       title: const Text(
@@ -880,7 +880,7 @@ class _BvnVerificationScreenState extends State<BvnVerificationScreen> {
               const Text(
                 'Your latest BVN verification activity.',
                 style: TextStyle(
-                  color: Color(0xFF8A8A94),
+                  color: ServicePayColors.muted,
                 ),
               ),
               const SizedBox(height: 14),
@@ -1188,7 +1188,7 @@ class BvnVerificationResultScreen extends StatelessWidget {
     );
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F7F6),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         title: const Text(
           'BVN Verification Result',
@@ -1199,7 +1199,7 @@ class BvnVerificationResultScreen extends StatelessWidget {
         children: [
           const Icon(
             Icons.verified_rounded,
-            color: primaryGreen,
+            color: ServicePayColors.accent,
             size: 68,
           ),
           const SizedBox(height: 8),
@@ -1227,10 +1227,10 @@ class BvnVerificationResultScreen extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(17),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: ServicePayColors.surface,
               borderRadius: BorderRadius.circular(18),
               border: Border.all(
-                color: const Color(0xFFE5E7EB),
+                color: ServicePayColors.border,
               ),
             ),
             child: Column(
@@ -1352,10 +1352,10 @@ class BvnVerificationResultScreen extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: const Color(0xFFFFF7ED),
+              color: const Color(0xFF4B3316),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: const Color(0xFFFED7AA),
+                color: const Color(0xFFAB702B),
               ),
             ),
             child: const Row(
@@ -1363,14 +1363,14 @@ class BvnVerificationResultScreen extends StatelessWidget {
               children: [
                 Icon(
                   Icons.info_outline,
-                  color: Color(0xFFEA580C),
+                  color: Color(0xFFF9B08B),
                 ),
                 SizedBox(width: 9),
                 Expanded(
                   child: Text(
                     'This is a ServicePay BVN verification result. It is not a replacement for an official bank or government identity document.',
                     style: TextStyle(
-                      color: Color(0xFF7C2D12),
+                      color: Color(0xFFEFAB94),
                       height: 1.4,
                     ),
                   ),
@@ -1434,13 +1434,13 @@ class BvnVerifiedCard extends StatelessWidget {
         decoration: BoxDecoration(
           gradient: const LinearGradient(
             colors: [
-              Color(0xFFF8FFFD),
-              Color(0xFFD9F5EC),
+              Color(0xFF0A7F5E),
+              Color(0xFF0A7F5A),
             ],
           ),
           borderRadius: BorderRadius.circular(22),
           border: Border.all(
-            color: const Color(0xFF9DDCC8),
+            color: ServicePayColors.border,
           ),
         ),
         child: Column(
@@ -1463,7 +1463,7 @@ class BvnVerifiedCard extends StatelessWidget {
                       Text(
                         'SERVICEPAY',
                         style: TextStyle(
-                          color: primaryGreen,
+                          color: ServicePayColors.accent,
                           fontWeight: FontWeight.w900,
                           letterSpacing: 1.3,
                         ),
@@ -1472,7 +1472,7 @@ class BvnVerifiedCard extends StatelessWidget {
                         'BVN VERIFIED',
                         style: TextStyle(
                           fontSize: 10,
-                          color: Color(0xFF52705A),
+                          color: ServicePayColors.muted,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
@@ -1481,7 +1481,7 @@ class BvnVerifiedCard extends StatelessWidget {
                 ),
                 Icon(
                   Icons.verified_rounded,
-                  color: primaryGreen,
+                  color: ServicePayColors.accent,
                   size: 34,
                 ),
               ],
@@ -1502,7 +1502,7 @@ class BvnVerifiedCard extends StatelessWidget {
                           'FULL NAME',
                           style: TextStyle(
                             fontSize: 9,
-                            color: Color(0xFF647A69),
+                            color: ServicePayColors.muted,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
@@ -1558,7 +1558,7 @@ class BvnVerifiedCard extends StatelessWidget {
                           'BVN NUMBER',
                           style: TextStyle(
                             fontSize: 9,
-                            color: Color(0xFF647A69),
+                            color: ServicePayColors.muted,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
@@ -1576,7 +1576,7 @@ class BvnVerifiedCard extends StatelessWidget {
                   if (reference.isNotEmpty)
                     const Icon(
                       Icons.qr_code_2,
-                      color: primaryGreen,
+                      color: ServicePayColors.accent,
                       size: 35,
                     ),
                 ],
@@ -1606,10 +1606,10 @@ class BvnIdentityPhoto extends StatelessWidget {
       height: 102,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: const Color(0xFFE5E7EB),
+        color: ServicePayColors.surface,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: const Color(0xFF9DDCC8),
+          color: ServicePayColors.border,
         ),
       ),
       child: buildImage(),
@@ -1697,7 +1697,7 @@ class BvnCardField extends StatelessWidget {
           label,
           style: const TextStyle(
             fontSize: 8,
-            color: Color(0xFF647A69),
+            color: ServicePayColors.muted,
             fontWeight: FontWeight.w700,
           ),
         ),
@@ -1741,7 +1741,7 @@ class ResultRow extends StatelessWidget {
         border: showDivider
             ? const Border(
                 bottom: BorderSide(
-                  color: Color(0xFFE5E7EB),
+                  color: ServicePayColors.border,
                 ),
               )
             : null,
@@ -1754,7 +1754,7 @@ class ResultRow extends StatelessWidget {
             child: Text(
               label,
               style: const TextStyle(
-                color: Color(0xFF6B7280),
+                color: ServicePayColors.muted,
                 fontWeight: FontWeight.w600,
               ),
             ),

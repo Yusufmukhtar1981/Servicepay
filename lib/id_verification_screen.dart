@@ -554,7 +554,7 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
         Text(
           title.toUpperCase(),
           style: const TextStyle(
-            color: Color(0xFF8A8A94),
+            color: ServicePayColors.muted,
             fontSize: 14,
             letterSpacing: 1.3,
             fontWeight: FontWeight.w700,
@@ -598,7 +598,7 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
             vertical: 12,
           ),
           decoration: BoxDecoration(
-            color: selected ? const Color(0xFFEAF9F4) : Colors.white,
+            color: selected ? ServicePayColors.brandSoft : ServicePayColors.surface,
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
               color: selected ? primaryGreen : const Color(0xFFE5E7EB),
@@ -611,14 +611,14 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
               Icon(
                 item['icon'] as IconData,
                 size: 30,
-                color: available ? primaryGreen : Colors.grey,
+                color: available ? ServicePayColors.accent : Colors.grey,
               ),
               const SizedBox(height: 8),
               Text(
                 item['title'].toString(),
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: available ? const Color(0xFF17211A) : Colors.grey,
+                  color: available ? ServicePayColors.ink : Colors.grey,
                   fontSize: 14,
                   fontWeight: FontWeight.w900,
                 ),
@@ -630,7 +630,7 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
-                  color: Color(0xFF8A8A94),
+                  color: ServicePayColors.muted,
                   fontSize: 10,
                   height: 1.1,
                   fontWeight: FontWeight.w600,
@@ -690,11 +690,11 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
             vertical: 10,
           ),
           decoration: BoxDecoration(
-            color: selected ? const Color(0xFFF0ECFF) : Colors.white,
+            color: selected ? const Color(0xFF21164B) : ServicePayColors.surface,
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
               color:
-                  selected ? const Color(0xFF805AD5) : const Color(0xFFE5E7EB),
+                  selected ? const Color(0xFF805AD5) : ServicePayColors.border,
               width: selected ? 2.5 : 1,
             ),
           ),
@@ -704,7 +704,7 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
               Icon(
                 item['icon'] as IconData,
                 size: 29,
-                color: available ? const Color(0xFF805AD5) : Colors.grey,
+                color: available ? const Color(0xFFB49DE6) : Colors.grey,
               ),
               const SizedBox(height: 8),
               Flexible(
@@ -714,7 +714,7 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
                   overflow: TextOverflow.ellipsis,
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: available ? const Color(0xFF29263A) : Colors.grey,
+                    color: available ? const Color(0xFFAAA0E3) : Colors.grey,
                     fontSize: 13,
                     height: 1.15,
                     fontWeight: FontWeight.w800,
@@ -754,7 +754,7 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
       return Container(
         padding: const EdgeInsets.all(22),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: ServicePayColors.surface,
           borderRadius: BorderRadius.circular(18),
         ),
         child: const Column(
@@ -805,12 +805,12 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
             margin: const EdgeInsets.only(
               bottom: 10,
             ),
-            color: Colors.white,
+            color: ServicePayColors.surface,
             elevation: 0,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
               side: const BorderSide(
-                color: Color(0xFFE5E7EB),
+                color: ServicePayColors.border,
               ),
             ),
             child: ListTile(
@@ -824,10 +824,10 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
                 );
               },
               leading: const CircleAvatar(
-                backgroundColor: Color(0xFFE6F7F4),
+                backgroundColor: ServicePayColors.brandSoft,
                 child: Icon(
                   Icons.badge_outlined,
-                  color: primaryGreen,
+                  color: ServicePayColors.accent,
                 ),
               ),
               title: Text(
@@ -860,7 +860,7 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F8FA),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         title: const Text(
           'ID Verification',
@@ -879,7 +879,7 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
               Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: ServicePayColors.surface,
                   borderRadius: BorderRadius.circular(28),
                   boxShadow: [
                     BoxShadow(
@@ -949,10 +949,10 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
                       width: double.infinity,
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFEAF9F4),
+                        color: ServicePayColors.brandSoft,
                         borderRadius: BorderRadius.circular(18),
                         border: Border.all(
-                          color: const Color(0xFFB9E4D2),
+                          color: ServicePayColors.border,
                         ),
                       ),
                       child: const Row(
@@ -974,7 +974,7 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
                                 Text(
                                   'Premium NIN verification result',
                                   style: TextStyle(
-                                    color: Color(0xFF07512D),
+                                    color: ServicePayColors.accent,
                                     fontSize: 15,
                                     fontWeight: FontWeight.w900,
                                   ),
@@ -983,7 +983,7 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
                                 Text(
                                   'One secure verification result is generated after a successful provider check.',
                                   style: TextStyle(
-                                    color: Color(0xFF4D6A5A),
+                                    color: ServicePayColors.muted,
                                     fontSize: 12,
                                     height: 1.35,
                                   ),
@@ -1003,7 +1003,7 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
                     const Text(
                       'NIN NUMBER',
                       style: TextStyle(
-                        color: Color(0xFF8A8A94),
+                        color: ServicePayColors.muted,
                         fontSize: 13,
                         letterSpacing: 1.2,
                         fontWeight: FontWeight.w700,
@@ -1073,7 +1073,7 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
                                   hasConsent = value ?? false;
                                 });
                               },
-                        activeColor: primaryGreen,
+                        activeColor: ServicePayColors.accent,
                         controlAffinity: ListTileControlAffinity.leading,
                         title: const Text(
                           'I confirm that the owner of this ID has granted permission to verify his or her identity.',
@@ -1137,7 +1137,7 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
               const Text(
                 'Your latest verification activity.',
                 style: TextStyle(
-                  color: Color(0xFF8A8A94),
+                  color: ServicePayColors.muted,
                 ),
               ),
               const SizedBox(height: 14),
@@ -1410,7 +1410,7 @@ class _VerificationResultScreenState extends State<VerificationResultScreen> {
         : 'This verification was not successful. No verification result was generated.';
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F7F6),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         title: const Text(
           'NIN Verification',
@@ -1428,10 +1428,10 @@ class _VerificationResultScreenState extends State<VerificationResultScreen> {
               width: double.infinity,
               padding: const EdgeInsets.all(24),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: ServicePayColors.surface,
                 borderRadius: BorderRadius.circular(22),
                 border: Border.all(
-                  color: const Color(0xFFE5E7EB),
+                  color: ServicePayColors.border,
                 ),
               ),
               child: Column(
@@ -1442,7 +1442,7 @@ class _VerificationResultScreenState extends State<VerificationResultScreen> {
                         ? Icons.hourglass_top_rounded
                         : Icons.error_outline_rounded,
                     color: isPending
-                        ? const Color(0xFFD97706)
+                        ? const Color(0xFFF9C68B)
                         : const Color(0xFFDC2626),
                     size: 62,
                   ),
@@ -1460,7 +1460,7 @@ class _VerificationResultScreenState extends State<VerificationResultScreen> {
                     message,
                     textAlign: TextAlign.center,
                     style: const TextStyle(
-                      color: Color(0xFF667085),
+                      color: ServicePayColors.muted,
                       height: 1.45,
                     ),
                   ),
@@ -1470,7 +1470,7 @@ class _VerificationResultScreenState extends State<VerificationResultScreen> {
                       'Reference: $reference',
                       textAlign: TextAlign.center,
                       style: const TextStyle(
-                        color: Color(0xFF475467),
+                        color: Color(0xFFA0BBE3),
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -1673,7 +1673,7 @@ class _VerificationResultScreenState extends State<VerificationResultScreen> {
         0;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF4F7F6),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         title: const Text(
           'Verification Result',
@@ -1687,7 +1687,7 @@ class _VerificationResultScreenState extends State<VerificationResultScreen> {
         children: [
           const Icon(
             Icons.verified_rounded,
-            color: primaryGreen,
+            color: ServicePayColors.accent,
             size: 64,
           ),
           const SizedBox(height: 8),
@@ -1743,7 +1743,7 @@ class _VerificationResultScreenState extends State<VerificationResultScreen> {
                       isDownloading ? 'Downloading...' : 'Download Card',
                     ),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: primaryGreen,
+                      foregroundColor: ServicePayColors.accent,
                       side: const BorderSide(
                         color: primaryGreen,
                       ),
@@ -1784,10 +1784,10 @@ class _VerificationResultScreenState extends State<VerificationResultScreen> {
           Container(
             padding: const EdgeInsets.all(17),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: ServicePayColors.surface,
               borderRadius: BorderRadius.circular(18),
               border: Border.all(
-                color: const Color(0xFFE5E7EB),
+                color: ServicePayColors.border,
               ),
             ),
             child: Column(
@@ -1865,10 +1865,10 @@ class _VerificationResultScreenState extends State<VerificationResultScreen> {
           Container(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: const Color(0xFFFFF7ED),
+              color: const Color(0xFF4B3316),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: const Color(0xFFFED7AA),
+                color: const Color(0xFFAB702B),
               ),
             ),
             child: const Row(
@@ -1876,14 +1876,14 @@ class _VerificationResultScreenState extends State<VerificationResultScreen> {
               children: [
                 Icon(
                   Icons.info_outline,
-                  color: Color(0xFFEA580C),
+                  color: Color(0xFFF9B08B),
                 ),
                 SizedBox(width: 9),
                 Expanded(
                   child: Text(
                     'This verification result is not an official NIMC-issued identity document or a replacement for one.',
                     style: TextStyle(
-                      color: Color(0xFF7C2D12),
+                      color: Color(0xFFEFAB94),
                       height: 1.4,
                     ),
                   ),
@@ -1919,7 +1919,7 @@ class _VerificationResultScreenState extends State<VerificationResultScreen> {
 class VerifiedNinCard extends StatelessWidget {
   static const Color green = Color(0xFF0A7A3F);
   static const Color deepGreen = Color(0xFF07512D);
-  static const Color darkText = Color(0xFF171D19);
+  static const Color darkText = ServicePayColors.ink;
 
   final String surname;
   final String firstName;
@@ -1967,7 +1967,7 @@ class VerifiedNinCard extends StatelessWidget {
       child: Container(
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
-          color: const Color(0xFFF4FAF0),
+          color: const Color(0xFF2C4918),
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
             color: const Color(0xFF7EA989),
@@ -2021,7 +2021,7 @@ class VerifiedNinCard extends StatelessWidget {
                             'SERVICEPAY NIN VERIFICATION RESULT',
                             textAlign: TextAlign.center,
                             style: TextStyle(
-                              color: deepGreen,
+                              color: ServicePayColors.accent,
                               fontSize: 12.5,
                               fontWeight: FontWeight.w900,
                               letterSpacing: 0.35,
@@ -2033,7 +2033,7 @@ class VerifiedNinCard extends StatelessWidget {
                           'Premium provider verification record',
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            color: darkText,
+                            color: ServicePayColors.ink,
                             fontSize: 8.4,
                             fontWeight: FontWeight.w800,
                             letterSpacing: 0.3,
@@ -2117,7 +2117,7 @@ class VerifiedNinCard extends StatelessWidget {
                                 ),
                                 child: const Icon(
                                   Icons.fact_check_outlined,
-                                  color: deepGreen,
+                                  color: ServicePayColors.accent,
                                   size: 31,
                                 ),
                               ),
@@ -2126,7 +2126,7 @@ class VerifiedNinCard extends StatelessWidget {
                                 'VERIFIED RECORD',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
-                                  color: deepGreen,
+                                  color: ServicePayColors.accent,
                                   fontSize: 5,
                                   fontWeight: FontWeight.w900,
                                 ),
@@ -2135,7 +2135,7 @@ class VerifiedNinCard extends StatelessWidget {
                               const Text(
                                 'NATIONALITY',
                                 style: TextStyle(
-                                  color: Color(0xFF56695B),
+                                  color: ServicePayColors.muted,
                                   fontSize: 5.2,
                                   fontWeight: FontWeight.w800,
                                 ),
@@ -2143,7 +2143,7 @@ class VerifiedNinCard extends StatelessWidget {
                               Text(
                                 nationalityCode,
                                 style: const TextStyle(
-                                  color: darkText,
+                                  color: ServicePayColors.ink,
                                   fontSize: 13,
                                   height: 1,
                                   fontWeight: FontWeight.w900,
@@ -2153,7 +2153,7 @@ class VerifiedNinCard extends StatelessWidget {
                               const Text(
                                 'ISSUE DATE',
                                 style: TextStyle(
-                                  color: Color(0xFF56695B),
+                                  color: ServicePayColors.muted,
                                   fontSize: 5.2,
                                   fontWeight: FontWeight.w800,
                                 ),
@@ -2163,7 +2163,7 @@ class VerifiedNinCard extends StatelessWidget {
                                 child: Text(
                                   verificationDate,
                                   style: const TextStyle(
-                                    color: darkText,
+                                    color: ServicePayColors.ink,
                                     fontSize: 7,
                                     fontWeight: FontWeight.w900,
                                   ),
@@ -2199,7 +2199,7 @@ class VerifiedNinCard extends StatelessWidget {
                           'National Identification Number (NIN)',
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            color: darkText,
+                            color: ServicePayColors.ink,
                             fontSize: 7.2,
                             fontWeight: FontWeight.w900,
                           ),
@@ -2209,7 +2209,7 @@ class VerifiedNinCard extends StatelessWidget {
                           child: Text(
                             nin,
                             style: const TextStyle(
-                              color: Color(0xFF1F3627),
+                              color: ServicePayColors.accent,
                               fontSize: 22,
                               height: 1.05,
                               fontWeight: FontWeight.w900,
@@ -2225,7 +2225,7 @@ class VerifiedNinCard extends StatelessWidget {
                     children: [
                       const Icon(
                         Icons.verified_user_outlined,
-                        color: green,
+                        color: ServicePayColors.accent,
                         size: 10,
                       ),
                       const SizedBox(width: 4),
@@ -2237,7 +2237,7 @@ class VerifiedNinCard extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            color: Color(0xFF526258),
+                            color: ServicePayColors.muted,
                             fontSize: 5.2,
                             fontWeight: FontWeight.w700,
                           ),
@@ -2246,7 +2246,7 @@ class VerifiedNinCard extends StatelessWidget {
                       const Text(
                         'PREMIUM',
                         style: TextStyle(
-                          color: deepGreen,
+                          color: ServicePayColors.accent,
                           fontSize: 5.5,
                           fontWeight: FontWeight.w900,
                           letterSpacing: 0.8,
@@ -2261,14 +2261,14 @@ class VerifiedNinCard extends StatelessWidget {
                       horizontal: 5,
                       vertical: 2,
                     ),
-                    color: Color(0xFFFDECEC),
+                    color: Color(0xFF4B1616),
                     child: const FittedBox(
                       fit: BoxFit.scaleDown,
                       child: Text(
                         'NOT A GOVERNMENT ID • NOT NIMC-ISSUED',
                         textAlign: TextAlign.center,
                         style: TextStyle(
-                          color: Color(0xFF9B1C1C),
+                          color: Color(0xFFEC9797),
                           fontSize: 6.5,
                           fontWeight: FontWeight.w900,
                           letterSpacing: 0.35,
@@ -2539,7 +2539,7 @@ class ServicePayNinField extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(
-            color: Color(0xFF56695B),
+            color: ServicePayColors.muted,
             fontSize: 6.4,
             fontWeight: FontWeight.w800,
           ),
@@ -2551,7 +2551,7 @@ class ServicePayNinField extends StatelessWidget {
           child: Text(
             value,
             style: TextStyle(
-              color: const Color(0xFF171D19),
+              color: ServicePayColors.ink,
               fontSize: large ? 13.2 : 9.6,
               height: 1.0,
               fontWeight: large ? FontWeight.w800 : FontWeight.w700,
@@ -2580,7 +2580,7 @@ class IdentityPhoto extends StatelessWidget {
       height: 105,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: const Color(0xFFE5E7EB),
+        color: ServicePayColors.surface,
         borderRadius: BorderRadius.circular(8),
         border: Border.all(
           color: const Color(0xFF8DBD9A),
@@ -2676,7 +2676,7 @@ class CardField extends StatelessWidget {
           label,
           style: const TextStyle(
             fontSize: 7,
-            color: Color(0xFF647A69),
+            color: ServicePayColors.muted,
             fontWeight: FontWeight.w800,
           ),
         ),
@@ -2685,7 +2685,7 @@ class CardField extends StatelessWidget {
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
-            color: const Color(0xFF18261E),
+            color: ServicePayColors.accent,
             fontSize: large ? 12 : 9,
             fontWeight: FontWeight.w900,
             letterSpacing: large ? 1 : 0,
@@ -2720,7 +2720,7 @@ class ResultRow extends StatelessWidget {
         border: showDivider
             ? const Border(
                 bottom: BorderSide(
-                  color: Color(0xFFE5E7EB),
+                  color: ServicePayColors.border,
                 ),
               )
             : null,
@@ -2733,7 +2733,7 @@ class ResultRow extends StatelessWidget {
             child: Text(
               label,
               style: const TextStyle(
-                color: Color(0xFF6B7280),
+                color: ServicePayColors.muted,
                 fontWeight: FontWeight.w600,
               ),
             ),

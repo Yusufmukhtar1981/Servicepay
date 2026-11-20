@@ -297,11 +297,11 @@ class _RequestMoneyScreenState extends State<RequestMoneyScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7FAF8),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         title: const Text('Request Money'),
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black87,
+        backgroundColor: ServicePayColors.canvas,
+        foregroundColor: ServicePayColors.ink,
       ),
       body: ListView(
         padding: const EdgeInsets.all(18),
@@ -400,7 +400,7 @@ class _RequestMoneyScreenState extends State<RequestMoneyScreen> {
                           contentPadding: EdgeInsets.zero,
                           leading: const Icon(
                             Icons.request_page_rounded,
-                            color: primaryGreen,
+                            color: ServicePayColors.accent,
                           ),
                           title: Text(
                             '₦${item['amount'] ?? 0}',

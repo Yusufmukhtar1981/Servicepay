@@ -98,7 +98,7 @@ class ServicePayStateView extends StatelessWidget {
               color: ServicePayColors.brandSoft,
               shape: BoxShape.circle,
             ),
-            child: Icon(icon, size: 30, color: ServicePayColors.brand),
+            child: Icon(icon, size: 30, color: ServicePayColors.accent),
           ),
         ),
         const SizedBox(height: 18),

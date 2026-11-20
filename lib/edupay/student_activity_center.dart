@@ -442,7 +442,7 @@ class _StudentActivityCenterState extends State<StudentActivityCenter> {
                     leading: const Icon(
                       Icons.circle,
                       size: 10,
-                      color: ServicePayColors.brand,
+                      color: ServicePayColors.accent,
                     ),
                     title: Text('${m['title'] ?? m['type'] ?? 'Update'}'),
                     subtitle: Text(
@@ -463,7 +463,7 @@ class _StudentActivityCenterState extends State<StudentActivityCenter> {
             children: [
               Row(
                 children: [
-                  Icon(icon, color: ServicePayColors.brand),
+                  Icon(icon, color: ServicePayColors.accent),
                   const SizedBox(width: 8),
                   Text(
                     title,
@@ -549,7 +549,7 @@ class _StudentActivityCenterState extends State<StudentActivityCenter> {
             const Icon(
               Icons.lock_outline,
               size: 44,
-              color: ServicePayColors.brand,
+              color: ServicePayColors.accent,
             ),
             const SizedBox(height: 12),
             Text(error!, textAlign: TextAlign.center),
@@ -573,7 +573,7 @@ class _StudentActivityCenterState extends State<StudentActivityCenter> {
           const Icon(
             Icons.link_outlined,
             size: 48,
-            color: ServicePayColors.brand,
+            color: ServicePayColors.accent,
           ),
           const SizedBox(height: 14),
           const Text(

@@ -37,11 +37,11 @@ class MarketplaceProductDetailsScreen extends StatelessWidget {
     final String category = '${product['category'] ?? 'Marketplace'}';
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F9F8),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         title: const Text('Product Details'),
-        backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF15201B),
+        backgroundColor: ServicePayColors.canvas,
+        foregroundColor: ServicePayColors.accent,
         elevation: 0,
         actions: [
           ValueListenableBuilder<List<Map<String, dynamic>>>(
@@ -104,7 +104,7 @@ class MarketplaceProductDetailsScreen extends StatelessWidget {
                       child: Icon(
                         Icons.shopping_bag_outlined,
                         size: 80,
-                        color: primary,
+                        color: ServicePayColors.accent,
                       ),
                     ),
                   )
@@ -113,7 +113,7 @@ class MarketplaceProductDetailsScreen extends StatelessWidget {
                     child: Icon(
                       Icons.shopping_bag_outlined,
                       size: 80,
-                      color: primary,
+                      color: ServicePayColors.accent,
                     ),
                   ),
           ),
@@ -125,7 +125,7 @@ class MarketplaceProductDetailsScreen extends StatelessWidget {
                 Text(
                   category.toUpperCase(),
                   style: const TextStyle(
-                    color: primary,
+                    color: ServicePayColors.accent,
                     fontWeight: FontWeight.w800,
                     fontSize: 12,
                   ),
@@ -142,7 +142,7 @@ class MarketplaceProductDetailsScreen extends StatelessWidget {
                 Text(
                   money(product['price']),
                   style: const TextStyle(
-                    color: primary,
+                    color: ServicePayColors.accent,
                     fontWeight: FontWeight.w900,
                     fontSize: 24,
                   ),
@@ -152,7 +152,7 @@ class MarketplaceProductDetailsScreen extends StatelessWidget {
                   width: double.infinity,
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: ServicePayColors.surface,
                     borderRadius: BorderRadius.circular(16),
                   ),
                   child: Row(
@@ -161,7 +161,7 @@ class MarketplaceProductDetailsScreen extends StatelessWidget {
                         backgroundColor: softGreen,
                         child: Icon(
                           Icons.storefront_outlined,
-                          color: primary,
+                          color: ServicePayColors.accent,
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -172,7 +172,7 @@ class MarketplaceProductDetailsScreen extends StatelessWidget {
                             const Text(
                               'Sold by',
                               style: TextStyle(
-                                color: Color(0xFF718078),
+                                color: ServicePayColors.muted,
                                 fontSize: 12,
                               ),
                             ),
@@ -200,7 +200,7 @@ class MarketplaceProductDetailsScreen extends StatelessWidget {
                 Text(
                   description,
                   style: const TextStyle(
-                    color: Color(0xFF56635C),
+                    color: ServicePayColors.muted,
                     height: 1.55,
                   ),
                 ),
@@ -218,7 +218,7 @@ class MarketplaceProductDetailsScreen extends StatelessWidget {
             12,
           ),
           decoration: const BoxDecoration(
-            color: Colors.white,
+            color: ServicePayColors.surface,
             boxShadow: [
               BoxShadow(
                 blurRadius: 18,

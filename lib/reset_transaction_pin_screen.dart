@@ -222,7 +222,7 @@ class _ResetTransactionPinScreenState extends State<ResetTransactionPinScreen> {
           ),
         ),
         filled: true,
-        fillColor: Colors.white,
+        fillColor: ServicePayColors.surface,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
           borderSide: BorderSide.none,
@@ -234,12 +234,12 @@ class _ResetTransactionPinScreenState extends State<ResetTransactionPinScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F8F7),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         title: const Text('Reset Transaction PIN'),
         centerTitle: true,
-        backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF1F2937),
+        backgroundColor: ServicePayColors.canvas,
+        foregroundColor: const Color(0xFFA0BCE3),
         elevation: 0,
       ),
       body: SafeArea(
@@ -253,13 +253,13 @@ class _ResetTransactionPinScreenState extends State<ResetTransactionPinScreen> {
                 height: 84,
                 width: 84,
                 decoration: const BoxDecoration(
-                  color: Color(0xFFE8F5E9),
+                  color: ServicePayColors.brandSoft,
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(
                   Icons.lock_reset_rounded,
                   size: 42,
-                  color: primaryGreen,
+                  color: ServicePayColors.accent,
                 ),
               ),
               const SizedBox(height: 24),
@@ -269,7 +269,7 @@ class _ResetTransactionPinScreenState extends State<ResetTransactionPinScreen> {
                 style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.w700,
-                  color: Color(0xFF1F2937),
+                  color: Color(0xFFA0BCE3),
                 ),
               ),
               const SizedBox(height: 10),
@@ -279,7 +279,7 @@ class _ResetTransactionPinScreenState extends State<ResetTransactionPinScreen> {
                 style: TextStyle(
                   fontSize: 15,
                   height: 1.5,
-                  color: Color(0xFF6B7280),
+                  color: ServicePayColors.muted,
                 ),
               ),
               const SizedBox(height: 32),
@@ -355,7 +355,7 @@ class _ResetTransactionPinScreenState extends State<ResetTransactionPinScreen> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFFF8E1),
+                  color: const Color(0xFF4B3F16),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: const Row(
@@ -372,7 +372,7 @@ class _ResetTransactionPinScreenState extends State<ResetTransactionPinScreen> {
                         style: TextStyle(
                           fontSize: 14,
                           height: 1.4,
-                          color: Color(0xFF6B7280),
+                          color: ServicePayColors.muted,
                         ),
                       ),
                     ),

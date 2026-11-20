@@ -98,9 +98,9 @@ class _CustomerLeaderboardPrivacyPreferenceState
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF1F6F1),
+        color: ServicePayColors.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFDCE8DE)),
+        border: Border.all(color: ServicePayColors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -109,13 +109,13 @@ class _CustomerLeaderboardPrivacyPreferenceState
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               const Icon(Icons.visibility_outlined,
-                  color: ServicePayColors.brand, size: 21),
+                  color: ServicePayColors.accent, size: 21),
               const SizedBox(width: 10),
               const Expanded(
                 child: Text(
                   'Show My Full Name on Champions Leaderboard',
                   style: TextStyle(
-                      color: Color(0xFF18382F),
+                      color: ServicePayColors.accent,
                       fontSize: 13,
                       fontWeight: FontWeight.w800),
                 ),
@@ -125,7 +125,7 @@ class _CustomerLeaderboardPrivacyPreferenceState
                   width: 20,
                   height: 20,
                   child: CircularProgressIndicator(
-                      strokeWidth: 2, color: ServicePayColors.brand),
+                      strokeWidth: 2, color: ServicePayColors.accent),
                 )
               else
                 Switch.adaptive(
@@ -142,7 +142,7 @@ class _CustomerLeaderboardPrivacyPreferenceState
             child: Text(
               'Off by default. When enabled, your registered full name may appear in the monthly rankings.',
               style: TextStyle(
-                  color: Color(0xFF60736A), fontSize: 11, height: 1.45),
+                  color: ServicePayColors.muted, fontSize: 11, height: 1.45),
             ),
           ),
           if (_error != null) ...[
@@ -154,7 +154,7 @@ class _CustomerLeaderboardPrivacyPreferenceState
                     _error!,
                     key: const Key('champions-privacy-error'),
                     style:
-                        const TextStyle(color: Color(0xFFB42318), fontSize: 12),
+                        const TextStyle(color: Color(0xFFF19A93), fontSize: 12),
                   ),
                 ),
                 TextButton(
@@ -170,7 +170,7 @@ class _CustomerLeaderboardPrivacyPreferenceState
               _confirmation!,
               key: const Key('champions-privacy-confirmation'),
               style: const TextStyle(
-                  color: ServicePayColors.brand,
+                  color: ServicePayColors.accent,
                   fontSize: 11,
                   fontWeight: FontWeight.w700),
             ),

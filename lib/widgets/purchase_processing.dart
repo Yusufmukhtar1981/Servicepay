@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../servicepay_theme.dart';
 
 enum PurchasePhase { idle, confirming, processing, success, failed, pending }
 
@@ -83,7 +84,7 @@ class PurchaseProcessing extends StatelessWidget {
                                 'Request ID: $requestId',
                             ].join('. '),
                             child: Material(
-                              color: const Color(0xFFF8FCFA),
+                              color: ServicePayColors.surface,
                               elevation: 18,
                               shadowColor: const Color(0x66051F18),
                               borderRadius: BorderRadius.circular(28),
@@ -92,7 +93,7 @@ class PurchaseProcessing extends StatelessWidget {
                                 width: double.infinity,
                                 decoration: BoxDecoration(
                                   border: Border.all(
-                                    color: const Color(0xFFD5E9DF),
+                                    color: ServicePayColors.border,
                                   ),
                                   borderRadius: BorderRadius.circular(28),
                                 ),
@@ -110,7 +111,7 @@ class PurchaseProcessing extends StatelessWidget {
                                       height: 78,
                                       padding: const EdgeInsets.all(10),
                                       decoration: BoxDecoration(
-                                        color: const Color(0xFFE7F3EC),
+                                        color: ServicePayColors.brandSoft,
                                         borderRadius: BorderRadius.circular(24),
                                       ),
                                       child: Image.asset(
@@ -125,8 +126,8 @@ class PurchaseProcessing extends StatelessWidget {
                                       height: 34,
                                       child: CircularProgressIndicator(
                                         strokeWidth: 3,
-                                        color: Color(0xFF137A50),
-                                        backgroundColor: Color(0xFFD9EADF),
+                                        color: ServicePayColors.accent,
+                                        backgroundColor: ServicePayColors.brandSoft,
                                       ),
                                     ),
                                     const SizedBox(height: 20),
@@ -149,7 +150,7 @@ class PurchaseProcessing extends StatelessWidget {
                                           : 'Please wait while we process your transaction...',
                                       textAlign: TextAlign.center,
                                       style: TextStyle(
-                                        color: Color(0xFF52685D),
+                                        color: ServicePayColors.muted,
                                         height: 1.5,
                                       ),
                                     ),
@@ -158,7 +159,7 @@ class PurchaseProcessing extends StatelessWidget {
                                       'Please do not close the app.',
                                       textAlign: TextAlign.center,
                                       style: TextStyle(
-                                        color: Color(0xFF254C3B),
+                                        color: ServicePayColors.accent,
                                         fontWeight: FontWeight.w700,
                                         height: 1.4,
                                       ),
@@ -172,7 +173,7 @@ class PurchaseProcessing extends StatelessWidget {
                                           vertical: 10,
                                         ),
                                         decoration: BoxDecoration(
-                                          color: const Color(0xFFEDF5F0),
+                                          color: ServicePayColors.brandSoft,
                                           borderRadius:
                                               BorderRadius.circular(14),
                                         ),
@@ -180,7 +181,7 @@ class PurchaseProcessing extends StatelessWidget {
                                           'Request ID: $requestId',
                                           textAlign: TextAlign.center,
                                           style: const TextStyle(
-                                            color: Color(0xFF365B49),
+                                            color: ServicePayColors.accent,
                                             fontSize: 12,
                                             fontWeight: FontWeight.w600,
                                           ),

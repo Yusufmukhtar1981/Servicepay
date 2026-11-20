@@ -249,7 +249,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 12, 24, 28),
       decoration: const BoxDecoration(
-        color: Color(0xFFF8FCF9),
+        color: ServicePayColors.surface,
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       child: SafeArea(
@@ -262,7 +262,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       width: 38,
                       height: 4,
                       decoration: BoxDecoration(
-                          color: const Color(0xFFC8D9CF),
+                          color: ServicePayColors.surface,
                           borderRadius: BorderRadius.circular(9)))),
               const SizedBox(height: 22),
               Text(n['title']?.toString() ?? 'Activity',
@@ -273,7 +273,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                   n['message']?.toString() ??
                       'No additional details are available.',
                   style: const TextStyle(
-                      fontSize: 16, height: 1.45, color: Color(0xFF53675D))),
+                      fontSize: 16, height: 1.45, color: ServicePayColors.muted)),
               if ((n['reference']?.toString().trim().isNotEmpty ?? false) ||
                   (n['referenceId']?.toString().trim().isNotEmpty ??
                       false)) ...[
@@ -281,7 +281,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                 Text(
                     'Reference  ${n['reference']?.toString().trim().isNotEmpty == true ? n['reference'] : n['referenceId']}',
                     style: const TextStyle(
-                        fontSize: 12, color: Color(0xFF71857A))),
+                        fontSize: 12, color: ServicePayColors.muted)),
               ],
               if (_destination(n) != null) ...[
                 const SizedBox(height: 22),
@@ -443,7 +443,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                       onPressed: _search.clear,
                       icon: const Icon(Icons.close_rounded)),
               filled: true,
-              fillColor: Colors.white,
+              fillColor: ServicePayColors.surface,
               border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
                   borderSide: BorderSide.none),
@@ -475,7 +475,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               labelStyle: TextStyle(
                   color: selected ? Colors.white : _ink,
                   fontWeight: FontWeight.w700),
-              backgroundColor: Colors.white,
+              backgroundColor: ServicePayColors.surface,
               side: BorderSide.none,
             );
           },
@@ -528,12 +528,12 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       child: Card(
         margin: const EdgeInsets.only(bottom: 10),
         elevation: 0,
-        color: read ? Colors.white : const Color(0xFFE3F3E8),
+        color: read ? ServicePayColors.surface : const Color(0xFFE3F3E8),
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
             side: BorderSide(
                 color:
-                    read ? const Color(0xFFE2ECE5) : const Color(0xFFB8DEC4))),
+                    read ? ServicePayColors.border : ServicePayColors.border)),
         child: InkWell(
           borderRadius: BorderRadius.circular(18),
           onTap: () => _open(n),
@@ -563,14 +563,14 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                     color: _ink))),
                         Text(_time(n['createdAt']),
                             style: const TextStyle(
-                                fontSize: 11, color: Color(0xFF71857A))),
+                                fontSize: 11, color: ServicePayColors.muted)),
                       ]),
                       const SizedBox(height: 6),
                       Text(n['message']?.toString() ?? '',
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                              height: 1.35, color: Color(0xFF53675D))),
+                              height: 1.35, color: ServicePayColors.muted)),
                       if (!read) ...[
                         const SizedBox(height: 9),
                         const Text('NEW',
@@ -599,7 +599,7 @@ class _LoadingRow extends StatelessWidget {
   Widget build(BuildContext context) => Card(
         margin: const EdgeInsets.only(bottom: 10),
         elevation: 0,
-        color: Colors.white,
+        color: ServicePayColors.surface,
         child: Padding(
             padding: const EdgeInsets.all(18),
             child: Row(children: [
@@ -607,7 +607,7 @@ class _LoadingRow extends StatelessWidget {
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                      color: const Color(0xFFE1EEE5),
+                      color: ServicePayColors.brandSoft,
                       borderRadius: BorderRadius.circular(14))),
               const SizedBox(width: 14),
               Expanded(
@@ -615,15 +615,15 @@ class _LoadingRow extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                     Container(
-                        height: 13, width: 170, color: const Color(0xFFE1EEE5)),
+                        height: 13, width: 170, color: ServicePayColors.brandSoft),
                     const SizedBox(height: 10),
                     Container(
                         height: 11,
                         width: double.infinity,
-                        color: const Color(0xFFEAF2EC)),
+                        color: ServicePayColors.surface),
                     const SizedBox(height: 6),
                     Container(
-                        height: 11, width: 220, color: const Color(0xFFEAF2EC)),
+                        height: 11, width: 220, color: ServicePayColors.surface),
                   ])),
             ])),
       );

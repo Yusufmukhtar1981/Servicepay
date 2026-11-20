@@ -230,7 +230,7 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      backgroundColor: Colors.white,
+      backgroundColor: ServicePayColors.surface,
       builder: (sheetContext) {
         return SafeArea(
           child: Padding(
@@ -249,14 +249,14 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
                   style: TextStyle(
                     fontSize: 21,
                     fontWeight: FontWeight.w900,
-                    color: Color(0xFF17231D),
+                    color: ServicePayColors.accent,
                   ),
                 ),
                 const SizedBox(height: 6),
                 const Text(
                   'Your Business ID will be used to receive transfers from other ServicePay businesses.',
                   style: TextStyle(
-                    color: Color(0xFF718078),
+                    color: ServicePayColors.muted,
                     height: 1.4,
                   ),
                 ),
@@ -403,7 +403,7 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      backgroundColor: Colors.white,
+      backgroundColor: ServicePayColors.surface,
       builder: (sheetContext) {
         return SafeArea(
           child: Padding(
@@ -432,7 +432,7 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
                       ? 'Personal Wallet: ${money(personalWalletBalance)}'
                       : 'Available Business Balance: ${money(availableBalance)}',
                   style: const TextStyle(
-                    color: Color(0xFF718078),
+                    color: ServicePayColors.muted,
                   ),
                 ),
                 const SizedBox(height: 18),
@@ -646,7 +646,7 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      backgroundColor: Colors.white,
+      backgroundColor: ServicePayColors.surface,
       builder: (sheetContext) {
         return SafeArea(
           child: Padding(
@@ -671,7 +671,7 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
                 Text(
                   'Available: ${money(availableBalance)}',
                   style: const TextStyle(
-                    color: Color(0xFF718078),
+                    color: ServicePayColors.muted,
                   ),
                 ),
                 const SizedBox(height: 18),
@@ -917,7 +917,7 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
-      backgroundColor: Colors.white,
+      backgroundColor: ServicePayColors.surface,
       builder: (sheetContext) {
         return SafeArea(
           child: Padding(
@@ -943,7 +943,7 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
                   Text(
                     'Available: ${money(availableBalance)}',
                     style: const TextStyle(
-                      color: Color(0xFF718078),
+                      color: ServicePayColors.muted,
                     ),
                   ),
                   const SizedBox(height: 18),
@@ -992,7 +992,7 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFFFF8E7),
+                      color: const Color(0xFF4B3C16),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: const Text(
@@ -1000,7 +1000,7 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
                       style: TextStyle(
                         fontSize: 11.5,
                         height: 1.4,
-                        color: Color(0xFF725F27),
+                        color: Color(0xFFE3D2A0),
                       ),
                     ),
                   ),
@@ -1200,10 +1200,10 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
       margin: const EdgeInsets.only(bottom: 9),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: ServicePayColors.surface,
         borderRadius: BorderRadius.circular(17),
         border: Border.all(
-          color: const Color(0xFFEDF1EF),
+          color: ServicePayColors.border,
         ),
       ),
       child: Row(
@@ -1230,7 +1230,7 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     fontSize: 10.5,
-                    color: Color(0xFF7A8780),
+                    color: ServicePayColors.muted,
                   ),
                 ),
               ],
@@ -1241,7 +1241,7 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
             money(item['amount']),
             style: const TextStyle(
               fontWeight: FontWeight.w900,
-              color: Color(0xFF26362E),
+              color: ServicePayColors.ink,
             ),
           ),
         ],
@@ -1256,10 +1256,10 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: ServicePayColors.surface,
         borderRadius: BorderRadius.circular(19),
         border: Border.all(
-          color: const Color(0xFFE7ECE9),
+          color: ServicePayColors.border,
         ),
       ),
       child: Row(
@@ -1275,7 +1275,7 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
             ),
             child: const Icon(
               Icons.storefront_rounded,
-              color: primaryGreen,
+              color: ServicePayColors.accent,
             ),
           ),
           const SizedBox(width: 12),
@@ -1292,7 +1292,7 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
                   style: const TextStyle(
                     fontSize: 15.5,
                     fontWeight: FontWeight.w900,
-                    color: Color(0xFF17231D),
+                    color: ServicePayColors.accent,
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -1302,7 +1302,7 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
                       : 'Create your unique Business ID',
                   style: const TextStyle(
                     fontSize: 11.5,
-                    color: Color(0xFF718078),
+                    color: ServicePayColors.muted,
                   ),
                 ),
               ],
@@ -1314,7 +1314,7 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
               onPressed: copyBusinessId,
               icon: const Icon(
                 Icons.copy_rounded,
-                color: primaryGreen,
+                color: ServicePayColors.accent,
                 size: 20,
               ),
             ),
@@ -1323,7 +1323,7 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
             onPressed: setupBusinessProfile,
             icon: Icon(
               configured ? Icons.edit_rounded : Icons.arrow_forward_ios_rounded,
-              color: primaryGreen,
+              color: ServicePayColors.accent,
               size: 20,
             ),
           ),
@@ -1363,10 +1363,10 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
       ),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: ServicePayColors.surface,
         borderRadius: BorderRadius.circular(17),
         border: Border.all(
-          color: const Color(0xFFEDF1EF),
+          color: ServicePayColors.border,
         ),
       ),
       child: Row(
@@ -1380,7 +1380,7 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
             ),
             child: Icon(
               credit ? Icons.south_west_rounded : Icons.north_east_rounded,
-              color: primaryGreen,
+              color: ServicePayColors.accent,
               size: 21,
             ),
           ),
@@ -1393,7 +1393,7 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
                   narration.isNotEmpty ? narration : 'Business transaction',
                   style: const TextStyle(
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF26362E),
+                    color: ServicePayColors.ink,
                   ),
                 ),
                 if (reference.isNotEmpty) ...[
@@ -1421,7 +1421,7 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
             style: TextStyle(
               fontWeight: FontWeight.w900,
               color: credit
-                  ? primaryGreen
+                  ? ServicePayColors.accent
                   : const Color(
                       0xFF4C5A53,
                     ),
@@ -1437,7 +1437,7 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
     BuildContext context,
   ) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF7F9F8),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         title: const Text(
           'Business Wallet',
@@ -1445,7 +1445,7 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
             fontWeight: FontWeight.w800,
           ),
         ),
-        backgroundColor: const Color(0xFFF7F9F8),
+        backgroundColor: ServicePayColors.canvas,
         surfaceTintColor: Colors.transparent,
       ),
       body: RefreshIndicator(
@@ -1581,7 +1581,7 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w900,
-                        color: Color(0xFF17231D),
+                        color: ServicePayColors.accent,
                       ),
                     ),
                     const SizedBox(height: 11),
@@ -1595,7 +1595,7 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w900,
-                      color: Color(0xFF17231D),
+                      color: ServicePayColors.accent,
                     ),
                   ),
                   const SizedBox(height: 11),
@@ -1606,7 +1606,7 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
                         horizontal: 20,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: ServicePayColors.surface,
                         borderRadius: BorderRadius.circular(
                           18,
                         ),
@@ -1672,7 +1672,7 @@ class _ActionCard extends StatelessWidget {
     BuildContext context,
   ) {
     return Material(
-      color: Colors.white,
+      color: ServicePayColors.surface,
       borderRadius: BorderRadius.circular(18),
       child: InkWell(
         onTap: onTap,
@@ -1695,7 +1695,7 @@ class _ActionCard extends StatelessWidget {
                 ),
                 child: Icon(
                   icon,
-                  color: ServicePayColors.brand,
+                  color: ServicePayColors.accent,
                   size: 22,
                 ),
               ),
@@ -1733,7 +1733,7 @@ class _WideActionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: Colors.white,
+      color: ServicePayColors.surface,
       borderRadius: BorderRadius.circular(18),
       child: InkWell(
         onTap: onTap,
@@ -1754,7 +1754,7 @@ class _WideActionCard extends StatelessWidget {
                 ),
                 child: Icon(
                   icon,
-                  color: ServicePayColors.brand,
+                  color: ServicePayColors.accent,
                   size: 22,
                 ),
               ),
@@ -1774,7 +1774,7 @@ class _WideActionCard extends StatelessWidget {
                       subtitle,
                       style: const TextStyle(
                         fontSize: 10.8,
-                        color: Color(0xFF718078),
+                        color: ServicePayColors.muted,
                       ),
                     ),
                   ],
@@ -1783,7 +1783,7 @@ class _WideActionCard extends StatelessWidget {
               const Icon(
                 Icons.arrow_forward_ios_rounded,
                 size: 16,
-                color: ServicePayColors.brand,
+                color: ServicePayColors.accent,
               ),
             ],
           ),

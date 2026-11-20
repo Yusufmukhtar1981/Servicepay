@@ -182,7 +182,7 @@ class _TrackDeliveryScreenState
             ),
             child: Icon(
               icon,
-              color: ServicePayColors.brand,
+              color: ServicePayColors.accent,
               size: 21,
             ),
           ),
@@ -195,7 +195,7 @@ class _TrackDeliveryScreenState
                 Text(
                   title,
                   style: const TextStyle(
-                    color: Color(0xFF6B7280),
+                    color: ServicePayColors.muted,
                     fontSize: 12,
                   ),
                 ),
@@ -203,7 +203,7 @@ class _TrackDeliveryScreenState
                 Text(
                   value.isEmpty ? '-' : value,
                   style: const TextStyle(
-                    color: Color(0xFF111827),
+                    color: Color(0xFFA0B6E3),
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                     height: 1.4,
@@ -250,10 +250,10 @@ class _TrackDeliveryScreenState
       width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: ServicePayColors.surface,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: const Color(0xFFE5E7EB),
+          color: ServicePayColors.border,
         ),
       ),
       child: Column(
@@ -281,7 +281,7 @@ class _TrackDeliveryScreenState
                       'Delivery Status',
                       style: TextStyle(
                         fontSize: 12,
-                        color: Color(0xFF6B7280),
+                        color: ServicePayColors.muted,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -358,8 +358,8 @@ class _TrackDeliveryScreenState
           ),
         ),
         centerTitle: true,
-        backgroundColor: Colors.white,
-        foregroundColor: const Color(0xFF111827),
+        backgroundColor: ServicePayColors.canvas,
+        foregroundColor: const Color(0xFFA0B6E3),
         iconTheme: const IconThemeData(
           color: ServicePayColors.ink,
         ),
@@ -423,7 +423,7 @@ class _TrackDeliveryScreenState
                   prefixIcon:
                       const Icon(Icons.qr_code_scanner),
                   filled: true,
-                  fillColor: Colors.white,
+                  fillColor: ServicePayColors.surface,
                   border: OutlineInputBorder(
                     borderRadius:
                         BorderRadius.circular(14),

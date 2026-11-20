@@ -918,7 +918,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
             28,
           ),
           decoration: const BoxDecoration(
-            color: Colors.white,
+            color: ServicePayColors.surface,
             borderRadius: BorderRadius.vertical(
               top: Radius.circular(26),
             ),
@@ -933,7 +933,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                     width: 46,
                     height: 5,
                     decoration: BoxDecoration(
-                      color: Colors.grey.shade300,
+                      color: ServicePayColors.surface,
                       borderRadius: BorderRadius.circular(20),
                     ),
                   ),
@@ -943,7 +943,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                     backgroundColor: ServicePayColors.brandSoft,
                     child: Icon(
                       _transactionIcon(title),
-                      color: primaryGreen,
+                      color: ServicePayColors.accent,
                       size: 31,
                     ),
                   ),
@@ -1114,7 +1114,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
           child: isLoading
               ? const Center(
                   child: CircularProgressIndicator(
-                    color: primaryGreen,
+                    color: ServicePayColors.accent,
                   ),
                 )
               : RefreshIndicator(
@@ -1155,7 +1155,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                           hintText: 'Search transactions...',
                           prefixIcon: const Icon(
                             Icons.search_rounded,
-                            color: primaryGreen,
+                            color: ServicePayColors.accent,
                           ),
                           suffixIcon: searchQuery.isEmpty
                               ? null
@@ -1172,11 +1172,11 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                                   ),
                                 ),
                           filled: true,
-                          fillColor: Colors.white,
+                          fillColor: ServicePayColors.surface,
                           enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(16),
                             borderSide: BorderSide(
-                              color: Colors.grey.shade200,
+                              color: ServicePayColors.border,
                             ),
                           ),
                           focusedBorder: OutlineInputBorder(
@@ -1208,7 +1208,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                               selectedColor: ServicePayColors.brandSoft,
                               labelStyle: TextStyle(
                                 color: selected
-                                    ? primaryGreen
+                                    ? ServicePayColors.accent
                                     : Colors.grey.shade700,
                                 fontWeight: FontWeight.w700,
                               ),
@@ -1294,7 +1294,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                         Text(
                           '${visible.length} transaction${visible.length == 1 ? '' : 's'}',
                           style: const TextStyle(
-                            color: Color(0xFF6B7280),
+                            color: ServicePayColors.muted,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -1358,7 +1358,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                                       width: 26,
                                       height: 26,
                                       child: CircularProgressIndicator(
-                                        color: primaryGreen,
+                                        color: ServicePayColors.accent,
                                         strokeWidth: 2.4,
                                       ),
                                     )
@@ -1415,7 +1415,7 @@ class _TransactionCard extends StatelessWidget {
       label:
           '$title, ${direction == 'CREDIT' ? 'credit' : 'debit'} ${status.toLowerCase()}',
       child: Material(
-        color: Colors.white,
+        color: ServicePayColors.surface,
         borderRadius: BorderRadius.circular(17),
         child: InkWell(
           onTap: onTap,
@@ -1425,7 +1425,7 @@ class _TransactionCard extends StatelessWidget {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(17),
               border: Border.all(
-                color: const Color(0xFFE8ECE8),
+                color: ServicePayColors.border,
               ),
             ),
             child: Row(
@@ -1434,12 +1434,12 @@ class _TransactionCard extends StatelessWidget {
                   width: 48,
                   height: 48,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFE8F5E9),
+                    color: ServicePayColors.brandSoft,
                     borderRadius: BorderRadius.circular(15),
                   ),
                   child: Icon(
                     icon,
-                    color: ServicePayColors.brand,
+                    color: ServicePayColors.accent,
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -1452,7 +1452,7 @@ class _TransactionCard extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          color: Color(0xFF171A18),
+                          color: ServicePayColors.ink,
                           fontSize: 15,
                           fontWeight: FontWeight.w800,
                         ),
@@ -1464,7 +1464,7 @@ class _TransactionCard extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            color: Color(0xFF777D78),
+                            color: ServicePayColors.muted,
                             fontSize: 12,
                           ),
                         ),
@@ -1622,7 +1622,7 @@ class _TransactionIssueDialogState extends State<_TransactionIssueDialog> {
             Text(
               '${widget.transactionTitle}\n$reference',
               style: const TextStyle(
-                color: Color(0xFF6B7280),
+                color: ServicePayColors.muted,
                 fontSize: 13,
               ),
             ),
@@ -1727,7 +1727,7 @@ class _TransactionTimeline extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
+        color: ServicePayColors.surface,
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
@@ -1739,7 +1739,7 @@ class _TransactionTimeline extends StatelessWidget {
           if (events.isEmpty)
             Text(
               'Current status: $status. No event timestamps were provided.',
-              style: const TextStyle(color: Color(0xFF6B7280)),
+              style: const TextStyle(color: ServicePayColors.muted),
             )
           else
             for (final event in events)
@@ -1747,7 +1747,7 @@ class _TransactionTimeline extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(vertical: 3),
                 child: Text(
                   '${event.key} • ${_format(event.value)}',
-                  style: const TextStyle(color: Color(0xFF4B5563)),
+                  style: const TextStyle(color: ServicePayColors.muted),
                 ),
               ),
         ],
@@ -1770,17 +1770,17 @@ class _ErrorState extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: ServicePayColors.surface,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: const Color(0xFFFECACA),
+          color: const Color(0xFFAB2B2B),
         ),
       ),
       child: Column(
         children: [
           const Icon(
             Icons.error_outline_rounded,
-            color: Color(0xFFDC2626),
+            color: Color(0xFFEE9696),
             size: 48,
           ),
           const SizedBox(height: 12),
@@ -1788,7 +1788,7 @@ class _ErrorState extends StatelessWidget {
             message,
             textAlign: TextAlign.center,
             style: const TextStyle(
-              color: Color(0xFF6B7280),
+              color: ServicePayColors.muted,
               height: 1.4,
             ),
           ),
@@ -1817,10 +1817,10 @@ class _EmptyState extends StatelessWidget {
         horizontal: 22,
       ),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: ServicePayColors.surface,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
-          color: const Color(0xFFE8ECE8),
+          color: ServicePayColors.border,
         ),
       ),
       child: const Column(
@@ -1843,7 +1843,7 @@ class _EmptyState extends StatelessWidget {
             'Transactions matching your filters will appear here.',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Color(0xFF777D78),
+              color: ServicePayColors.muted,
             ),
           ),
         ],
@@ -1871,7 +1871,7 @@ class _DetailRow extends StatelessWidget {
       decoration: const BoxDecoration(
         border: Border(
           bottom: BorderSide(
-            color: Color(0xFFE8ECE8),
+            color: ServicePayColors.border,
           ),
         ),
       ),
@@ -1883,7 +1883,7 @@ class _DetailRow extends StatelessWidget {
             child: Text(
               label,
               style: const TextStyle(
-                color: Color(0xFF777D78),
+                color: ServicePayColors.muted,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -1893,7 +1893,7 @@ class _DetailRow extends StatelessWidget {
               value,
               textAlign: TextAlign.right,
               style: const TextStyle(
-                color: Color(0xFF171A18),
+                color: ServicePayColors.ink,
                 fontWeight: FontWeight.w700,
               ),
             ),
