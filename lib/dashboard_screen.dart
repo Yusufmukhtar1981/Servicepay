@@ -3143,16 +3143,14 @@ class _DashboardScreenState extends State<DashboardScreen>
           item.title.toLowerCase(): item,
       };
     // Home and All Services share the same existing, permission-filtered
-    // entries and callbacks. Keep the familiar first rows, then show the rest.
+    // entries and callbacks. Only the approved nine appear on Home.
     const preferred = <String>[
-      'data', 'airtime', 'delivery', 'edupay', 'marketplace', 'electricity',
-      'nin verification', 'keke napep', 'flight booking',
+      'data', 'airtime', 'delivery', 'nin verification', 'marketplace',
+      'electricity', 'edupay', 'keke napep', 'flight booking',
     ];
     final quick = <_DashboardService>[
       for (final title in preferred)
         if (unique[title] != null) unique[title]!,
-      for (final entry in unique.entries)
-        if (!preferred.contains(entry.key)) entry.value,
     ];
     final CustomerFeatureConfig allServicesGate =
         _featureForKey('ALL_SERVICES');
