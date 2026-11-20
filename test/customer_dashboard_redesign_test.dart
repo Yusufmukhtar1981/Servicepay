@@ -112,7 +112,7 @@ void main() {
     );
   });
 
-  testWidgets('announcement surface follows the wallet and insights',
+  testWidgets('announcement surface remains between services and insights',
       (WidgetTester tester) async {
     for (final Size size in <Size>[
       const Size(390, 844),
@@ -134,7 +134,9 @@ void main() {
           .getTopLeft(find.byKey(const Key('customer-transaction-insights')))
           .dy;
       expect(insightsTop, greaterThan(walletTop));
-      expect(promoTop, greaterThan(insightsTop));
+      expect(promoTop, lessThan(insightsTop));
+      expect(promoTop, greaterThan(tester.getTopLeft(
+          find.byKey(const Key('customer-quick-services'))).dy));
       expect(
         find
                 .byKey(const Key('announcement-loading-state'))
@@ -152,7 +154,7 @@ void main() {
   });
 
   testWidgets(
-      'order is wallet, funding account, insights, services, then referral',
+      'order is wallet, account, services, business, activity, insights, referral',
       (WidgetTester tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 844));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -199,11 +201,20 @@ void main() {
     final funding = top(const Key('customer-funding-account'));
     final insights = top(const Key('customer-transaction-insights'));
     final services = top(const Key('customer-quick-services'));
+    final business = top(const Key('customer-business-hub-entry'));
+    final activity = top(const Key('customer-recent-activity'));
     final referral = top(const Key('customer-referral-surface'));
     expect(wallet, lessThan(funding));
-    expect(funding, lessThan(insights));
-    expect(insights, lessThan(services));
-    expect(services, lessThan(referral));
+    expect(funding, lessThan(services));
+    expect(services, lessThan(business));
+    expect(business, lessThan(activity));
+    expect(activity, lessThan(insights));
+    expect(insights, lessThan(referral));
+    for (final key in ['customer-quick-services', 'customer-business-hub-entry',
+      'customer-recent-activity', 'customer-transaction-insights',
+      'customer-referral-surface']) {
+      expect(find.byKey(Key(key)), findsOneWidget);
+    }
     // Referral is reached only after scrolling on a 390x844 phone.
     expect(referral, greaterThan(844));
     expect(find.text('0123456789'), findsOneWidget);

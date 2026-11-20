@@ -3097,28 +3097,6 @@ class _DashboardScreenState extends State<DashboardScreen>
         item.title.toLowerCase(): item,
     };
 
-    final List<_DashboardService> quick = <_DashboardService>[
-      for (final String wanted in <String>[
-        'data',
-        'airtime',
-        'delivery',
-        'edupay',
-        'marketplace',
-        'electricity',
-        'nin verification',
-        'keke napep',
-        'flight booking',
-      ])
-        if (byTitle[wanted] != null) byTitle[wanted]!,
-    ];
-    final CustomerFeatureConfig allServicesGate =
-        _featureForKey('ALL_SERVICES');
-
-    void openAllServices() {
-      if (allServicesGate.isBlocked) {
-        _showFeatureUnavailable(allServicesGate);
-        return;
-      }
       final List<_DashboardService> all = <_DashboardService>[
         ...byTitle.values,
         _customerServiceEntry(
@@ -3164,6 +3142,26 @@ class _DashboardScreenState extends State<DashboardScreen>
         for (final _DashboardService item in all)
           item.title.toLowerCase(): item,
       };
+    // Home and All Services share the same existing, permission-filtered
+    // entries and callbacks. Keep the familiar first rows, then show the rest.
+    const preferred = <String>[
+      'data', 'airtime', 'delivery', 'edupay', 'marketplace', 'electricity',
+      'nin verification', 'keke napep', 'flight booking',
+    ];
+    final quick = <_DashboardService>[
+      for (final title in preferred)
+        if (unique[title] != null) unique[title]!,
+      for (final entry in unique.entries)
+        if (!preferred.contains(entry.key)) entry.value,
+    ];
+    final CustomerFeatureConfig allServicesGate =
+        _featureForKey('ALL_SERVICES');
+
+    void openAllServices() {
+      if (allServicesGate.isBlocked) {
+        _showFeatureUnavailable(allServicesGate);
+        return;
+      }
       openScreen(_ServicePayAllServicesScreen(
         services: unique.values.toList(),
       ));
@@ -5988,12 +5986,9 @@ class _DashboardScreenState extends State<DashboardScreen>
                       buildFundingAccountCard(),
                       if (fundingAccountNumber.isNotEmpty)
                         const SizedBox(height: 14),
-                      CustomerTransactionInsightsSection(
-                        client: _client,
-                        refreshVersion: _championsRefreshVersion,
-                        onOpenHistory: () =>
-                            openScreen(const TransactionsScreen()),
-                      ),
+                      buildCustomerQuickServices(),
+                      const SizedBox(height: 14),
+                      _buildBusinessHubEntry(),
                       const SizedBox(height: 14),
                       // Admin announcements (and their popup lifecycle) stay in
                       // this single surface. Referral is presented separately
@@ -6038,20 +6033,27 @@ class _DashboardScreenState extends State<DashboardScreen>
                         refreshVersion: _championsRefreshVersion,
                       ),
                       const SizedBox(height: 12),
-                      buildCustomerQuickServices(),
-                      const SizedBox(height: 14),
                       if (isLoadingServiceStatuses ||
                           activeServiceStatuses.isNotEmpty) ...[
                         const SizedBox(height: 14),
                         buildActiveServiceStatuses(),
                         const SizedBox(height: 14),
                       ],
-                      _buildBusinessHubEntry(),
                       if (schoolPortalMemberships.isNotEmpty) ...[
                         const SizedBox(height: 14),
                         buildSchoolPortalCard(),
                       ],
-                      buildRecentActivity(),
+                      KeyedSubtree(
+                        key: const Key('customer-recent-activity'),
+                        child: buildRecentActivity(),
+                      ),
+                      const SizedBox(height: 14),
+                      CustomerTransactionInsightsSection(
+                        client: _client,
+                        refreshVersion: _championsRefreshVersion,
+                        onOpenHistory: () =>
+                            openScreen(const TransactionsScreen()),
+                      ),
                       if (_referralPresentationPolicy != null) ...[
                         const SizedBox(height: 18),
                         CustomerCampaignFrame(
