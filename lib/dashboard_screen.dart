@@ -5741,7 +5741,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        color: CustomerDashboardPalette.navy,
+                        color: CustomerDashboardPalette.text,
                         fontSize: 12.5,
                         fontWeight: FontWeight.w800,
                       ),

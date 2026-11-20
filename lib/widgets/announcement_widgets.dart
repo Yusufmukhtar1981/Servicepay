@@ -816,7 +816,7 @@ class _ReferralArtworkPainter extends CustomPainter {
         text: TextSpan(
           text: reward,
           style: const TextStyle(
-            color: Color(0xFFF0D293),
+            color: ServicePayColors.onAccent,
             fontSize: 11,
             fontWeight: FontWeight.w900,
           ),

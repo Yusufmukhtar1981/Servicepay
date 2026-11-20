@@ -228,6 +228,10 @@ void main() {
         greaterThanOrEqualTo(4.5));
     expect(ratio(CustomerDashboardPalette.muted, CustomerDashboardPalette.card),
         greaterThanOrEqualTo(4.5));
+    expect(ratio(CustomerDashboardPalette.text, CustomerDashboardPalette.card),
+        greaterThanOrEqualTo(4.5));
+    expect(ratio(ServicePayColors.onAccent, const Color(0xFFFFC94A)),
+        greaterThanOrEqualTo(4.5));
     // Bright emerald CTAs (Refer Now, Buy, Verify Meter) carry deep forest.
     expect(ratio(ServicePayColors.onAccent, ServicePayColors.accent),
         greaterThanOrEqualTo(4.5));
