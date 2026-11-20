@@ -322,6 +322,11 @@ app.use(
 app.use("/api/calls", callRoutes);
 
 app.use("/api/admin/revenue", require("./routes/adminRevenue.routes"));
+// New inventory routes have their own existing staff authentication/permissions.
+// Mount before the broad legacy Admin router; never provision during startup.
+const enterpriseDevices = require("./routes/enterpriseDevice.routes");
+app.use("/api/admin/enterprise-devices", enterpriseDevices.createAdminRouter());
+app.use("/api/device-companion", enterpriseDevices.createCompanionRouter());
 app.use(
   "/api/admin",
   adminRoutes

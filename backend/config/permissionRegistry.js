@@ -2,6 +2,9 @@ const permission = (key, value, module, label, description, risk = "STANDARD") =
   Object.freeze({ key, value, module, label, description, risk });
 
 const STAFF_PERMISSION_CATALOG = Object.freeze([
+  permission("ENTERPRISE_DEVICES_VIEW", "enterprise.devices.view", "ENTERPRISE_DEVICES", "View enterprise devices", "Read company device inventory and audited identifiers."),
+  permission("ENTERPRISE_DEVICES_MANAGE", "enterprise.devices.manage", "ENTERPRISE_DEVICES", "Manage enterprise devices", "Register, assign, retire and configure company devices.", "PRIVILEGED"),
+  permission("ENTERPRISE_DEVICES_ENROLL", "enterprise.devices.enroll", "ENTERPRISE_DEVICES", "Enroll enterprise companions", "Issue single-use enrollment and revoke device access.", "PRIVILEGED"),
   permission("BUSINESS_NETWORK_VIEW", "business_network.view", "BUSINESS_NETWORK", "View Business Network", "Read retail Agent and SME Merchant records within the verified management scope.", "PRIVILEGED"),
   permission("BUSINESS_NETWORK_MANAGE", "business_network.manage", "BUSINESS_NETWORK", "Manage Business Network", "Head Office application review and business configuration; no wallet or bank authority.", "HIGH"),
   permission("BUSINESS_NETWORK_EXPORT", "business_network.export", "BUSINESS_NETWORK", "Export Business Network reports", "Export business transactions within the verified management scope.", "PRIVILEGED"),
