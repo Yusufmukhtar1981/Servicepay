@@ -194,7 +194,11 @@ class _MainNavigationState extends State<MainNavigation> {
         top: false,
         minimum: const EdgeInsets.fromLTRB(10, 0, 10, 8),
         child: Container(
-          height: userRole == 'DELIVERY_RIDER' ? 78 : 82,
+          height: userRole == 'DELIVERY_RIDER'
+              ? 78
+              : userRole == 'CUSTOMER'
+                  ? _customerNavigationHeight(context)
+                  : 82,
           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 6),
           decoration: BoxDecoration(
             color: userRole == 'CUSTOMER'
@@ -254,6 +258,31 @@ class _MainNavigationState extends State<MainNavigation> {
         label: 'Profile',
       ),
     ];
+  }
+
+  double _customerNavigationHeight(BuildContext context) {
+    final double labelWidth =
+        ((MediaQuery.sizeOf(context).width - 36) / 4 - 8)
+            .clamp(24.0, double.infinity)
+            .toDouble();
+    double tallestLabel = 0;
+    for (final String label in const ['Home', 'Transactions', 'Wallet', 'Profile']) {
+      final TextPainter painter = TextPainter(
+        text: TextSpan(
+          text: label,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                fontSize: 14,
+                height: 1.15,
+                fontWeight: FontWeight.w700,
+              ),
+        ),
+        textDirection: Directionality.of(context),
+        textScaler: MediaQuery.textScalerOf(context),
+      )..layout(maxWidth: labelWidth);
+      if (painter.height > tallestLabel) tallestLabel = painter.height;
+      painter.dispose();
+    }
+    return (58 + tallestLabel).clamp(82.0, double.infinity).toDouble();
   }
 
   List<Widget> _customerNavigationItems() {
@@ -389,14 +418,19 @@ class _MainNavigationState extends State<MainNavigation> {
                     width: double.infinity,
                     child: Text(
                       label,
-                      maxLines: 1,
+                      maxLines: customerNavigation ? null : 1,
                       textAlign: TextAlign.center,
-                      overflow: TextOverflow.ellipsis,
+                      overflow: customerNavigation
+                          ? TextOverflow.visible
+                          : TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: label == 'Transactions' ? 9 : 10,
-                        height: 1,
-                        fontWeight:
-                            selected ? FontWeight.w800 : FontWeight.w600,
+                        fontSize: customerNavigation
+                            ? 14
+                            : (label == 'Transactions' ? 9 : 10),
+                        height: customerNavigation ? 1.15 : 1,
+                        fontWeight: customerNavigation
+                            ? (selected ? FontWeight.w700 : FontWeight.w600)
+                            : (selected ? FontWeight.w800 : FontWeight.w600),
                         color: selected
                             ? activeColor
                             : customerNavigation

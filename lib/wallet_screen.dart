@@ -798,7 +798,7 @@ class _WalletScreenState extends State<WalletScreen> {
             style: TextStyle(
               color: ServicePayColors.ink,
               fontSize: 24,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w700,
             ),
           ),
           actions: [
@@ -949,7 +949,8 @@ class _WalletScreenState extends State<WalletScreen> {
                         userPhone,
                         style: TextStyle(
                           color: CustomerDashboardPalette.onWallet,
-                          fontSize: 12,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
                   ],
@@ -976,7 +977,8 @@ class _WalletScreenState extends State<WalletScreen> {
             isUsingSavedBalance ? 'Last Saved Balance' : 'Available Balance',
             style: TextStyle(
               color: CustomerDashboardPalette.onWallet,
-              fontSize: 13,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
             ),
           ),
           const SizedBox(height: 5),
@@ -989,9 +991,9 @@ class _WalletScreenState extends State<WalletScreen> {
               key: ValueKey(hideBalance),
               style: const TextStyle(
                 color: CustomerDashboardPalette.onWallet,
-                fontSize: 31,
-                fontWeight: FontWeight.w900,
-                letterSpacing: -0.6,
+                fontSize: 36,
+                fontWeight: FontWeight.w700,
+                letterSpacing: -0.5,
               ),
             ),
           ),
@@ -1023,7 +1025,7 @@ class _WalletScreenState extends State<WalletScreen> {
               walletNotice,
               style: const TextStyle(
                 color: Color(0xFFF2AA91),
-                fontSize: 12,
+                fontSize: 14,
                 height: 1.4,
                 fontWeight: FontWeight.w600,
               ),
@@ -1093,7 +1095,7 @@ class _WalletScreenState extends State<WalletScreen> {
                         style: TextStyle(
                           color: ServicePayColors.ink,
                           fontSize: 17,
-                          fontWeight: FontWeight.w800,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                       SizedBox(height: 2),
@@ -1101,7 +1103,7 @@ class _WalletScreenState extends State<WalletScreen> {
                         'Transfer money here to fund your wallet.',
                         style: TextStyle(
                           color: ServicePayColors.muted,
-                          fontSize: 12,
+                          fontSize: 14,
                         ),
                       ),
                     ],
@@ -1119,7 +1121,7 @@ class _WalletScreenState extends State<WalletScreen> {
                   : virtualAccountBank,
               style: const TextStyle(
                 color: ServicePayColors.ink,
-                fontSize: 13,
+                fontSize: 15,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -1133,7 +1135,7 @@ class _WalletScreenState extends State<WalletScreen> {
                       color: ServicePayColors.ink,
                       fontSize: 27,
                       letterSpacing: 1.2,
-                      fontWeight: FontWeight.w900,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ),
@@ -1152,7 +1154,7 @@ class _WalletScreenState extends State<WalletScreen> {
               'Account Name',
               style: TextStyle(
                 color: ServicePayColors.muted,
-                fontSize: 11,
+                fontSize: 14,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -1186,7 +1188,7 @@ class _WalletScreenState extends State<WalletScreen> {
                       'Money sent to this account will be credited to your ServicePay wallet automatically after confirmation.',
                       style: TextStyle(
                         color: ServicePayColors.accent,
-                        fontSize: 12,
+                        fontSize: 14,
                         height: 1.4,
                       ),
                     ),
@@ -1225,7 +1227,7 @@ class _WalletScreenState extends State<WalletScreen> {
             style: TextStyle(
               color: ServicePayColors.ink,
               fontSize: 17,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: 7),
@@ -1234,7 +1236,7 @@ class _WalletScreenState extends State<WalletScreen> {
             textAlign: TextAlign.center,
             style: const TextStyle(
               color: ServicePayColors.muted,
-              fontSize: 13,
+              fontSize: 15,
               height: 1.45,
             ),
           ),
@@ -1318,8 +1320,8 @@ class _WalletScreenState extends State<WalletScreen> {
         status,
         style: TextStyle(
           color: color,
-          fontSize: 9,
-          fontWeight: FontWeight.w800,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
         ),
       ),
     );
@@ -1358,7 +1360,7 @@ class _WalletScreenState extends State<WalletScreen> {
                       'Generate Statement',
                       style: TextStyle(
                         color: ServicePayColors.ink,
-                        fontWeight: FontWeight.w800,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                     SizedBox(height: 3),
@@ -1366,7 +1368,7 @@ class _WalletScreenState extends State<WalletScreen> {
                       'Get a server-prepared PDF for your chosen dates',
                       style: TextStyle(
                         color: ServicePayColors.muted,
-                        fontSize: 12,
+                        fontSize: 14,
                       ),
                     ),
                   ],
@@ -1392,7 +1394,7 @@ class _WalletScreenState extends State<WalletScreen> {
           style: TextStyle(
             color: ServicePayColors.ink,
             fontSize: 19,
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w700,
           ),
         ),
         Align(
@@ -1462,7 +1464,7 @@ class _WalletScreenState extends State<WalletScreen> {
             style: TextStyle(
               color: ServicePayColors.ink,
               fontSize: 16,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w700,
             ),
           ),
           SizedBox(height: 6),
@@ -1471,7 +1473,7 @@ class _WalletScreenState extends State<WalletScreen> {
             textAlign: TextAlign.center,
             style: TextStyle(
               color: ServicePayColors.muted,
-              fontSize: 13,
+              fontSize: 15,
             ),
           ),
         ],
@@ -1535,7 +1537,7 @@ class _WalletScreenState extends State<WalletScreen> {
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   color: ServicePayColors.muted,
-                  fontSize: 11,
+                  fontSize: 14,
                 ),
               ),
             ),
@@ -1550,8 +1552,8 @@ class _WalletScreenState extends State<WalletScreen> {
         '${isCredit ? '+' : '-'}₦${_formatMoney(amount)}',
         style: TextStyle(
           color: transactionColor,
-          fontSize: 13,
-          fontWeight: FontWeight.w800,
+          fontSize: 15,
+          fontWeight: FontWeight.w700,
         ),
       ),
     );

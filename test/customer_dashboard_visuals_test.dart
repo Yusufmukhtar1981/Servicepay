@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -196,6 +197,8 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     for (final Size size in <Size>[
       const Size(320, 760),
+      const Size(390, 844),
+      const Size(768, 1024),
       const Size(1440, 960),
     ]) {
       tester.view.physicalSize = size;
@@ -249,6 +252,76 @@ void main() {
     ]) {
       expect(ratio(c, ServicePayColors.surface), greaterThanOrEqualTo(4.5));
       expect(ratio(c, ServicePayColors.canvas), greaterThanOrEqualTo(4.5));
+    }
+  });
+
+  test('wallet foreground is exact forest green with AA contrast', () {
+    expect(CustomerDashboardPalette.onWallet, const Color(0xFF003D30));
+  });
+
+  testWidgets('transaction rows wrap long phone, date and amount readably',
+      (WidgetTester tester) async {
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    const String phone = 'To 08031234567';
+    const String date = '28/11/2026 • 14:07';
+    for (final double scale in <double>[1, 2]) {
+      for (final Size size in <Size>[
+        const Size(320, 900),
+        const Size(390, 900),
+        const Size(768, 900),
+        const Size(1440, 900),
+      ]) {
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1;
+        await tester.pumpWidget(MaterialApp(
+          theme: ServicePayTheme.customer(),
+          home: MediaQuery(
+            data: MediaQueryData(
+              size: size,
+              textScaler: TextScaler.linear(scale),
+            ),
+            child: Scaffold(
+              body: SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: CustomerTransactionCard(
+                    title: 'Airtime Purchase',
+                    description: phone,
+                    amount: 1250000.75,
+                    direction: 'DEBIT',
+                    status: 'PENDING',
+                    date: date,
+                    icon: Icons.phone_android_rounded,
+                    statusColor: ServicePayColors.warning,
+                    directionColor: ServicePayColors.danger,
+                    onTap: () {},
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ));
+        expect(tester.takeException(), isNull,
+            reason: 'No overflow at $size x$scale');
+        RenderParagraph para(String text) =>
+            tester.renderObject<RenderParagraph>(find.text(text));
+        final RenderParagraph amount = para('-₦1250000.75');
+        expect(amount.didExceedMaxLines, isFalse);
+        expect(amount.text.style?.fontSize, greaterThanOrEqualTo(19));
+        expect(tester.getRect(find.text('-₦1250000.75')).right,
+            lessThanOrEqualTo(size.width));
+        final RenderParagraph dateText = para(date);
+        expect(dateText.didExceedMaxLines, isFalse);
+        expect(dateText.text.style?.fontSize, greaterThanOrEqualTo(14));
+        final RenderParagraph phoneText = para(phone);
+        expect(phoneText.text.style?.fontSize, greaterThanOrEqualTo(15));
+        expect(phoneText.text.style?.color, Colors.white);
+        expect(phoneText.didExceedMaxLines, isFalse);
+        final RenderParagraph badge = para('PENDING');
+        expect(badge.didExceedMaxLines, isFalse);
+        expect(badge.text.style?.fontSize, greaterThanOrEqualTo(14));
+      }
     }
   });
 }

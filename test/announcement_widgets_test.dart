@@ -732,7 +732,7 @@ void main() {
 
     expect(find.byIcon(Icons.account_balance_wallet_rounded), findsOneWidget);
     final Size size = tester.getSize(find.byType(PageView));
-    expect(size.height, lessThan(230));
+    expect(size.height, lessThan(270));
   });
 
   testWidgets('POPUP-only announcements never create a promotion carousel',
@@ -830,7 +830,7 @@ void main() {
 
     expect(tester.takeException(), isNull);
     expect(find.text('Review offer'), findsOneWidget);
-    expect(tester.getSize(find.byType(PageView)).height, 194);
+    expect(tester.getSize(find.byType(PageView)).height, 244);
   });
 
   testWidgets(
@@ -870,7 +870,7 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.text('Review this offer'), findsOneWidget);
     expect(find.text('Acknowledge'), findsOneWidget);
-    expect(tester.getSize(find.byType(PageView)).height, greaterThan(194));
+    expect(tester.getSize(find.byType(PageView)).height, greaterThan(244));
   });
 
   testWidgets(
@@ -911,7 +911,7 @@ void main() {
       expect(tester.takeException(), isNull, reason: 'viewport width $width');
       expect(find.text('Review this offer'), findsOneWidget);
       expect(find.text('Acknowledge'), findsOneWidget);
-      expect(tester.getSize(find.byType(PageView)).height, greaterThan(194));
+      expect(tester.getSize(find.byType(PageView)).height, greaterThan(244));
     }
   });
 

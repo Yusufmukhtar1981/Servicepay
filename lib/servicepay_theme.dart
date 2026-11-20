@@ -20,7 +20,7 @@ abstract final class ServicePayColors {
   static const canvas = Color(0xFF003D30);
   static const surface = Color(0xFF064A3B);
   static const surfaceRaised = Color(0xFF08503F);
-  static const ink = Color(0xFFF4FFFA);
+  static const ink = Color(0xFFFFFFFF);
   static const muted = Color(0xFFE8FFF2);
   static const border = Color(0xFF00DB91);
 
@@ -339,7 +339,7 @@ abstract final class ServicePayTheme {
         titleTextStyle: TextStyle(
           color: Colors.white,
           fontSize: 19,
-          fontWeight: FontWeight.w800,
+          fontWeight: FontWeight.w700,
         ),
         iconTheme: IconThemeData(color: Colors.white, size: 23),
       ),
@@ -347,13 +347,13 @@ abstract final class ServicePayTheme {
         headlineSmall: TextStyle(
           color: ServicePayColors.ink,
           fontSize: 24,
-          fontWeight: FontWeight.w800,
+          fontWeight: FontWeight.w700,
           height: 1.15,
         ),
         titleLarge: TextStyle(
           color: ServicePayColors.ink,
           fontSize: 20,
-          fontWeight: FontWeight.w800,
+          fontWeight: FontWeight.w700,
         ),
         titleMedium: TextStyle(
           color: ServicePayColors.ink,
@@ -370,6 +370,11 @@ abstract final class ServicePayTheme {
           fontSize: 14,
           height: 1.4,
         ),
+        bodySmall: TextStyle(
+          color: ServicePayColors.muted,
+          fontSize: 14,
+          height: 1.4,
+        ),
         labelLarge: TextStyle(
           color: ServicePayColors.ink,
           fontSize: 14,
@@ -377,8 +382,13 @@ abstract final class ServicePayTheme {
         ),
         labelMedium: TextStyle(
           color: ServicePayColors.muted,
-          fontSize: 12,
-          fontWeight: FontWeight.w700,
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+        ),
+        labelSmall: TextStyle(
+          color: ServicePayColors.muted,
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
         ),
       ),
       cardTheme: CardThemeData(

@@ -12,7 +12,6 @@ import 'services/support_api_service.dart';
 import 'services/api_service.dart';
 import 'transaction_presentation.dart';
 import 'servicepay_theme.dart';
-import 'servicepay_ui.dart';
 import 'services/data_purchase_intent.dart';
 import 'airtime_screen.dart' show AirtimePurchaseIntent;
 import 'widgets/bill_purchase_recovery.dart';
@@ -578,8 +577,6 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
       case 'FAILED':
       case 'REVERSED':
         return ServicePayColors.danger;
-      case 'PROCESSING':
-        return ServicePayColors.info;
       default:
         return ServicePayColors.warning;
     }
@@ -963,7 +960,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                       fontSize: 21,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                   const SizedBox(height: 6),
@@ -972,7 +969,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                     style: TextStyle(
                       color: _directionColor(direction),
                       fontSize: 27,
-                      fontWeight: FontWeight.w900,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                   const SizedBox(height: 10),
@@ -986,11 +983,13 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
-                      TransactionPresentation(transaction).statusLabel,
+                      TransactionPresentation(transaction)
+                          .statusLabel
+                          .toUpperCase(),
                       style: TextStyle(
                         color: _statusColor(status),
-                        fontWeight: FontWeight.w800,
-                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
                       ),
                     ),
                   ),
@@ -1076,7 +1075,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
         title: const Text(
           'Transactions',
           style: TextStyle(
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w700,
           ),
         ),
         actions: [
@@ -1200,7 +1199,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                       ),
                       const SizedBox(height: 12),
                       SizedBox(
-                        height: 40,
+                        height: 48,
                         child: ListView.separated(
                           scrollDirection: Axis.horizontal,
                           itemCount: filters.length,
@@ -1315,7 +1314,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                             padding: const EdgeInsets.only(
                               bottom: 10,
                             ),
-                            child: _TransactionCard(
+                            child: CustomerTransactionCard(
                               title: _transactionTitle(
                                 transaction,
                               ),
@@ -1394,7 +1393,7 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   }
 }
 
-class _TransactionCard extends StatelessWidget {
+class CustomerTransactionCard extends StatelessWidget {
   final String title;
   final String description;
   final double amount;
@@ -1406,7 +1405,8 @@ class _TransactionCard extends StatelessWidget {
   final Color directionColor;
   final VoidCallback onTap;
 
-  const _TransactionCard({
+  const CustomerTransactionCard({
+    super.key,
     required this.title,
     required this.description,
     required this.amount,
@@ -1440,6 +1440,7 @@ class _TransactionCard extends StatelessWidget {
               ),
             ),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
                   width: 48,
@@ -1460,57 +1461,60 @@ class _TransactionCard extends StatelessWidget {
                     children: [
                       Text(
                         title,
-                        maxLines: 1,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          color: ServicePayColors.ink,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                          fontSize: 16,
+                          height: 1.25,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                       if (description.isNotEmpty) ...[
-                        const SizedBox(height: 3),
+                        const SizedBox(height: 4),
                         Text(
                           description,
-                          maxLines: 1,
+                          maxLines: 3,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            color: ServicePayColors.muted,
-                            fontSize: 12,
+                            color: Colors.white,
+                            fontSize: 15,
+                            height: 1.3,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
                       ],
-                      const SizedBox(height: 5),
+                      const SizedBox(height: 4),
                       Text(
                         date,
                         style: const TextStyle(
                           color: ServicePayColors.muted,
-                          fontSize: 11,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 118),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.centerRight,
-                        child: Text(
-                          '${direction == 'CREDIT' ? '+' : '-'}₦${amount.toStringAsFixed(2)}',
-                          style: TextStyle(
-                            color: directionColor,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w900,
+                      const SizedBox(height: 10),
+                      Wrap(
+                        spacing: 10,
+                        runSpacing: 8,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        alignment: WrapAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            '${direction == 'CREDIT' ? '+' : '-'}₦${amount.toStringAsFixed(2)}',
+                            key: const Key('transaction-card-amount'),
+                            style: TextStyle(
+                              color: directionColor,
+                              fontSize: 19,
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
-                        ),
+                          CustomerTransactionStatusBadge(
+                            label: status,
+                            color: statusColor,
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 6),
-                      ServicePayStatusPill(status: status),
                     ],
                   ),
                 ),
@@ -1634,7 +1638,7 @@ class _TransactionIssueDialogState extends State<_TransactionIssueDialog> {
               '${widget.transactionTitle}\n$reference',
               style: const TextStyle(
                 color: ServicePayColors.muted,
-                fontSize: 13,
+                fontSize: 15,
               ),
             ),
             const SizedBox(height: 16),
@@ -1745,7 +1749,7 @@ class _TransactionTimeline extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text('Status timeline',
-              style: TextStyle(fontWeight: FontWeight.w800)),
+              style: TextStyle(fontWeight: FontWeight.w700)),
           const SizedBox(height: 8),
           if (events.isEmpty)
             Text(
@@ -1846,7 +1850,7 @@ class _EmptyState extends StatelessWidget {
             'No transactions found',
             style: TextStyle(
               fontSize: 18,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w700,
             ),
           ),
           SizedBox(height: 6),
@@ -1910,6 +1914,44 @@ class _DetailRow extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+
+/// Readable uppercase status label for customer transaction rows.
+///
+/// The label text is the truthful status label from the presentation layer;
+/// only its casing and styling change here.
+class CustomerTransactionStatusBadge extends StatelessWidget {
+  const CustomerTransactionStatusBadge({
+    super.key,
+    required this.label,
+    required this.color,
+  });
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('transaction-status-badge'),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: ServicePayColors.canvas,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: color, width: 1.4),
+      ),
+      child: Text(
+        label.replaceAll('_', ' ').trim().toUpperCase(),
+        style: TextStyle(
+          color: color,
+          fontSize: 14,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.3,
+        ),
       ),
     );
   }

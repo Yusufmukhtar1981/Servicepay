@@ -20,7 +20,7 @@ abstract final class CustomerDashboardPalette {
   static const walletStart = Color(0xFF00DB91);
   static const walletEnd = Color(0xFF00B57A);
   /// Deep-forest foreground for content placed on the bright wallet gradient.
-  static const onWallet = Color(0xFF002A21);
+  static const onWallet = Color(0xFF003D30);
 }
 
 class CustomerServiceGlyph extends StatelessWidget {

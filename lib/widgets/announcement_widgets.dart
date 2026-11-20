@@ -54,7 +54,7 @@ class AnnouncementBanner extends StatelessWidget {
                       style: const TextStyle(
                           color: ServicePayColors.accent,
                           fontSize: 14,
-                          fontWeight: FontWeight.w900)),
+                          fontWeight: FontWeight.w700)),
                   const SizedBox(height: 4),
                   Text(announcement.message,
                       maxLines: 3,
@@ -69,7 +69,7 @@ class AnnouncementBanner extends StatelessWidget {
                           padding: EdgeInsets.zero,
                           foregroundColor: ServicePayColors.accent),
                       child: Text(announcement.ctaText!,
-                          style: const TextStyle(fontWeight: FontWeight.w900)),
+                          style: const TextStyle(fontWeight: FontWeight.w700)),
                     ),
                   ],
                   if (announcement.mandatory)
@@ -79,7 +79,7 @@ class AnnouncementBanner extends StatelessWidget {
                           padding: EdgeInsets.zero,
                           foregroundColor: ServicePayColors.accent),
                       child: const Text('Acknowledge',
-                          style: TextStyle(fontWeight: FontWeight.w900)),
+                          style: TextStyle(fontWeight: FontWeight.w700)),
                     ),
                 ],
               ),
@@ -155,7 +155,7 @@ class RewardProgressCard extends StatelessWidget {
                 style: TextStyle(
                   color: CustomerDashboardPalette.text,
                   fontSize: 16,
-                  fontWeight: FontWeight.w900,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ],
@@ -221,7 +221,7 @@ class RewardProgressCard extends StatelessWidget {
                 'QUALIFIED',
                 style: TextStyle(
                   color: CustomerDashboardPalette.royalBlue,
-                  fontWeight: FontWeight.w900,
+                  fontWeight: FontWeight.w700,
                   letterSpacing: .7,
                 ),
               )
@@ -241,7 +241,7 @@ class RewardProgressCard extends StatelessWidget {
                   _remainingLabel(value),
                   style: const TextStyle(
                     color: CustomerDashboardPalette.muted,
-                    fontSize: 12,
+                    fontSize: 15,
                   ),
                 ),
               ],
@@ -291,7 +291,7 @@ class _ProgressMetric extends StatelessWidget {
             Text(value,
                 style: const TextStyle(
                     color: CustomerDashboardPalette.text,
-                    fontWeight: FontWeight.w900)),
+                    fontWeight: FontWeight.w700)),
           ],
         ),
         const SizedBox(height: 7),
@@ -376,12 +376,12 @@ class _AnnouncementPromotionCarouselState
       return height;
     }
     final labelHeight =
-        measure('Refer Now →', 12, 1.3, maxWidth: copyWidth - 28) + 16;
+        measure('Refer Now →', 15, 1.3, maxWidth: copyWidth - 28) + 16;
     final buttonHeight = labelHeight > 44 ? labelHeight : 44.0;
-    return measure('Refer & Earn', 21, 1.08, letterSpacing: -.45) +
-        measure(policy.message, 13, 1.3) +
+    return measure('Refer & Earn', 21, 1.15, letterSpacing: -.45) +
+        measure(policy.message, 15, 1.3) +
         buttonHeight +
-        measure('Rewards follow verification and eligibility.', 9, 1.2,
+        measure('Rewards follow verification and eligibility.', 14, 1.3,
             maxLines: 2) +
         34 + 8 + 11 + 6 + 12;
   }
@@ -484,12 +484,12 @@ class _AnnouncementPromotionCarouselState
                   containsImage && constraints.maxWidth < 560;
               final bool hasReferral = widget.referralPolicy != null;
               final double baseHeight = containsImage
-                  ? (narrowImageCard ? 342 : constraints.maxWidth * .34)
+                  ? (narrowImageCard ? 384 : constraints.maxWidth * .34 + 40)
                   : hasReferral
-                      ? (constraints.maxWidth < 330 ? 252 : 220)
+                      ? (constraints.maxWidth < 330 ? 300 : 262)
                       : (constraints.maxWidth < 360
-                      ? 194
-                      : (constraints.maxWidth * .30).clamp(176.0, 218.0));
+                      ? 244
+                      : (constraints.maxWidth * .30).clamp(226.0, 262.0));
               final double scaleExtra =
                   ((textScale - 1).clamp(0, 1.5) * (containsImage ? 230 : 320))
                       .toDouble();
@@ -669,8 +669,8 @@ class _ReferralPromotionCard extends StatelessWidget {
                                 style: TextStyle(
                                   color: Colors.white,
                                   fontSize: 21,
-                                  height: 1.08,
-                                  fontWeight: FontWeight.w900,
+                                  height: 1.15,
+                                  fontWeight: FontWeight.w700,
                                   letterSpacing: -.45,
                                 ),
                               ),
@@ -679,7 +679,7 @@ class _ReferralPromotionCard extends StatelessWidget {
                                 policy.message,
                                 style: const TextStyle(
                                   color: ServicePayColors.muted,
-                                  fontSize: 13,
+                                  fontSize: 15,
                                   height: 1.3,
                                   fontWeight: FontWeight.w600,
                                 ),
@@ -702,8 +702,8 @@ class _ReferralPromotionCard extends StatelessWidget {
                                   child: const Text(
                                     'Refer Now →',
                                     style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w900,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w700,
                                     ),
                                   ),
                                 ),
@@ -715,8 +715,8 @@ class _ReferralPromotionCard extends StatelessWidget {
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(
                                   color: ServicePayColors.muted,
-                                  fontSize: 9,
-                                  height: 1.2,
+                                  fontSize: 14,
+                                  height: 1.3,
                                 ),
                               ),
                             ],
@@ -933,8 +933,8 @@ class _PromotionCard extends StatelessWidget {
                             : 'SERVICEPAY UPDATE',
                         style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 9,
-                          fontWeight: FontWeight.w900,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
                           letterSpacing: .8,
                         ),
                       ),
@@ -943,8 +943,8 @@ class _PromotionCard extends StatelessWidget {
                       Text(
                         'Live $start',
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha: .78),
-                          fontSize: 10,
+                          color: Colors.white,
+                          fontSize: 14,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
@@ -958,8 +958,8 @@ class _PromotionCard extends StatelessWidget {
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 19,
-                    height: 1.08,
-                    fontWeight: FontWeight.w900,
+                    height: 1.15,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 5),
@@ -968,8 +968,8 @@ class _PromotionCard extends StatelessWidget {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: .86),
-                    fontSize: 12,
+                    color: Colors.white,
+                    fontSize: 15,
                     height: 1.25,
                   ),
                 ),
@@ -979,8 +979,8 @@ class _PromotionCard extends StatelessWidget {
                     child: Text(
                       'Published $published',
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: .62),
-                        fontSize: 9,
+                        color: Colors.white,
+                        fontSize: 14,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -1005,7 +1005,7 @@ class _PromotionCard extends StatelessWidget {
                               child: Text(
                                 announcement.ctaText!,
                                 style: const TextStyle(
-                                    fontWeight: FontWeight.w900),
+                                    fontWeight: FontWeight.w700),
                               ),
                             ),
                           if (announcement.mandatory)
@@ -1100,8 +1100,8 @@ class _ImagePromotionCard extends StatelessWidget {
                             : 'SERVICEPAY UPDATE',
                         style: const TextStyle(
                           color: CustomerDashboardPalette.text,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w900,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
                           letterSpacing: .8,
                         ),
                       ),
@@ -1122,7 +1122,7 @@ class _ImagePromotionCard extends StatelessWidget {
                     'Live $startLabel',
                     style: const TextStyle(
                       color: CustomerDashboardPalette.muted,
-                      fontSize: 11,
+                      fontSize: 14,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -1133,7 +1133,7 @@ class _ImagePromotionCard extends StatelessWidget {
                     color: CustomerDashboardPalette.text,
                     fontSize: 18,
                     height: 1.1,
-                    fontWeight: FontWeight.w900,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 5),
@@ -1141,7 +1141,7 @@ class _ImagePromotionCard extends StatelessWidget {
                   announcement.message,
                   style: const TextStyle(
                     color: CustomerDashboardPalette.softText,
-                    fontSize: 12,
+                    fontSize: 15,
                     height: 1.3,
                   ),
                 ),
@@ -1151,7 +1151,7 @@ class _ImagePromotionCard extends StatelessWidget {
                     'Published $publishedLabel',
                     style: const TextStyle(
                       color: CustomerDashboardPalette.muted,
-                      fontSize: 10,
+                      fontSize: 14,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -1298,8 +1298,8 @@ class AnnouncementPopup extends StatelessWidget {
                   'ServicePay',
                   style: TextStyle(
                     color: ServicePayColors.accent,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w900,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 3),
@@ -1307,7 +1307,7 @@ class AnnouncementPopup extends StatelessWidget {
                   announcement.title,
                   style: const TextStyle(
                     color: ServicePayColors.accent,
-                    fontWeight: FontWeight.w900,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
@@ -1340,7 +1340,7 @@ class AnnouncementPopup extends StatelessWidget {
                 'Published $publishedDate',
                 style: const TextStyle(
                   color: ServicePayColors.muted,
-                  fontSize: 12,
+                  fontSize: 15,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -1452,7 +1452,7 @@ class AnnouncementLoadPlaceholder extends StatelessWidget {
                 'Updates could not be loaded.',
                 style: TextStyle(
                     color: CustomerDashboardPalette.muted,
-                    fontSize: 13,
+                    fontSize: 15,
                     fontWeight: FontWeight.w700),
               ),
             ),
@@ -1484,7 +1484,7 @@ class AnnouncementLoadPlaceholder extends StatelessWidget {
                 Text('No active promotions',
                     style: TextStyle(
                         color: CustomerDashboardPalette.text,
-                        fontWeight: FontWeight.w900)),
+                        fontWeight: FontWeight.w700)),
                 SizedBox(height: 3),
                 Text('ServicePay updates will appear here when available.',
                     style: TextStyle(

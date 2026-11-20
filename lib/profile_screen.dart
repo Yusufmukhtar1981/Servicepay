@@ -787,7 +787,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           title: const Text(
             'Log out?',
             style: TextStyle(
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w700,
             ),
           ),
           content: const Text(
@@ -917,7 +917,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         title: const Text(
           'Profile',
           style: TextStyle(
-            fontWeight: FontWeight.w800,
+            fontWeight: FontWeight.w700,
           ),
         ),
         actions: [
@@ -1354,8 +1354,8 @@ class _ProfileHeader extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           colors: [
+            ServicePayColors.brandDeep,
             ServicePayColors.brand,
-            Color(0xFF14945A),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -1438,15 +1438,17 @@ class _ProfileHeader extends StatelessWidget {
             style: const TextStyle(
               color: Colors.white,
               fontSize: 22,
-              fontWeight: FontWeight.w900,
+              fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: 5),
           Text(
             phone,
+            textAlign: TextAlign.center,
             style: const TextStyle(
-              color: Colors.white70,
-              fontSize: 14,
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.w600,
             ),
           ),
           const SizedBox(height: 13),
@@ -1508,7 +1510,7 @@ class _HeaderBadge extends StatelessWidget {
             text,
             style: const TextStyle(
               color: Colors.white,
-              fontSize: 11,
+              fontSize: 14,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -1529,7 +1531,7 @@ class _InitialsAvatar extends StatelessWidget {
           style: const TextStyle(
             color: Colors.white,
             fontSize: 30,
-            fontWeight: FontWeight.w900,
+            fontWeight: FontWeight.w700,
           ),
         ),
       );
@@ -1661,7 +1663,7 @@ class _KycTierCard extends StatelessWidget {
                             'Verification tier',
                             style: TextStyle(
                               color: ServicePayColors.muted,
-                              fontSize: 12,
+                              fontSize: 14,
                             ),
                           ),
                           Text(
@@ -1669,7 +1671,7 @@ class _KycTierCard extends StatelessWidget {
                             style: const TextStyle(
                               color: ServicePayColors.ink,
                               fontSize: 19,
-                              fontWeight: FontWeight.w900,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
                         ],
@@ -1689,8 +1691,8 @@ class _KycTierCard extends StatelessWidget {
                         statusLabel,
                         style: TextStyle(
                           color: statusColor,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                     ),
@@ -1722,7 +1724,7 @@ class _KycTierCard extends StatelessWidget {
                     'Upgrade request: ${requestedLevel.replaceAll('_', ' ')}',
                     style: const TextStyle(
                       color: Color(0xFF93ACF1),
-                      fontSize: 12,
+                      fontSize: 14,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -1753,7 +1755,7 @@ class _KycTierCard extends StatelessWidget {
                     reviewReason,
                     style: const TextStyle(
                       color: Color(0xFFF9BA8B),
-                      fontSize: 12,
+                      fontSize: 14,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -1765,7 +1767,7 @@ class _KycTierCard extends StatelessWidget {
                     missingRequirements.first,
                     style: const TextStyle(
                       color: ServicePayColors.muted,
-                      fontSize: 12,
+                      fontSize: 14,
                     ),
                   ),
                 ],
@@ -1816,7 +1818,7 @@ class _LimitItem extends StatelessWidget {
               value,
               style: const TextStyle(
                 color: ServicePayColors.ink,
-                fontWeight: FontWeight.w800,
+                fontWeight: FontWeight.w700,
               ),
             ),
           ],
@@ -1869,7 +1871,7 @@ class _WalletSummaryCard extends StatelessWidget {
                   'Wallet Balance',
                   style: TextStyle(
                     color: ServicePayColors.muted,
-                    fontSize: 12,
+                    fontSize: 14,
                   ),
                 ),
                 const SizedBox(height: 3),
@@ -1878,7 +1880,7 @@ class _WalletSummaryCard extends StatelessWidget {
                   style: const TextStyle(
                     color: ServicePayColors.ink,
                     fontSize: 21,
-                    fontWeight: FontWeight.w900,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
               ],
@@ -1910,7 +1912,7 @@ class _ProfileSectionTitle extends StatelessWidget {
       style: const TextStyle(
         color: ServicePayColors.ink,
         fontSize: 17,
-        fontWeight: FontWeight.w800,
+        fontWeight: FontWeight.w700,
       ),
     );
   }
@@ -2005,7 +2007,7 @@ class _ProfileInfoRow extends StatelessWidget {
                   label,
                   style: const TextStyle(
                     color: ServicePayColors.muted,
-                    fontSize: 11,
+                    fontSize: 14,
                   ),
                 ),
                 const SizedBox(height: 3),
@@ -2031,8 +2033,8 @@ class _ProfileInfoRow extends StatelessWidget {
                 badge!,
                 style: const TextStyle(
                   color: ServicePayColors.accent,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ),
@@ -2143,7 +2145,7 @@ class _ProfileActionTile extends StatelessWidget {
                       color: titleColor ??
                           ServicePayColors.ink,
                       fontSize: 14,
-                      fontWeight: FontWeight.w800,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                   const SizedBox(height: 3),
@@ -2151,7 +2153,7 @@ class _ProfileActionTile extends StatelessWidget {
                     subtitle,
                     style: const TextStyle(
                       color: ServicePayColors.muted,
-                      fontSize: 11,
+                      fontSize: 14,
                     ),
                   ),
                 ],
@@ -2423,7 +2425,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                   'Edit Profile',
                   style: TextStyle(
                     fontSize: 22,
-                    fontWeight: FontWeight.w900,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(
@@ -2519,7 +2521,7 @@ class _EditProfileSheetState extends State<_EditProfileSheet> {
                         : const Text(
                             'Save Changes',
                             style: TextStyle(
-                              fontWeight: FontWeight.w800,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
                   ),
@@ -2744,7 +2746,7 @@ class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
                   'Change Password',
                   style: TextStyle(
                     fontSize: 22,
-                    fontWeight: FontWeight.w900,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(
@@ -2837,7 +2839,7 @@ class _ChangePasswordSheetState extends State<_ChangePasswordSheet> {
                         : const Text(
                             'Change Password',
                             style: TextStyle(
-                              fontWeight: FontWeight.w800,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
                   ),
