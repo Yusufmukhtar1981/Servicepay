@@ -906,7 +906,7 @@ class _WalletScreenState extends State<WalletScreen> {
         borderRadius: BorderRadius.circular(26),
         boxShadow: [
           BoxShadow(
-            color: CustomerDashboardPalette.walletEnd.withValues(alpha: 0.25),
+            color: const Color(0x59020C0A),
             blurRadius: 24,
             offset: const Offset(0, 12),
           ),

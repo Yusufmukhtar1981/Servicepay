@@ -90,8 +90,9 @@ void main() {
           ),
         ));
         await tester.pump(const Duration(milliseconds: 150));
-        final Finder label = find.text('Transactions');
+        final Finder label = find.byKey(const Key('customer-navigation-label-1'));
         expect(label, findsOneWidget);
+        expect(tester.widget<Text>(label).data, 'History');
         expect(tester.widget<Text>(label).style?.fontSize, 14);
         final RenderParagraph paragraph =
             tester.renderObject<RenderParagraph>(label);

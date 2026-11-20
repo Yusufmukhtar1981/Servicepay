@@ -2387,8 +2387,15 @@ class _DashboardScreenState extends State<DashboardScreen>
         ),
         borderRadius: BorderRadius.circular(24),
         border: Border.all(
-          color: const Color(0xFF7CF2C4).withValues(alpha: .7),
+          color: Colors.white.withValues(alpha: .10),
         ),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x59020C0A),
+            blurRadius: 24,
+            offset: Offset(0, 12),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2502,11 +2509,13 @@ class _DashboardScreenState extends State<DashboardScreen>
   }) {
     return Material(
       key: key,
-      color: filled ? CustomerDashboardPalette.canvas : const Color(0xFFB8F7DE),
+      color: filled
+          ? ServicePayColors.accent
+          : CustomerDashboardPalette.walletInset,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
         side: BorderSide(
-          color: CustomerDashboardPalette.onWallet.withValues(alpha: filled ? 0 : 0.35),
+          color: Colors.white.withValues(alpha: filled ? 0 : 0.16),
         ),
       ),
       child: InkWell(
@@ -2520,7 +2529,9 @@ class _DashboardScreenState extends State<DashboardScreen>
               Icon(
                 icon,
                 size: 20,
-                color: filled ? Colors.white : CustomerDashboardPalette.onWallet,
+                color: filled
+                    ? ServicePayColors.onAccent
+                    : CustomerDashboardPalette.onWallet,
               ),
               const SizedBox(height: 3),
               Text(
@@ -2528,7 +2539,9 @@ class _DashboardScreenState extends State<DashboardScreen>
                 textAlign: TextAlign.center,
                 softWrap: true,
                 style: TextStyle(
-                  color: filled ? Colors.white : CustomerDashboardPalette.onWallet,
+                  color: filled
+                    ? ServicePayColors.onAccent
+                    : CustomerDashboardPalette.onWallet,
                   fontSize: 15,
                   fontWeight: FontWeight.w700,
                 ),

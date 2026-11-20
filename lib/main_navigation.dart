@@ -197,8 +197,13 @@ class _MainNavigationState extends State<MainNavigation> {
           height: userRole == 'DELIVERY_RIDER'
               ? 78
               : userRole == 'CUSTOMER'
-                  ? _customerNavigationHeight(context)
+                  // Customer nav sizes to its content so larger system text
+                  // grows the bar instead of clipping labels.
+                  ? null
                   : 82,
+          constraints: userRole == 'CUSTOMER'
+              ? const BoxConstraints(minHeight: 72)
+              : null,
           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 6),
           decoration: BoxDecoration(
             color: userRole == 'CUSTOMER'
@@ -211,7 +216,13 @@ class _MainNavigationState extends State<MainNavigation> {
                   : const Color(0xFFB9CEC1),
             ),
             boxShadow: userRole == 'CUSTOMER'
-                ? const <BoxShadow>[]
+                ? const <BoxShadow>[
+                    BoxShadow(
+                      color: Color(0x66020C0A),
+                      blurRadius: 20,
+                      offset: Offset(0, 8),
+                    ),
+                  ]
                 : const <BoxShadow>[
                     BoxShadow(
                       color: Color(0x24101828),
@@ -220,7 +231,14 @@ class _MainNavigationState extends State<MainNavigation> {
                     ),
                   ],
           ),
-          child: Row(
+          child: userRole == 'CUSTOMER'
+              ? IntrinsicHeight(child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: userRole == 'DELIVERY_RIDER'
+                ? _riderNavigationItems()
+                : _customerNavigationItems(),
+          ))
+              : Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: userRole == 'DELIVERY_RIDER'
                 ? _riderNavigationItems()
@@ -260,31 +278,6 @@ class _MainNavigationState extends State<MainNavigation> {
     ];
   }
 
-  double _customerNavigationHeight(BuildContext context) {
-    final double labelWidth =
-        ((MediaQuery.sizeOf(context).width - 36) / 4 - 8)
-            .clamp(24.0, double.infinity)
-            .toDouble();
-    double tallestLabel = 0;
-    for (final String label in const ['Home', 'Transactions', 'Wallet', 'Profile']) {
-      final TextPainter painter = TextPainter(
-        text: TextSpan(
-          text: label,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                fontSize: 14,
-                height: 1.15,
-                fontWeight: FontWeight.w700,
-              ),
-        ),
-        textDirection: Directionality.of(context),
-        textScaler: MediaQuery.textScalerOf(context),
-      )..layout(maxWidth: labelWidth);
-      if (painter.height > tallestLabel) tallestLabel = painter.height;
-      painter.dispose();
-    }
-    return (58 + tallestLabel).clamp(82.0, double.infinity).toDouble();
-  }
-
   List<Widget> _customerNavigationItems() {
     if (userRole == 'CUSTOMER') {
       return <Widget>[
@@ -298,7 +291,7 @@ class _MainNavigationState extends State<MainNavigation> {
           index: 1,
           icon: Icons.receipt_long_outlined,
           activeIcon: Icons.receipt_long_rounded,
-          label: 'Transactions',
+          label: 'History',
         ),
         buildNavigationItem(
           index: 2,
@@ -418,6 +411,9 @@ class _MainNavigationState extends State<MainNavigation> {
                     width: double.infinity,
                     child: Text(
                       label,
+                      key: customerNavigation
+                          ? Key('customer-navigation-label-$index')
+                          : null,
                       maxLines: customerNavigation ? null : 1,
                       textAlign: TextAlign.center,
                       overflow: customerNavigation

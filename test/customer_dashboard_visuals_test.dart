@@ -124,7 +124,9 @@ void main() {
       final bool filled =
           actionKey == const Key('dashboard-add-money-action');
       final Color foreground =
-          filled ? Colors.white : CustomerDashboardPalette.onWallet;
+          filled
+              ? ServicePayColors.onAccent
+              : CustomerDashboardPalette.onWallet;
       final Color actionBackground = tester.widget<Material>(action).color!;
       final double foregroundLuminance = foreground.computeLuminance();
       final double backgroundLuminance = actionBackground.computeLuminance();
@@ -175,7 +177,7 @@ void main() {
 
     await tester.pumpWidget(const MaterialApp(home: MainNavigation()));
     await tester.pump(const Duration(milliseconds: 100));
-    await tester.tap(find.text('Transactions'));
+    await tester.tap(find.byKey(const Key('customer-navigation-label-1')));
     await tester.pump(const Duration(milliseconds: 250));
 
     expect(find.byType(TransactionsScreen), findsOneWidget);
@@ -183,7 +185,8 @@ void main() {
       find.byWidgetPredicate(
         (Widget widget) =>
             widget is Text &&
-            widget.data == 'Transactions' &&
+            widget.key == const Key('customer-navigation-label-1') &&
+            widget.data == 'History' &&
             widget.style?.color == CustomerDashboardPalette.royalBlue,
       ),
       findsOneWidget,
@@ -255,8 +258,10 @@ void main() {
     }
   });
 
-  test('wallet foreground is exact forest green with AA contrast', () {
-    expect(CustomerDashboardPalette.onWallet, const Color(0xFF003D30));
+  test('dark wallet uses exact white foreground and gradient', () {
+    expect(CustomerDashboardPalette.onWallet, const Color(0xFFFFFFFF));
+    expect(CustomerDashboardPalette.walletStart, const Color(0xFF087F68));
+    expect(CustomerDashboardPalette.walletEnd, const Color(0xFF0A6655));
   });
 
   testWidgets('transaction rows wrap long phone, date and amount readably',

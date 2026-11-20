@@ -1266,7 +1266,7 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
                     gradient: const LinearGradient(
                       colors: [
                         ServicePayColors.brand,
-                        Color(0xFF14945A),
+                        ServicePayColors.brandDeep,
                       ],
                     ),
                     borderRadius: BorderRadius.circular(20),

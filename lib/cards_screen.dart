@@ -864,7 +864,7 @@ class _CardsScreenState extends State<CardsScreen> {
                       ]
                     : const <Color>[
                         ServicePayColors.brand,
-                        Color(0xFF14945A),
+                        ServicePayColors.brandDeep,
                       ],
               ),
               borderRadius: BorderRadius.circular(28),

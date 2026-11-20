@@ -25,7 +25,7 @@ void main() {
       expect(find.text('Transfer'), findsNothing);
       expect(find.byKey(const Key('dashboard-transfer-action')), findsNothing);
       expect(find.text('Wallet'), findsWidgets);
-      expect(find.text('Transactions'), findsWidgets);
+      expect(find.byKey(const Key('customer-navigation-label-1')), findsOneWidget);
       expect(find.text('Data'), findsWidgets);
       expect(find.text('Airtime'), findsWidgets);
 

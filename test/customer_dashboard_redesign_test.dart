@@ -515,7 +515,8 @@ void main() {
     await tester.pump();
 
     expect(find.text('Home'), findsOneWidget);
-    expect(find.text('Transactions'), findsOneWidget);
+    expect(find.byKey(const Key('customer-navigation-label-1')), findsOneWidget);
+    expect(tester.widget<Text>(find.byKey(const Key('customer-navigation-label-1'))).data, 'History');
     expect(find.text('Wallet'), findsWidgets);
     expect(find.text('Profile'), findsOneWidget);
     expect(find.text('Scan'), findsNothing);
@@ -529,7 +530,7 @@ void main() {
             ?.color,
         CustomerDashboardPalette.text);
 
-    await tester.tap(find.text('Transactions'));
+    await tester.tap(find.byKey(const Key('customer-navigation-label-1')));
     await tester.pump(const Duration(milliseconds: 100));
     expect(
         tester

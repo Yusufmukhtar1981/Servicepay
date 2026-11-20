@@ -1072,12 +1072,8 @@ class _TransferScreenState extends State<TransferScreen> {
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
                     colors: [
-                      Color(
-                        0xFF087A45,
-                      ),
-                      Color(
-                        0xFF14945A,
-                      ),
+                      ServicePayColors.brand,
+                      ServicePayColors.brandDeep,
                     ],
                   ),
                   borderRadius: BorderRadius.circular(

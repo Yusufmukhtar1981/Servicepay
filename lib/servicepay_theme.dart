@@ -6,28 +6,31 @@ import 'package:flutter/material.dart';
 /// spacing, contrast, focus states, and touch-friendly controls by using the
 /// app theme rather than defining local versions of every control.
 abstract final class ServicePayColors {
-  // Customer "Premium Green" system (approved Device Companion palette).
-  /// Bright emerald accent (#00DB91). Pair with [onAccent] text, never white.
-  static const accent = Color(0xFF00DB91);
-  static const onAccent = Color(0xFF002A21);
+  // Customer "Forest Ledger" system: dark forest dominant, emerald reserved
+  // for important actions and highlights.
+  /// Emerald accent (#36C99A). Pair with [onAccent] text, never white.
+  static const accent = Color(0xFF36C99A);
+  static const onAccent = Color(0xFF071F1B);
 
-  /// Filled green surface (#087F68) that safely carries white text.
+  /// Filled green surface (#087F68) that safely carries white text (5.0:1).
   static const brand = Color(0xFF087F68);
-  static const brandDeep = Color(0xFF06604F);
+  static const brandDeep = Color(0xFF0A6655);
 
-  /// Quiet tinted surface used for chips, icon wells and highlights.
-  static const brandSoft = Color(0xFF0C5444);
-  static const canvas = Color(0xFF003D30);
-  static const surface = Color(0xFF064A3B);
-  static const surfaceRaised = Color(0xFF08503F);
+  /// Quiet secondary surface (#16483D) used for chips, icon wells, highlights.
+  static const brandSoft = Color(0xFF16483D);
+  static const canvas = Color(0xFF071F1B);
+  static const surface = Color(0xFF103D34);
+  static const surfaceRaised = Color(0xFF16483D);
   static const ink = Color(0xFFFFFFFF);
-  static const muted = Color(0xFFE8FFF2);
-  static const border = Color(0xFF00DB91);
+  static const muted = Color(0xFFB8D0C8);
 
-  /// Secondary card surface (#087F68) from the approved palette.
-  static const card = Color(0xFF087F68);
-  static const disabled = Color(0xFF8DB3A5);
-  static const disabledSurface = Color(0xFF194E42);
+  /// Subtle muted-emerald border; strong emerald is reserved for focus.
+  static const border = Color(0xFF2C5E52);
+
+  /// Primary card surface (#103D34).
+  static const card = Color(0xFF103D34);
+  static const disabled = Color(0xFF86A69C);
+  static const disabledSurface = Color(0xFF1A3A33);
   static const success = Color(0xFF5BE3A9);
   static const danger = Color(0xFFFFADA1);
   static const warning = Color(0xFFFFC56B);
@@ -400,7 +403,7 @@ abstract final class ServicePayTheme {
           borderRadius: BorderRadius.circular(18),
           side: const BorderSide(color: ServicePayColors.border),
         ),
-        shadowColor: const Color(0x40001A14),
+        shadowColor: const Color(0x66020C0A),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,

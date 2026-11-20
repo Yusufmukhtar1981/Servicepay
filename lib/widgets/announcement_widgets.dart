@@ -758,7 +758,7 @@ class _ReferralArtworkPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final Paint ring = Paint()
-      ..color = const Color(0xFF00DB91).withValues(alpha: .14)
+      ..color = const Color(0xFF36C99A).withValues(alpha: .08)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.2;
     canvas.drawCircle(
@@ -774,7 +774,7 @@ class _ReferralArtworkPainter extends CustomPainter {
       ..lineTo(size.width * .23, size.height * .55)
       ..close();
     canvas.drawPath(mouth, cone);
-    final Paint bell = Paint()..color = const Color(0xFF00DB91);
+    final Paint bell = Paint()..color = const Color(0xFF2FA582);
     canvas.drawPath(
       Path()
         ..moveTo(size.width * .61, size.height * .29)
@@ -792,13 +792,13 @@ class _ReferralArtworkPainter extends CustomPainter {
             size.width * .18, size.height * .13),
         const Radius.circular(5),
       ),
-      Paint()..color = const Color(0xFF06604F),
+      Paint()..color = const Color(0xFF16483D),
     );
     canvas.drawLine(
       Offset(size.width * .37, size.height * .59),
       Offset(size.width * .47, size.height * .78),
       Paint()
-        ..color = const Color(0xFF00DB91)
+        ..color = const Color(0xFF36C99A)
         ..strokeWidth = 5
         ..strokeCap = StrokeCap.round,
     );

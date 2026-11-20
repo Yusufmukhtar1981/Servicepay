@@ -30,7 +30,7 @@ void main() {
         const Color(0xFF4B6257));
     expect(
         tester.widget<Scaffold>(find.byType(Scaffold)).backgroundColor,
-        const Color(0xFF003D30));
+        const Color(0xFF071F1B));
     expect(tester.widget<Text>(find.text('ServicePay')).style?.color,
         const Color(0xFF087A45));
     expect(tester.takeException(), isNull);
