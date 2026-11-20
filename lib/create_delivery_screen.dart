@@ -867,7 +867,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
             borderRadius: BorderRadius.circular(
               14,
             ),
-            borderSide: const BorderSide(
+            borderSide: BorderSide(
               color: ServicePayColors.border,
             ),
           ),
@@ -1007,7 +1007,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
             borderRadius: BorderRadius.circular(
               14,
             ),
-            borderSide: const BorderSide(
+            borderSide: BorderSide(
               color: ServicePayColors.border,
             ),
           ),
@@ -1015,7 +1015,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
             borderRadius: BorderRadius.circular(
               14,
             ),
-            borderSide: const BorderSide(
+            borderSide: BorderSide(
               color: ServicePayColors.border,
             ),
           ),
@@ -1214,9 +1214,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
                     17,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(
-                      0xFFEAF3FF,
-                    ),
+                    color: ServicePayColors.surface,
                     borderRadius: BorderRadius.circular(
                       16,
                     ),

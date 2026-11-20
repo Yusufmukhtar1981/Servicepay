@@ -742,34 +742,6 @@ class _LoginScreenState extends State<LoginScreen> {
       hintText: hint,
       prefixIcon: Icon(icon),
       suffixIcon: suffixIcon,
-      filled: true,
-      fillColor: const Color(
-        0xFFF8FAFC,
-      ),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(
-          14,
-        ),
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(
-          14,
-        ),
-        borderSide: const BorderSide(
-          color: Color(
-            0xFFE2E8F0,
-          ),
-        ),
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(
-          14,
-        ),
-        borderSide: const BorderSide(
-          color: primaryColor,
-          width: 2,
-        ),
-      ),
     );
   }
 
@@ -796,9 +768,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     26,
                   ),
                   border: Border.all(
-                    color: const Color(
-                      0xFFB9CEC1,
-                    ),
+                    color: ServicePayColors.border,
                   ),
                   boxShadow: [
                     BoxShadow(
@@ -836,9 +806,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           style: TextStyle(
                             fontSize: 23,
                             fontWeight: FontWeight.w800,
-                            color: Color(
-                              0xFF15352A,
-                            ),
+                            color: ServicePayColors.ink,
                           ),
                         ),
                         const SizedBox(
@@ -1069,9 +1037,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                   style: TextStyle(
                                     fontSize: 12,
                                     height: 1.45,
-                                    color: Color(
-                                      0xFF15352A,
-                                    ),
+                                    color: ServicePayColors.ink,
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),

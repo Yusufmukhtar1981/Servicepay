@@ -401,9 +401,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         Icons.email_outlined,
       ),
       filled: true,
-      fillColor: const Color(
-        0xFFF8FAFC,
-      ),
+      fillColor: ServicePayColors.surfaceRaised,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(
           14,
@@ -413,10 +411,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         borderRadius: BorderRadius.circular(
           14,
         ),
-        borderSide: const BorderSide(
-          color: Color(
-            0xFFE2E8F0,
-          ),
+        borderSide: BorderSide(
+          color: ServicePayColors.border,
         ),
       ),
       focusedBorder: OutlineInputBorder(
@@ -453,9 +449,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     BuildContext context,
   ) {
     return Scaffold(
-      backgroundColor: const Color(
-        0xFFF4F7F9,
-      ),
+      backgroundColor: ServicePayColors.canvas,
       appBar: AppBar(
         title: const Text(
           'Forgot Password',
@@ -465,9 +459,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         ),
         centerTitle: true,
         backgroundColor: ServicePayColors.canvas,
-        foregroundColor: const Color(
-          0xFF172033,
-        ),
+        foregroundColor: ServicePayColors.ink,
         elevation: 0,
         surfaceTintColor: Colors.white,
       ),
@@ -488,9 +480,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                     26,
                   ),
                   border: Border.all(
-                    color: const Color(
-                      0xFFE2E8F0,
-                    ),
+                    color: ServicePayColors.border,
                   ),
                   boxShadow: [
                     BoxShadow(
@@ -538,9 +528,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             'Reset your password',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Color(
-                0xFF172033,
-              ),
+              color: ServicePayColors.ink,
               fontSize: 25,
               fontWeight: FontWeight.w900,
             ),
@@ -810,9 +798,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                     style: TextStyle(
                       fontSize: 12,
                       height: 1.45,
-                      color: Color(
-                        0xFF334155,
-                      ),
+                      color: ServicePayColors.ink,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -871,9 +857,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           'Request submitted',
           textAlign: TextAlign.center,
           style: TextStyle(
-            color: Color(
-              0xFF172033,
-            ),
+            color: ServicePayColors.ink,
             fontSize: 25,
             fontWeight: FontWeight.w900,
           ),
@@ -899,16 +883,12 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
             14,
           ),
           decoration: BoxDecoration(
-            color: const Color(
-              0xFFFFF7ED,
-            ),
+            color: ServicePayColors.surface,
             borderRadius: BorderRadius.circular(
               14,
             ),
             border: Border.all(
-              color: const Color(
-                0xFFFED7AA,
-              ),
+              color: ServicePayColors.border,
             ),
           ),
           child: const Row(

@@ -3719,13 +3719,13 @@ class _DashboardScreenState extends State<DashboardScreen>
         fillColor: ServicePayColors.surface,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(20),
-          borderSide: const BorderSide(
+          borderSide: BorderSide(
             color: ServicePayColors.border,
           ),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(20),
-          borderSide: const BorderSide(
+          borderSide: BorderSide(
             color: ServicePayColors.border,
           ),
         ),
@@ -5265,9 +5265,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(19),
                       border: Border.all(
-                        color: const Color(
-                          0xFFE7EAEF,
-                        ),
+                        color: ServicePayColors.border,
                       ),
                       boxShadow: const <BoxShadow>[
                         BoxShadow(
@@ -6489,9 +6487,7 @@ class _PopularServiceCard extends StatelessWidget {
               20,
             ),
             border: Border.all(
-              color: const Color(
-                0xFFE7EAEF,
-              ),
+              color: ServicePayColors.border,
             ),
             boxShadow: const <BoxShadow>[
               BoxShadow(

@@ -809,7 +809,7 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
             elevation: 0,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
-              side: const BorderSide(
+              side: BorderSide(
                 color: ServicePayColors.border,
               ),
             ),
@@ -1032,9 +1032,7 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
                         hintText: '###########',
                         counterText: '',
                         filled: true,
-                        fillColor: const Color(
-                          0xFFFAFAFB,
-                        ),
+                        fillColor: ServicePayColors.surfaceRaised,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(
                             18,
@@ -1052,16 +1050,12 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
                     const SizedBox(height: 18),
                     Container(
                       decoration: BoxDecoration(
-                        color: const Color(
-                          0xFFFBF8F3,
-                        ),
+                        color: ServicePayColors.surface,
                         borderRadius: BorderRadius.circular(
                           18,
                         ),
                         border: Border.all(
-                          color: const Color(
-                            0xFFEAE4DB,
-                          ),
+                          color: ServicePayColors.border,
                         ),
                       ),
                       child: CheckboxListTile(
@@ -2745,9 +2739,7 @@ class ResultRow extends StatelessWidget {
               textAlign: TextAlign.right,
               style: TextStyle(
                 color: valueColor ??
-                    const Color(
-                      0xFF17211A,
-                    ),
+                    ServicePayColors.ink,
                 fontWeight: FontWeight.w800,
               ),
             ),

@@ -793,9 +793,7 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
               Container(
                 padding: const EdgeInsets.all(18),
                 decoration: BoxDecoration(
-                  color: const Color(
-                    0xFFEAF7F0,
-                  ),
+                  color: ServicePayColors.surface,
                   borderRadius: BorderRadius.circular(
                     18,
                   ),

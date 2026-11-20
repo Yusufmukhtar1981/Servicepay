@@ -442,9 +442,7 @@ class _TransferScreenState extends State<TransferScreen> {
                         16,
                       ),
                       decoration: BoxDecoration(
-                        color: const Color(
-                          0xFFF0FDF4,
-                        ),
+                        color: ServicePayColors.surface,
                         borderRadius: BorderRadius.circular(
                           16,
                         ),
@@ -492,9 +490,7 @@ class _TransferScreenState extends State<TransferScreen> {
                             style: const TextStyle(
                               fontSize: 18,
                               fontWeight: FontWeight.w900,
-                              color: Color(
-                                0xFF111827,
-                              ),
+                              color: ServicePayColors.ink,
                             ),
                           ),
                           const SizedBox(
@@ -590,9 +586,7 @@ class _TransferScreenState extends State<TransferScreen> {
                         ),
                         errorText: errorMessage.isEmpty ? null : errorMessage,
                         filled: true,
-                        fillColor: const Color(
-                          0xFFF8FAFC,
-                        ),
+                        fillColor: ServicePayColors.surfaceRaised,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(
                             14,
@@ -1230,9 +1224,7 @@ class _TransferScreenState extends State<TransferScreen> {
                   15,
                 ),
                 decoration: BoxDecoration(
-                  color: const Color(
-                    0xFFF0FDF4,
-                  ),
+                  color: ServicePayColors.surface,
                   borderRadius: BorderRadius.circular(
                     14,
                   ),

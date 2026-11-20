@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:servicepay_app/help_support_screen.dart';
+import 'package:servicepay_app/login_screen.dart';
 import 'package:servicepay_app/servicepay_theme.dart';
 import 'package:servicepay_app/servicepay_ui.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 double _contrastRatio(Color foreground, Color background) {
   final double foregroundLuminance = foreground.computeLuminance();
@@ -18,6 +20,38 @@ double _contrastRatio(Color foreground, Color background) {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  testWidgets('Customer sign-in fields stay readable and password stays obscured',
+      (WidgetTester tester) async {
+    SharedPreferences.setMockInitialValues({});
+    await tester.binding.setSurfaceSize(const Size(390, 844));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(MaterialApp(
+      theme: ServicePayTheme.customer(),
+      home: const LoginScreen(),
+    ));
+    await tester.pump();
+
+    final Finder fields = find.byType(TextField);
+    await tester.enterText(fields.first, 'customer@example.com');
+    await tester.enterText(fields.last, 'UI-only-sample1');
+    expect(tester.widget<TextField>(fields.first).controller?.text,
+        'customer@example.com');
+    expect(tester.widget<TextField>(fields.last).obscureText, isTrue);
+    for (final InputDecorator field
+        in tester.widgetList<InputDecorator>(find.byType(InputDecorator))) {
+      expect(field.decoration.fillColor, ServicePayColors.surfaceRaised);
+    }
+    for (final EditableText field
+        in tester.widgetList<EditableText>(find.byType(EditableText))) {
+      expect(_contrastRatio(field.style.color!, ServicePayColors.surfaceRaised),
+          greaterThanOrEqualTo(4.5));
+    }
+    final Text heading = tester.widget<Text>(find.text('Welcome back'));
+    expect(_contrastRatio(heading.style!.color!, ServicePayColors.surface),
+        greaterThanOrEqualTo(4.5));
+    expect(tester.takeException(), isNull);
+  });
 
   test('customer theme keeps controls touch-friendly and consistent', () {
     final ThemeData theme = ServicePayTheme.customer();
@@ -77,7 +111,7 @@ void main() {
       await tester.binding.setSurfaceSize(size);
       await tester.pumpWidget(
         MaterialApp(
-          theme: ServicePayTheme.light(),
+          theme: ServicePayTheme.customer(),
           home: const HelpSupportScreen(),
         ),
       );
@@ -86,7 +120,7 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
-          theme: ServicePayTheme.light(),
+          theme: ServicePayTheme.customer(),
           home: const SupportRequestScreen(
             initialCategory: 'TRANSACTION',
             initialSubject: 'Issue with a transaction',
@@ -106,7 +140,7 @@ void main() {
       (WidgetTester tester) async {
     await tester.pumpWidget(
       MaterialApp(
-        theme: ServicePayTheme.light(),
+        theme: ServicePayTheme.customer(),
         home: const Scaffold(
           body: Wrap(
             children: [
@@ -130,7 +164,7 @@ void main() {
       (WidgetTester tester) async {
     await tester.pumpWidget(
       MaterialApp(
-        theme: ServicePayTheme.light(),
+        theme: ServicePayTheme.customer(),
         home: const SupportRequestScreen(),
       ),
     );

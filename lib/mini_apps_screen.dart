@@ -467,9 +467,7 @@ class _MiniAppsScreenState extends State<MiniAppsScreen> {
                                   22,
                                 ),
                                 border: Border.all(
-                                  color: const Color(
-                                    0xFFE7ECE9,
-                                  ),
+                                  color: ServicePayColors.border,
                                 ),
                               ),
                               child: Column(

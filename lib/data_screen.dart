@@ -1063,9 +1063,7 @@ class _DataScreenState extends State<DataScreen> {
                               Icons.phone_android_rounded,
                             ),
                             filled: true,
-                            fillColor: const Color(
-                              0xFFF8FAFC,
-                            ),
+                            fillColor: ServicePayColors.surfaceRaised,
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(
                                 14,
