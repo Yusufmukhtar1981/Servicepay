@@ -218,7 +218,7 @@ class _DeliveryHistoryScreenState
                 );
               },
               style: FilledButton.styleFrom(
-                backgroundColor: ServicePayColors.brand,
+                backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
               ),
               child: const Text(
                 'Pay Now',

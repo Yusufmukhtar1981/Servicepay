@@ -4958,13 +4958,13 @@ class _DashboardScreenState extends State<DashboardScreen>
                                 vertical: 8,
                               ),
                               decoration: BoxDecoration(
-                                color: ServicePayColors.brandDeep,
+                                color: ServicePayColors.accent,
                                 borderRadius: BorderRadius.circular(30),
                               ),
                               child: const Text(
                                 'Refer Now',
                                 style: TextStyle(
-                                  color: Colors.white,
+                                  color: ServicePayColors.onAccent,
                                   fontSize: 11,
                                   fontWeight: FontWeight.w800,
                                 ),
@@ -5704,7 +5704,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     final Color directionColor = direction == 'CREDIT'
         ? CustomerDashboardPalette.success
         : direction == 'DEBIT'
-            ? CustomerDashboardPalette.navy
+            ? CustomerDashboardPalette.error
             : ServicePayColors.muted;
     final String amountLabel = amount == null
         ? 'Amount unavailable'
@@ -5778,7 +5778,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                             vertical: 2,
                           ),
                           decoration: BoxDecoration(
-                            color: statusColor.withValues(alpha: 0.10),
+                            color: CustomerDashboardPalette.canvas,
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Text(
@@ -5790,12 +5790,23 @@ class _DashboardScreenState extends State<DashboardScreen>
                             ),
                           ),
                         ),
-                        Text(
-                          amountLabel,
-                          style: TextStyle(
-                            color: directionColor,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w900,
+                        Container(
+                          key: const Key('recent-activity-amount-pill'),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: CustomerDashboardPalette.canvas,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Text(
+                            amountLabel,
+                            style: TextStyle(
+                              color: directionColor,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                            ),
                           ),
                         ),
                       ],

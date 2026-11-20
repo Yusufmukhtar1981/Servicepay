@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'transactions_screen.dart';
 import 'customer_experience_screen.dart';
 import 'servicepay_theme.dart';
+import 'widgets/customer_dashboard_visuals.dart';
 import 'services/customer_feature_config_service.dart';
 
 class WalletScreen extends StatefulWidget {
@@ -742,20 +743,20 @@ class _WalletScreenState extends State<WalletScreen> {
       case 'SUCCESSFUL':
       case 'COMPLETED':
       case 'APPROVED':
-        return const Color(0xFF059669);
+        return ServicePayColors.success;
 
       case 'FAILED':
       case 'CANCELLED':
       case 'REVERSED':
       case 'REJECTED':
-        return const Color(0xFFDC2626);
+        return ServicePayColors.danger;
 
       case 'PENDING':
       case 'PROCESSING':
-        return const Color(0xFFD97706);
+        return ServicePayColors.warning;
 
       default:
-        return const Color(0xFF64748B);
+        return ServicePayColors.muted;
     }
   }
 
@@ -821,7 +822,7 @@ class _WalletScreenState extends State<WalletScreen> {
                     )
                   : const Icon(
                       Icons.refresh_rounded,
-                      color: Color(0xFFA0B4E3),
+                      color: ServicePayColors.ink,
                     ),
             ),
             const SizedBox(width: 8),
@@ -894,11 +895,18 @@ class _WalletScreenState extends State<WalletScreen> {
       width: double.infinity,
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        color: ServicePayColors.brand,
+        gradient: const LinearGradient(
+          colors: <Color>[
+            CustomerDashboardPalette.walletStart,
+            CustomerDashboardPalette.walletEnd,
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
         borderRadius: BorderRadius.circular(26),
         boxShadow: [
           BoxShadow(
-            color: ServicePayColors.brand.withValues(alpha: 0.25),
+            color: CustomerDashboardPalette.walletEnd.withValues(alpha: 0.25),
             blurRadius: 24,
             offset: const Offset(0, 12),
           ),
@@ -913,12 +921,12 @@ class _WalletScreenState extends State<WalletScreen> {
                 width: 46,
                 height: 46,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.15),
+                  color: CustomerDashboardPalette.onWallet.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(15),
                 ),
                 child: const Icon(
                   Icons.account_balance_wallet_rounded,
-                  color: Colors.white,
+                  color: CustomerDashboardPalette.onWallet,
                 ),
               ),
               const SizedBox(width: 12),
@@ -931,7 +939,7 @@ class _WalletScreenState extends State<WalletScreen> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        color: Colors.white,
+                        color: CustomerDashboardPalette.onWallet,
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
                       ),
@@ -940,7 +948,7 @@ class _WalletScreenState extends State<WalletScreen> {
                       Text(
                         userPhone,
                         style: TextStyle(
-                          color: Colors.white,
+                          color: CustomerDashboardPalette.onWallet,
                           fontSize: 12,
                         ),
                       ),
@@ -958,7 +966,7 @@ class _WalletScreenState extends State<WalletScreen> {
                   hideBalance
                       ? Icons.visibility_off_rounded
                       : Icons.visibility_rounded,
-                  color: Colors.white,
+                  color: CustomerDashboardPalette.onWallet,
                 ),
               ),
             ],
@@ -967,7 +975,7 @@ class _WalletScreenState extends State<WalletScreen> {
           Text(
             isUsingSavedBalance ? 'Last Saved Balance' : 'Available Balance',
             style: TextStyle(
-              color: Colors.white,
+              color: CustomerDashboardPalette.onWallet,
               fontSize: 13,
             ),
           ),
@@ -980,7 +988,7 @@ class _WalletScreenState extends State<WalletScreen> {
               hideBalance ? '₦ ••••••••' : '₦${_formatMoney(walletBalance)}',
               key: ValueKey(hideBalance),
               style: const TextStyle(
-                color: Colors.white,
+                color: CustomerDashboardPalette.onWallet,
                 fontSize: 31,
                 fontWeight: FontWeight.w900,
                 letterSpacing: -0.6,
@@ -1043,7 +1051,7 @@ class _WalletScreenState extends State<WalletScreen> {
               child: Text(
                 'Loading your virtual account...',
                 style: TextStyle(
-                  color: Color(0xFFA0BCE3),
+                  color: ServicePayColors.ink,
                   fontWeight: FontWeight.w600,
                 ),
               ),
@@ -1083,7 +1091,7 @@ class _WalletScreenState extends State<WalletScreen> {
                       Text(
                         'Virtual Account',
                         style: TextStyle(
-                          color: Color(0xFFA0B4E3),
+                          color: ServicePayColors.ink,
                           fontSize: 17,
                           fontWeight: FontWeight.w800,
                         ),
@@ -1110,7 +1118,7 @@ class _WalletScreenState extends State<WalletScreen> {
                   ? 'SecureWaveNG Virtual Account'
                   : virtualAccountBank,
               style: const TextStyle(
-                color: Color(0xFFA0BCE3),
+                color: ServicePayColors.ink,
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
               ),
@@ -1122,7 +1130,7 @@ class _WalletScreenState extends State<WalletScreen> {
                   child: Text(
                     virtualAccountNumber,
                     style: const TextStyle(
-                      color: Color(0xFFA0B4E3),
+                      color: ServicePayColors.ink,
                       fontSize: 27,
                       letterSpacing: 1.2,
                       fontWeight: FontWeight.w900,
@@ -1143,7 +1151,7 @@ class _WalletScreenState extends State<WalletScreen> {
             const Text(
               'Account Name',
               style: TextStyle(
-                color: Color(0xFF94A3B8),
+                color: ServicePayColors.muted,
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
               ),
@@ -1152,7 +1160,7 @@ class _WalletScreenState extends State<WalletScreen> {
             Text(
               virtualAccountName.isEmpty ? userName : virtualAccountName,
               style: const TextStyle(
-                color: Color(0xFFA0BCE3),
+                color: ServicePayColors.ink,
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
               ),
@@ -1215,7 +1223,7 @@ class _WalletScreenState extends State<WalletScreen> {
             'Dedicated Virtual Account',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Color(0xFFA0B4E3),
+              color: ServicePayColors.ink,
               fontSize: 17,
               fontWeight: FontWeight.w800,
             ),
@@ -1279,7 +1287,7 @@ class _WalletScreenState extends State<WalletScreen> {
       color: ServicePayColors.surface,
       borderRadius: BorderRadius.circular(22),
       border: Border.all(
-        color: const Color(0xFF49688D),
+        color: ServicePayColors.border,
       ),
       boxShadow: [
         BoxShadow(
@@ -1302,8 +1310,9 @@ class _WalletScreenState extends State<WalletScreen> {
         vertical: 5,
       ),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.10),
+        color: color.withValues(alpha: 0.16),
         borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.7)),
       ),
       child: Text(
         status,
@@ -1348,7 +1357,7 @@ class _WalletScreenState extends State<WalletScreen> {
                     Text(
                       'Generate Statement',
                       style: TextStyle(
-                        color: Color(0xFFA0B4E3),
+                        color: ServicePayColors.ink,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -1381,7 +1390,7 @@ class _WalletScreenState extends State<WalletScreen> {
         const Text(
           'Recent Transactions',
           style: TextStyle(
-            color: Color(0xFFA0B4E3),
+            color: ServicePayColors.ink,
             fontSize: 19,
             fontWeight: FontWeight.w800,
           ),
@@ -1416,7 +1425,7 @@ class _WalletScreenState extends State<WalletScreen> {
               separatorBuilder: (_, __) => const Divider(
                 height: 1,
                 indent: 76,
-                color: Color(0xFF4A6B8C),
+                color: ServicePayColors.border,
               ),
               itemBuilder: (
                 BuildContext context,
@@ -1451,7 +1460,7 @@ class _WalletScreenState extends State<WalletScreen> {
           Text(
             'No transactions yet',
             style: TextStyle(
-              color: Color(0xFFA0B4E3),
+              color: ServicePayColors.ink,
               fontSize: 16,
               fontWeight: FontWeight.w800,
             ),
@@ -1486,7 +1495,7 @@ class _WalletScreenState extends State<WalletScreen> {
         : null;
 
     final Color transactionColor =
-        isCredit ? const Color(0xFF059669) : const Color(0xFFDC2626);
+        isCredit ? ServicePayColors.success : ServicePayColors.danger;
 
     return ListTile(
       contentPadding: const EdgeInsets.symmetric(
@@ -1511,7 +1520,7 @@ class _WalletScreenState extends State<WalletScreen> {
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: const TextStyle(
-          color: Color(0xFFA0B4E3),
+          color: ServicePayColors.ink,
           fontSize: 14,
           fontWeight: FontWeight.w700,
         ),
@@ -1525,7 +1534,7 @@ class _WalletScreenState extends State<WalletScreen> {
                 _formatDate(dateValue),
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  color: Color(0xFF94A3B8),
+                  color: ServicePayColors.muted,
                   fontSize: 11,
                 ),
               ),

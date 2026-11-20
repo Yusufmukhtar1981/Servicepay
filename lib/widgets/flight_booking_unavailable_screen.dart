@@ -54,7 +54,7 @@ class FlightBookingUnavailableScreen extends StatelessWidget {
                   const SizedBox(height: 28),
                   FilledButton.icon(
                     onPressed: () => Navigator.of(context).maybePop(),
-                    style: FilledButton.styleFrom(backgroundColor: green),
+                    style: FilledButton.styleFrom(backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent),
                     icon: const Icon(Icons.arrow_back_rounded),
                     label: const Text('Back to services'),
                   ),

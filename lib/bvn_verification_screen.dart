@@ -816,7 +816,7 @@ class _BvnVerificationScreenState extends State<BvnVerificationScreen> {
                       child: FilledButton.icon(
                         onPressed: isLoading ? null : verifyBvn,
                         style: FilledButton.styleFrom(
-                          backgroundColor: primaryGreen,
+                          backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(
                               18,
@@ -829,7 +829,7 @@ class _BvnVerificationScreenState extends State<BvnVerificationScreen> {
                                 height: 22,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2.5,
-                                  color: Colors.white,
+                                  color: ServicePayColors.onAccent,
                                 ),
                               )
                             : const Icon(
@@ -1333,7 +1333,7 @@ class BvnVerificationResultScreen extends StatelessWidget {
                     shareCard(context);
                   },
                   style: FilledButton.styleFrom(
-                    backgroundColor: primaryGreen,
+                    backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
                   ),
                   icon: const Icon(
                     Icons.share_rounded,
@@ -1386,7 +1386,7 @@ class BvnVerificationResultScreen extends StatelessWidget {
                 Navigator.pop(context);
               },
               style: FilledButton.styleFrom(
-                backgroundColor: primaryGreen,
+                backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
               ),
               child: const Text(
                 'Done',

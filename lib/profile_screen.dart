@@ -1043,10 +1043,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             label: 'Account Status',
                             value: status,
                             valueColor: status == 'ACTIVE'
-                                ? primaryGreen
-                                : const Color(
-                                    0xFFDC2626,
-                                  ),
+                                ? ServicePayColors.success
+                                : ServicePayColors.danger,
                             showDivider: false,
                           ),
                         ],
@@ -1581,14 +1579,14 @@ class _KycTierCard extends StatelessWidget {
       .join(' ');
 
   Color get statusColor {
-    if (status == 'VERIFIED') return const Color(0xFF166534);
+    if (status == 'VERIFIED') return ServicePayColors.success;
     if (status == 'REJECTED' || status == 'NEEDS_MORE_INFORMATION') {
-      return const Color(0xFFB45309);
+      return ServicePayColors.warning;
     }
     if (status == 'PENDING' || status == 'UNDER_REVIEW') {
-      return const Color(0xFF1D4ED8);
+      return ServicePayColors.info;
     }
-    return const Color(0xFF64748B);
+    return ServicePayColors.muted;
   }
 
   List<String> get missingRequirements {
@@ -1683,8 +1681,9 @@ class _KycTierCard extends StatelessWidget {
                         vertical: 6,
                       ),
                       decoration: BoxDecoration(
-                        color: statusColor.withValues(alpha: 0.10),
+                        color: statusColor.withValues(alpha: 0.16),
                         borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: statusColor),
                       ),
                       child: Text(
                         statusLabel,
@@ -1709,7 +1708,7 @@ class _KycTierCard extends StatelessWidget {
                         margin: EdgeInsets.only(right: step == 3 ? 0 : 6),
                         decoration: BoxDecoration(
                           color: active
-                              ? ServicePayColors.brand
+                              ? ServicePayColors.accent
                               : ServicePayColors.brandSoft,
                           borderRadius: BorderRadius.circular(20),
                         ),
@@ -2013,10 +2012,7 @@ class _ProfileInfoRow extends StatelessWidget {
                 Text(
                   value,
                   style: TextStyle(
-                    color: valueColor ??
-                        const Color(
-                          0xFF171A18,
-                        ),
+                    color: valueColor ?? ServicePayColors.ink,
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
                   ),
@@ -2145,9 +2141,7 @@ class _ProfileActionTile extends StatelessWidget {
                     title,
                     style: TextStyle(
                       color: titleColor ??
-                          const Color(
-                            0xFF171A18,
-                          ),
+                          ServicePayColors.ink,
                       fontSize: 14,
                       fontWeight: FontWeight.w800,
                     ),

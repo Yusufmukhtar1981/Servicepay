@@ -980,7 +980,7 @@ class _DataScreenState extends State<DataScreen> {
                   FilledButton(
                     onPressed: isBusy ? null : () => buyPlan(plan),
                     style: FilledButton.styleFrom(
-                      backgroundColor: primaryGreen,
+                      backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 16,
                       ),

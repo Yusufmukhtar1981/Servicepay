@@ -451,7 +451,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
               child: FilledButton.icon(
                 onPressed: isLoading ? null : resetPassword,
                 style: FilledButton.styleFrom(
-                  backgroundColor: primaryGreen,
+                  backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
                   ),
@@ -462,7 +462,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
                         height: 22,
                         child: CircularProgressIndicator(
                           strokeWidth: 2.4,
-                          color: Colors.white,
+                          color: ServicePayColors.onAccent,
                         ),
                       )
                     : const Icon(
@@ -544,7 +544,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
           child: FilledButton.icon(
             onPressed: returnToLogin,
             style: FilledButton.styleFrom(
-              backgroundColor: primaryGreen,
+              backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(14),
               ),
@@ -601,7 +601,7 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
           child: FilledButton(
             onPressed: returnToLogin,
             style: FilledButton.styleFrom(
-              backgroundColor: primaryGreen,
+              backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
             ),
             child: const Text(
               'Return to Sign In',

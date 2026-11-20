@@ -529,7 +529,7 @@ class _PartnerApplicationScreenState extends State<PartnerApplicationScreen> {
             ),
             const SizedBox(height: 12),
             FilledButton.icon(
-              style: FilledButton.styleFrom(backgroundColor: _green),
+              style: FilledButton.styleFrom(backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent),
               onPressed: actionLoading ? null : _activateCredentials,
               icon: const Icon(Icons.lock_open_rounded),
               label: const Text('Activate credentials'),
@@ -811,9 +811,9 @@ class _PartnerApplicationScreenState extends State<PartnerApplicationScreen> {
             width: double.infinity,
             height: 50,
             child: FilledButton.icon(
-              style: FilledButton.styleFrom(backgroundColor: _green),
+              style: FilledButton.styleFrom(backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent),
               onPressed: submitting ? null : _submit,
-              icon: submitting ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Icon(Icons.send_rounded),
+              icon: submitting ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: ServicePayColors.onAccent)) : const Icon(Icons.send_rounded),
               label: Text(submitting ? 'Submitting...' : 'Submit application'),
             ),
           ),

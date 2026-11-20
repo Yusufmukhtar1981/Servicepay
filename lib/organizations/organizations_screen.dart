@@ -1137,7 +1137,7 @@ class _OrganizationProfileScreenState extends State<OrganizationProfileScreen> {
         else
           FilledButton.icon(
             style: FilledButton.styleFrom(
-              backgroundColor: ServicePayColors.brand,
+              backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
               minimumSize: const Size.fromHeight(52),
             ),
             onPressed: joining ? null : _join,
@@ -1146,7 +1146,7 @@ class _OrganizationProfileScreenState extends State<OrganizationProfileScreen> {
                     width: 18,
                     height: 18,
                     child: CircularProgressIndicator(
-                      color: Colors.white,
+                      color: ServicePayColors.onAccent,
                       strokeWidth: 2,
                     ),
                   )

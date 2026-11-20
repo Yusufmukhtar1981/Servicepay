@@ -431,7 +431,7 @@ class _PayByLinkScreenState extends State<PayByLinkScreen> {
           FilledButton.icon(
             onPressed: isSubmitting ? null : createLink,
             style: FilledButton.styleFrom(
-              backgroundColor: primaryGreen,
+              backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
               padding: const EdgeInsets.symmetric(
                 vertical: 16,
               ),
@@ -475,7 +475,7 @@ class _PayByLinkScreenState extends State<PayByLinkScreen> {
             child: FilledButton.icon(
               onPressed: payLinkByCode,
               style: FilledButton.styleFrom(
-                backgroundColor: primaryGreen,
+                backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
                 padding: const EdgeInsets.symmetric(
                   vertical: 15,
                 ),

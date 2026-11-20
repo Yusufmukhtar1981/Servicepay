@@ -249,7 +249,7 @@ class MarketplaceCartScreen extends StatelessWidget {
                         height: 52,
                         child: FilledButton(
                           style: FilledButton.styleFrom(
-                            backgroundColor: primary,
+                            backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(14),
                             ),

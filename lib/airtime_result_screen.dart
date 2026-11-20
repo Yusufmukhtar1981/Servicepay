@@ -403,7 +403,7 @@ class _AirtimeResultScreenState extends State<AirtimeResultScreen>
                         icon: const Icon(Icons.receipt_long_rounded),
                         label: const Text('View receipt'),
                         style: FilledButton.styleFrom(
-                            backgroundColor: ServicePayColors.brand),
+                            backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent),
                       ),
                     )
                   else if (!_isTerminal)

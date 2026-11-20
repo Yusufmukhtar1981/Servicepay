@@ -689,7 +689,7 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
                 FilledButton(
                   onPressed: submitPin,
                   style: FilledButton.styleFrom(
-                    backgroundColor: primaryGreen,
+                    backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
                   ),
                   child: const Text('Pay Now'),
                 ),
@@ -1029,7 +1029,7 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
     final bool successful = status == 'SUCCESSFUL';
 
     final Color statusColor = successful
-        ? primaryGreen
+        ? ServicePayColors.success
         : pending
             ? const Color(0xFFF59E0B)
             : const Color(0xFFDC2626);
@@ -1115,7 +1115,7 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
                   _ReceiptRow(
                     label: 'Meter Token',
                     value: meterToken,
-                    valueColor: primaryGreen,
+                    valueColor: ServicePayColors.accent,
                   ),
                 if (units.isNotEmpty)
                   _ReceiptRow(
@@ -1594,7 +1594,7 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
                         ? null
                         : payElectricity,
                     style: FilledButton.styleFrom(
-                      backgroundColor: primaryGreen,
+                      backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
                     ),
                     icon: isPaying
                         ? const SizedBox(
@@ -1602,7 +1602,7 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
                             height: 22,
                             child: CircularProgressIndicator(
                               strokeWidth: 2.4,
-                              color: Colors.white,
+                              color: ServicePayColors.onAccent,
                             ),
                           )
                         : const Icon(

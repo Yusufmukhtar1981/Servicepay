@@ -283,7 +283,7 @@ class _CardsScreenState extends State<CardsScreen> {
                     Navigator.of(sheetContext).pop(address);
                   },
                   style: FilledButton.styleFrom(
-                    backgroundColor: primaryGreen,
+                    backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(18),
                     ),

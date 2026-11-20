@@ -388,7 +388,7 @@ class _MarketplaceCheckoutScreenState extends State<MarketplaceCheckoutScreen> {
             actions: [
               FilledButton(
                 style: FilledButton.styleFrom(
-                  backgroundColor: primary,
+                  backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
                 ),
                 onPressed: () {
                   Navigator.of(dialogContext).pop();
@@ -783,7 +783,7 @@ class _MarketplaceCheckoutScreenState extends State<MarketplaceCheckoutScreen> {
                         height: 54,
                         child: FilledButton.icon(
                           style: FilledButton.styleFrom(
-                            backgroundColor: primary,
+                            backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(16),
                             ),
@@ -796,7 +796,7 @@ class _MarketplaceCheckoutScreenState extends State<MarketplaceCheckoutScreen> {
                                   height: 20,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2.3,
-                                    color: Colors.white,
+                                    color: ServicePayColors.onAccent,
                                   ),
                                 )
                               : const Icon(

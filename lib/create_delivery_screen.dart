@@ -525,7 +525,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
                 );
               },
               style: FilledButton.styleFrom(
-                backgroundColor: primaryBlue,
+                backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
               ),
               child: const Text(
                 'Okay',
@@ -732,7 +732,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
                     );
                   },
                   style: FilledButton.styleFrom(
-                    backgroundColor: primaryBlue,
+                    backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
                   ),
                   child: const Text(
                     'Done',
@@ -1413,7 +1413,7 @@ class _CreateDeliveryScreenState extends State<CreateDeliveryScreen> {
                       ),
                     ),
                     style: FilledButton.styleFrom(
-                      backgroundColor: primaryBlue,
+                      backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(
                           14,

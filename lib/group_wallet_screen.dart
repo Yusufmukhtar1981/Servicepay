@@ -437,7 +437,7 @@ class _GroupWalletScreenState extends State<GroupWalletScreen> {
             const SizedBox(height: 14),
             FilledButton.icon(
               onPressed: _submitting ? null : _createGroup,
-              style: FilledButton.styleFrom(backgroundColor: _green, minimumSize: const Size.fromHeight(48)),
+              style: FilledButton.styleFrom(backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent, minimumSize: const Size.fromHeight(48)),
               icon: const Icon(Icons.groups_rounded),
               label: Text(_submitting ? 'Creating group...' : 'Create group'),
             ),
@@ -594,7 +594,7 @@ class _GroupDetailSheet extends StatelessWidget {
             FilledButton.icon(
               onPressed: onContribute,
               style: FilledButton.styleFrom(
-                backgroundColor: ServicePayColors.brand,
+                backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
                 minimumSize: const Size.fromHeight(48),
               ),
               icon: const Icon(Icons.payments_rounded),

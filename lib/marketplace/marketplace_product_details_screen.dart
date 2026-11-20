@@ -252,7 +252,7 @@ class MarketplaceProductDetailsScreen extends StatelessWidget {
               Expanded(
                 child: FilledButton(
                   style: FilledButton.styleFrom(
-                    backgroundColor: primary,
+                    backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
                   ),
                   onPressed: () {
                     MarketplaceCartStore.add(product);

@@ -555,7 +555,7 @@ class _ReferralScreenState extends State<ReferralScreen> {
                         onPressed:
                             summary.code.isEmpty ? null : shareReferralLink,
                         style: FilledButton.styleFrom(
-                            backgroundColor: primaryGreen),
+                            backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent),
                         icon: const Icon(Icons.share_rounded),
                         label: const Text('Share Referral Link'),
                       ),

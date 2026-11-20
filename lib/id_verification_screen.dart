@@ -1085,7 +1085,7 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
                       child: FilledButton.icon(
                         onPressed: isLoading ? null : verifyNin,
                         style: FilledButton.styleFrom(
-                          backgroundColor: primaryGreen,
+                          backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(
                               18,
@@ -1098,7 +1098,7 @@ class _IdVerificationScreenState extends State<IdVerificationScreen> {
                                 height: 22,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2.5,
-                                  color: Colors.white,
+                                  color: ServicePayColors.onAccent,
                                 ),
                               )
                             : const Icon(
@@ -1476,7 +1476,7 @@ class _VerificationResultScreenState extends State<VerificationResultScreen> {
                     child: FilledButton(
                       onPressed: () => Navigator.pop(context),
                       style: FilledButton.styleFrom(
-                        backgroundColor: primaryGreen,
+                        backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
                       ),
                       child: const Text(
                         'Done',
@@ -1767,7 +1767,7 @@ class _VerificationResultScreenState extends State<VerificationResultScreen> {
                       isSharing ? 'Preparing...' : 'Share Card',
                     ),
                     style: FilledButton.styleFrom(
-                      backgroundColor: primaryGreen,
+                      backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
                     ),
                   ),
                 ),
@@ -1893,7 +1893,7 @@ class _VerificationResultScreenState extends State<VerificationResultScreen> {
                 Navigator.pop(context);
               },
               style: FilledButton.styleFrom(
-                backgroundColor: primaryGreen,
+                backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
               ),
               child: const Text(
                 'Done',

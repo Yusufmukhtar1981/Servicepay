@@ -641,7 +641,7 @@ class _TransferScreenState extends State<TransferScreen> {
                 FilledButton(
                   onPressed: submitPin,
                   style: FilledButton.styleFrom(
-                    backgroundColor: primaryGreen,
+                    backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
                   ),
                   child: const Text(
                     'Confirm Transfer',
@@ -946,7 +946,7 @@ class _TransferScreenState extends State<TransferScreen> {
                     );
                   },
                   style: FilledButton.styleFrom(
-                    backgroundColor: primaryGreen,
+                    backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
                   ),
                   child: const Text(
                     'Done',
@@ -1268,7 +1268,7 @@ class _TransferScreenState extends State<TransferScreen> {
                           ? checkPendingTransferStatus
                           : transferMoney,
                   style: FilledButton.styleFrom(
-                    backgroundColor: primaryGreen,
+                    backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
                   ),
                   icon: isLoading
                       ? const SizedBox(
@@ -1276,7 +1276,7 @@ class _TransferScreenState extends State<TransferScreen> {
                           height: 22,
                           child: CircularProgressIndicator(
                             strokeWidth: 2.5,
-                            color: Colors.white,
+                            color: ServicePayColors.onAccent,
                           ),
                         )
                       : const Icon(

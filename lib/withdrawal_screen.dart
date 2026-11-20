@@ -962,7 +962,7 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
                 onPressed:
                     isSubmitting || isAwaitingPin ? null : submitWithdrawal,
                 style: FilledButton.styleFrom(
-                  backgroundColor: primaryGreen,
+                  backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
                   padding: const EdgeInsets.symmetric(
                     vertical: 16,
                   ),
@@ -973,7 +973,7 @@ class _WithdrawalScreenState extends State<WithdrawalScreen> {
                         height: 18,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          color: Colors.white,
+                          color: ServicePayColors.onAccent,
                         ),
                       )
                     : const Icon(

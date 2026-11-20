@@ -1046,7 +1046,7 @@ class _KycScreenState extends State<KycScreen> {
                                       ? 'Submitting...'
                                       : 'Submit KYC application'),
                                   style: FilledButton.styleFrom(
-                                    backgroundColor: ServicePayColors.brand,
+                                    backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
                                     padding: const EdgeInsets.symmetric(
                                         vertical: 14),
                                   ),

@@ -599,7 +599,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
                 Navigator.pop(dialogContext, true);
               },
               style: FilledButton.styleFrom(
-                backgroundColor: primaryGreen,
+                backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
               ),
               child: const Text('Buy PIN'),
             ),
@@ -742,7 +742,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
                       Navigator.pop(sheetContext);
                     },
                     style: FilledButton.styleFrom(
-                      backgroundColor: primaryGreen,
+                      backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
                       minimumSize: const Size(
                         double.infinity,
                         54,
@@ -1184,7 +1184,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
             FilledButton.icon(
               onPressed: loadProducts,
               style: FilledButton.styleFrom(
-                backgroundColor: primaryGreen,
+                backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
               ),
               icon: const Icon(Icons.refresh_rounded),
               label: const Text('Try Again'),
@@ -1629,7 +1629,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
                       ? null
                       : buyExamPin,
                   style: FilledButton.styleFrom(
-                    backgroundColor: primaryGreen,
+                    backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(17),
                     ),
@@ -1640,7 +1640,7 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
                           height: 22,
                           child: CircularProgressIndicator(
                             strokeWidth: 2.5,
-                            color: Colors.white,
+                            color: ServicePayColors.onAccent,
                           ),
                         )
                       : const Icon(

@@ -314,11 +314,13 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                 itemCount: products.length,
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
+                // Responsive: 2 columns on phones, more on tablet/desktop, so
+                // card names and prices stay within a normal viewport.
+                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                  maxCrossAxisExtent: 260,
+                  mainAxisExtent: 300,
                   crossAxisSpacing: 12,
                   mainAxisSpacing: 12,
-                  childAspectRatio: 0.72,
                 ),
                 itemBuilder: (
                   context,
@@ -382,6 +384,7 @@ class _MarketplaceScreenState extends State<MarketplaceScreen> {
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(
+                                    color: ServicePayColors.ink,
                                     fontWeight: FontWeight.w700,
                                     fontSize: 15,
                                   ),

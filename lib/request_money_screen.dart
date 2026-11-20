@@ -346,7 +346,7 @@ class _RequestMoneyScreenState extends State<RequestMoneyScreen> {
           FilledButton.icon(
             onPressed: isSubmitting ? null : sendRequest,
             style: FilledButton.styleFrom(
-              backgroundColor: primaryGreen,
+              backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
               padding: const EdgeInsets.symmetric(
                 vertical: 16,
               ),
@@ -427,7 +427,7 @@ class _RequestMoneyScreenState extends State<RequestMoneyScreen> {
                                 child: FilledButton(
                                   onPressed: () => payRequest(item),
                                   style: FilledButton.styleFrom(
-                                    backgroundColor: primaryGreen,
+                                    backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
                                   ),
                                   child: const Text('Pay'),
                                 ),

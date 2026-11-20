@@ -157,7 +157,7 @@ class _CreateTrustDealScreenState extends State<CreateTrustDealScreen> {
               FilledButton(
                   onPressed: _saving ? null : _submit,
                   style: FilledButton.styleFrom(
-                      backgroundColor: ServicePayColors.brand,
+                      backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
                       padding: const EdgeInsets.all(15)),
                   child: Text(_saving ? 'Creating…' : 'Create protected deal')),
             ])),
@@ -318,7 +318,7 @@ class _TrustDealDetailScreenState extends State<TrustDealDetailScreen> {
             FilledButton(
                 onPressed: _working ? null : _fund,
                 style: FilledButton.styleFrom(
-                    backgroundColor: ServicePayColors.brand),
+                    backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent),
                 child: const Text('Fund with PIN')),
           if (_deal.canSellerStart)
             FilledButton.tonal(
@@ -421,7 +421,7 @@ class _TrustDisputeFormScreenState extends State<TrustDisputeFormScreen> {
         FilledButton(
             onPressed: _saving ? null : _send,
             style: FilledButton.styleFrom(
-                backgroundColor: ServicePayColors.brand),
+                backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent),
             child: const Text('Submit dispute'))
       ]));
 }

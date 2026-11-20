@@ -435,7 +435,7 @@ class _AirtimeToCashScreenState extends State<AirtimeToCashScreen> {
             child: FilledButton.icon(
               onPressed: isSubmitting ? null : submitRequest,
               style: FilledButton.styleFrom(
-                backgroundColor: primaryGreen,
+                backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
               ),
               icon: isSubmitting
                   ? const SizedBox(
@@ -443,7 +443,7 @@ class _AirtimeToCashScreenState extends State<AirtimeToCashScreen> {
                       height: 20,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        color: Colors.white,
+                        color: ServicePayColors.onAccent,
                       ),
                     )
                   : const Icon(

@@ -276,7 +276,7 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
                   height: 52,
                   child: FilledButton(
                     style: FilledButton.styleFrom(
-                      backgroundColor: primaryGreen,
+                      backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
                     ),
                     onPressed: () {
                       final value = controller.text.trim();
@@ -454,7 +454,7 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
                   height: 52,
                   child: FilledButton(
                     style: FilledButton.styleFrom(
-                      backgroundColor: primaryGreen,
+                      backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
                     ),
                     onPressed: () {
                       final value = double.tryParse(
@@ -702,7 +702,7 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
                   height: 52,
                   child: FilledButton(
                     style: FilledButton.styleFrom(
-                      backgroundColor: primaryGreen,
+                      backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
                     ),
                     onPressed: () {
                       final id = idController.text.trim().toUpperCase();
@@ -815,7 +815,7 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
               ),
               FilledButton(
                 style: FilledButton.styleFrom(
-                  backgroundColor: primaryGreen,
+                  backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
                 ),
                 onPressed: () {
                   Navigator.pop(
@@ -1010,7 +1010,7 @@ class _BusinessWalletScreenState extends State<BusinessWalletScreen> {
                     height: 52,
                     child: FilledButton(
                       style: FilledButton.styleFrom(
-                        backgroundColor: primaryGreen,
+                        backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
                       ),
                       onPressed: () {
                         final amount = double.tryParse(

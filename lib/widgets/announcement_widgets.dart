@@ -691,8 +691,8 @@ class _ReferralPromotionCard extends StatelessWidget {
                                   key: const Key('referral-promotion-cta'),
                                   onPressed: onTap,
                                   style: FilledButton.styleFrom(
-                                    backgroundColor: ServicePayColors.brandSoft,
-                                    foregroundColor: ServicePayColors.accent,
+                                    backgroundColor: ServicePayColors.accent,
+                                    foregroundColor: ServicePayColors.onAccent,
                                     minimumSize: const Size(0, 44),
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 14,

@@ -123,7 +123,7 @@ class _TrustProfileScreenState extends State<TrustProfileScreen> {
                             width: double.infinity,
                             child: FilledButton.icon(
                               style: FilledButton.styleFrom(
-                                  backgroundColor: _green,
+                                  backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
                                   padding:
                                       const EdgeInsets.symmetric(vertical: 15)),
                               onPressed: () => Navigator.push(

@@ -473,8 +473,8 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
 
   Color _directionColor(String direction) {
     return direction == 'CREDIT'
-        ? const Color(0xFF15803D)
-        : const Color(0xFFB91C1C);
+        ? ServicePayColors.success
+        : ServicePayColors.danger;
   }
 
   String _formattedAmount(
@@ -572,7 +572,17 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   }
 
   Color _statusColor(String status) {
-    return TransactionPresentation.statusColor(status);
+    switch (status) {
+      case 'SUCCESSFUL':
+        return ServicePayColors.success;
+      case 'FAILED':
+      case 'REVERSED':
+        return ServicePayColors.danger;
+      case 'PROCESSING':
+        return ServicePayColors.info;
+      default:
+        return ServicePayColors.warning;
+    }
   }
 
   void _openReceipt(Map<String, dynamic> transaction) {
@@ -1206,16 +1216,17 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
                               ),
                               selected: selected,
                               selectedColor: ServicePayColors.brandSoft,
+                              backgroundColor: ServicePayColors.surface,
                               labelStyle: TextStyle(
                                 color: selected
                                     ? ServicePayColors.accent
-                                    : Colors.grey.shade700,
+                                    : ServicePayColors.ink,
                                 fontWeight: FontWeight.w700,
                               ),
                               side: BorderSide(
                                 color: selected
                                     ? primaryGreen
-                                    : Colors.grey.shade300,
+                                    : ServicePayColors.border,
                               ),
                               onSelected: (_) {
                                 setState(() {
@@ -1473,7 +1484,7 @@ class _TransactionCard extends StatelessWidget {
                       Text(
                         date,
                         style: const TextStyle(
-                          color: Color(0xFF9CA3AF),
+                          color: ServicePayColors.muted,
                           fontSize: 11,
                         ),
                       ),
@@ -1828,7 +1839,7 @@ class _EmptyState extends StatelessWidget {
           Icon(
             Icons.receipt_long_outlined,
             size: 58,
-            color: Color(0xFF9CA3AF),
+            color: ServicePayColors.muted,
           ),
           SizedBox(height: 13),
           Text(

@@ -21,7 +21,7 @@ abstract final class ServicePayColors {
   static const surface = Color(0xFF064A3B);
   static const surfaceRaised = Color(0xFF08503F);
   static const ink = Color(0xFFF4FFFA);
-  static const muted = Color(0xFFDDF8EC);
+  static const muted = Color(0xFFE8FFF2);
   static const border = Color(0xFF00DB91);
 
   /// Secondary card surface (#087F68) from the approved palette.

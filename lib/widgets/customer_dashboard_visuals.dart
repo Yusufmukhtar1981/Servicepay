@@ -12,7 +12,7 @@ abstract final class CustomerDashboardPalette {
   static const success = Color(0xFF5BE3A9);
   static const warning = Color(0xFFFFC56B);
   static const error = Color(0xFFFF9A8B);
-  static const muted = Color(0xFFDDF8EC);
+  static const muted = Color(0xFFE8FFF2);
   static const border = ServicePayColors.border;
   static const paleBlue = Color(0xFF0C5444);
   static const text = Color(0xFFFFFFFF);

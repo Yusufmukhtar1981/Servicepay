@@ -1645,7 +1645,7 @@ class _SecureRegistrationScreenState extends State<SecureRegistrationScreen> {
                 height: 52,
                 child: FilledButton(
                   style: FilledButton.styleFrom(
-                    backgroundColor: servicePayGreen,
+                    backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
                   ),
                   onPressed: loading
                       ? null
@@ -1658,7 +1658,7 @@ class _SecureRegistrationScreenState extends State<SecureRegistrationScreen> {
                           width: 22,
                           child: CircularProgressIndicator(
                             strokeWidth: 2,
-                            color: Colors.white,
+                            color: ServicePayColors.onAccent,
                           ),
                         )
                       : Text(

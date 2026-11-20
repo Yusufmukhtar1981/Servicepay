@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:servicepay_app/dashboard_screen.dart';
 import 'package:servicepay_app/main_navigation.dart';
+import 'package:servicepay_app/servicepay_theme.dart';
 import 'package:servicepay_app/transactions_screen.dart';
 import 'package:servicepay_app/widgets/customer_dashboard_visuals.dart';
 
@@ -212,6 +213,38 @@ void main() {
         expect(tester.getRect(action).right, lessThanOrEqualTo(size.width));
       }
       expect(tester.takeException(), isNull);
+    }
+  });
+
+  test('premium green text and CTA pairs meet WCAG AA contrast', () {
+    double ratio(Color a, Color b) {
+      final double x = a.computeLuminance();
+      final double y = b.computeLuminance();
+      return (x > y ? x + 0.05 : y + 0.05) / (x > y ? y + 0.05 : x + 0.05);
+    }
+
+    // Secondary text must stay readable on the #087F68 secondary card.
+    expect(ratio(ServicePayColors.muted, ServicePayColors.card),
+        greaterThanOrEqualTo(4.5));
+    expect(ratio(CustomerDashboardPalette.muted, CustomerDashboardPalette.card),
+        greaterThanOrEqualTo(4.5));
+    // Bright emerald CTAs (Refer Now, Buy, Verify Meter) carry deep forest.
+    expect(ratio(ServicePayColors.onAccent, ServicePayColors.accent),
+        greaterThanOrEqualTo(4.5));
+    expect(
+        ratio(CustomerDashboardPalette.onWallet,
+            CustomerDashboardPalette.walletEnd),
+        greaterThanOrEqualTo(4.5));
+    // Semantic amount/status colours sit on canvas pills or dark surfaces.
+    for (final Color c in <Color>[
+      ServicePayColors.success,
+      ServicePayColors.danger,
+      ServicePayColors.warning,
+      ServicePayColors.info,
+      CustomerDashboardPalette.error,
+    ]) {
+      expect(ratio(c, ServicePayColors.surface), greaterThanOrEqualTo(4.5));
+      expect(ratio(c, ServicePayColors.canvas), greaterThanOrEqualTo(4.5));
     }
   });
 }

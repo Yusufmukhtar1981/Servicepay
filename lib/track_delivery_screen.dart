@@ -474,8 +474,7 @@ class _TrackDeliveryScreenState
                     ),
                   ),
                   style: FilledButton.styleFrom(
-                    backgroundColor:
-                        ServicePayColors.brand,
+                    backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
                     shape: RoundedRectangleBorder(
                       borderRadius:
                           BorderRadius.circular(14),

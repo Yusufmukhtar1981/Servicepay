@@ -343,7 +343,7 @@ class _ExistingSolarPlan extends StatelessWidget {
                 if (finance != null)
                   FilledButton(
                       style:
-                          FilledButton.styleFrom(backgroundColor: _solarGreen),
+                          FilledButton.styleFrom(backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent),
                       onPressed: onFinance,
                       child: const Text('Open finance dashboard'))
               ])
@@ -608,7 +608,7 @@ class SolarPackageDetailsScreen extends StatelessWidget {
               padding: const EdgeInsets.all(16),
               child: FilledButton.icon(
                   style: FilledButton.styleFrom(
-                      backgroundColor: _solarGreen,
+                      backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
                       minimumSize: const Size.fromHeight(52)),
                   onPressed: () =>
                       Navigator.of(context).push(MaterialPageRoute<void>(
@@ -952,10 +952,10 @@ class _SolarApplicationFormScreenState
                 key: const Key('solar_submit_application'),
                 onPressed: _submitting ? null : _submit,
                 style: FilledButton.styleFrom(
-                    backgroundColor: _solarGreen,
+                    backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
                     minimumSize: const Size.fromHeight(52)),
                 child: _submitting
-                    ? const CircularProgressIndicator(color: Colors.white)
+                    ? const CircularProgressIndicator(color: ServicePayColors.onAccent)
                     : const Text('Submit application')),
           ])));
   Widget _section(String title, List<Widget> children) => Padding(
@@ -1256,7 +1256,7 @@ class _FinanceTile extends StatelessWidget {
                               }
                             },
                             style: FilledButton.styleFrom(
-                                backgroundColor: _solarGreen),
+                                backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent),
                             child: const Text('Pay installment')))
                 ])));
   }

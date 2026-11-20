@@ -634,7 +634,7 @@ class _BankTransferScreenState extends State<BankTransferScreen> {
                 FilledButton(
                   onPressed: submitPin,
                   style: FilledButton.styleFrom(
-                    backgroundColor: primaryGreen,
+                    backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
                   ),
                   child: const Text('Transfer'),
                 ),
@@ -935,7 +935,7 @@ class _BankTransferScreenState extends State<BankTransferScreen> {
             FilledButton.icon(
               onPressed: loadBanks,
               style: FilledButton.styleFrom(
-                backgroundColor: primaryGreen,
+                backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
               ),
               icon: const Icon(Icons.refresh_rounded),
               label: const Text('Try Again'),
@@ -1238,7 +1238,7 @@ class _BankTransferScreenState extends State<BankTransferScreen> {
                       ? null
                       : initiateTransfer,
                   style: FilledButton.styleFrom(
-                    backgroundColor: primaryGreen,
+                    backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(17),
                     ),
@@ -1249,7 +1249,7 @@ class _BankTransferScreenState extends State<BankTransferScreen> {
                           height: 22,
                           child: CircularProgressIndicator(
                             strokeWidth: 2.5,
-                            color: Colors.white,
+                            color: ServicePayColors.onAccent,
                           ),
                         )
                       : const Icon(Icons.send_rounded),
