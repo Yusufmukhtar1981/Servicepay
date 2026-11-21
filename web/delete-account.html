@@ -3,98 +3,446 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Request deletion of your ServicePay account or specific personal data.">
+  <meta name="description" content="Delete your ServicePay account and associated eligible data, or make a personal data request. ServicePay is operated by YUMPAY GLOBAL TECH LTD.">
+  <meta name="referrer" content="no-referrer">
   <link rel="icon" type="image/png" href="favicon.png">
   <link rel="canonical" href="https://servicepay.ng/delete-account">
   <meta property="og:title" content="Delete Your ServicePay Account">
-  <meta property="og:description" content="Use the official ServicePay page to request account deletion or a personal data request.">
+  <meta property="og:description" content="Use the official ServicePay page to delete your account and associated eligible data, or make a personal data request.">
   <meta property="og:url" content="https://servicepay.ng/delete-account">
   <meta property="og:type" content="website">
   <meta property="og:image" content="https://servicepay.ng/assets/assets/image/servicepay_logo.png">
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="Delete Your ServicePay Account">
-  <meta name="twitter:description" content="Use the official ServicePay page to request account deletion or a personal data request.">
+  <meta name="twitter:description" content="Use the official ServicePay page to delete your account and associated eligible data, or make a personal data request.">
   <meta name="twitter:image" content="https://servicepay.ng/assets/assets/image/servicepay_logo.png">
   <script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","position":1,"name":"ServicePay","item":"https://servicepay.ng/"},{"@type":"ListItem","position":2,"name":"Delete account","item":"https://servicepay.ng/delete-account"}]}</script>
   <title>Delete Your ServicePay Account</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
   <style>
-    :root{--green:#08783e;--dark:#055c30;--ink:#26352d;--muted:#5d6b63;--bg:#f8faf9;--white:#fff;--line:#dfe9e3;--red:#b42318;--redbg:#fff2f0}
-    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;line-height:1.55}
-    .site-header{background:#fff;border-bottom:1px solid var(--line);box-shadow:0 4px 18px rgba(12,30,20,.05)}
-    .header-inner,.content{width:min(980px,calc(100% - 40px));margin:0 auto}.header-inner{min-height:74px;display:flex;align-items:center;justify-content:space-between;gap:20px}
-    .brand{display:inline-flex;align-items:center;gap:10px;color:var(--green);font-size:22px;font-weight:900;text-decoration:none}.brand img{width:42px;height:42px;object-fit:contain}.back{color:var(--green);font-size:14px;font-weight:700;text-decoration:none}
-    main{padding:36px 0 64px}.hero,.card{background:var(--white);border:1px solid var(--line);border-radius:24px;box-shadow:0 8px 30px rgba(12,30,20,.04)}.hero{padding:42px;margin-bottom:20px}
-    h1,h2{color:var(--dark);line-height:1.2}h1{margin:0;font-size:clamp(30px,5vw,42px)}h2{margin:0 0 10px;font-size:22px}.lead{max-width:760px;color:var(--muted);font-size:17px;margin:14px 0 0}.notice{margin-top:22px;padding:15px 17px;background:#effaf3;border-left:4px solid var(--green);border-radius:10px}
-    .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}.card{padding:30px}.card.wide{grid-column:1/-1}.steps{padding-left:22px;margin:12px 0 0}.steps li{margin:8px 0}.muted{color:var(--muted);font-size:14px}
-    label{display:block;margin:16px 0 6px;font-weight:750;font-size:14px}input,select,textarea{width:100%;padding:12px 13px;border:1px solid #cbd9d0;border-radius:10px;background:#fff;color:var(--ink);font:inherit}textarea{min-height:100px;resize:vertical}input:focus,select:focus,textarea:focus{outline:3px solid #b9e7ca;border-color:var(--green)}
-    .check{display:flex;gap:10px;align-items:flex-start;margin:18px 0;font-size:14px}.check input{width:auto;margin-top:5px;accent-color:var(--green)}button{border:0;border-radius:10px;padding:13px 18px;background:var(--green);color:#fff;font:inherit;font-weight:800;cursor:pointer}button:disabled{opacity:.6;cursor:wait}.secondary{background:#edf7f0;color:var(--dark)}.result{display:none;margin-top:16px;padding:14px;border-radius:10px}.result.ok{display:block;background:#effaf3;color:#155c35}.result.error{display:block;background:var(--redbg);color:var(--red)}
-    .retention{background:#fffaf0;border-color:#f1dfae}.contact a,.card a{color:var(--green);font-weight:700}footer{padding:24px 20px 36px;color:#68766f;font-size:13px;text-align:center}
-    @media(max-width:720px){.header-inner,.content{width:min(100% - 28px,980px)}.header-inner{min-height:68px}.brand{font-size:19px}.brand img{width:36px;height:36px}.grid{grid-template-columns:1fr}.card.wide{grid-column:auto}main{padding:20px 0 38px}.hero,.card{padding:25px 21px;border-radius:18px}}
+    :root{--green:#08783e;--dark:#054a28;--ink:#1f2c25;--muted:#56665d;--bg:#f3f6f1;--paper:#fcfdfa;--line:#d9e4dc;--mint:#e6f4ea;--red:#a8281c;--redbg:#fcefec;--amber:#8a5a00;--amberbg:#fdf6e4;--disp:"Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif;--body:"DM Sans",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;--mono:"JetBrains Mono",ui-monospace,Menlo,monospace}
+    *{box-sizing:border-box}html{-webkit-text-size-adjust:100%}
+    body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);line-height:1.6;font-size:16px}
+    a{color:var(--green);font-weight:700}
+    .site-header{background:var(--paper);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+    .wrap{width:min(1060px,calc(100% - 40px));margin:0 auto}
+    .header-inner{min-height:70px;display:flex;align-items:center;justify-content:space-between;gap:16px}
+    .brand{display:inline-flex;align-items:center;gap:10px;color:var(--green);font-family:var(--disp);font-size:22px;font-weight:800;text-decoration:none}.brand img{width:40px;height:40px;object-fit:contain}
+    .back{font-size:14px;text-decoration:none}.back:hover{text-decoration:underline}
+    main{padding:40px 0 72px}
+    .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--green)}
+    h1,h2,h3{font-family:var(--disp);color:var(--dark);line-height:1.12;letter-spacing:-.01em}
+    h1{margin:10px 0 0;font-size:clamp(34px,6vw,58px);font-weight:800;max-width:14ch}
+    h2{margin:0 0 8px;font-size:clamp(22px,3vw,27px)}h3{margin:0 0 6px;font-size:18px}
+    .hero{display:grid;grid-template-columns:1.25fr .9fr;gap:36px;align-items:end;padding-bottom:34px;border-bottom:1px solid var(--line);margin-bottom:34px}
+    .lead{color:var(--muted);font-size:18px;margin:16px 0 0;max-width:60ch}
+    .operator{margin-top:14px;font-size:14px;color:var(--muted)}
+    .warn{background:var(--redbg);border:1px solid #f0cdc7;border-radius:18px;padding:22px}
+    .warn h3{color:var(--red)}.warn ul{margin:8px 0 0;padding-left:20px;font-size:15px}.warn li{margin:6px 0}
+    .layout{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:28px;align-items:start}
+    .card{background:var(--paper);border:1px solid var(--line);border-radius:22px;padding:30px}
+    .card+.card{margin-top:24px}
+    .muted{color:var(--muted);font-size:14.5px}
+    .stepper{display:flex;gap:6px;margin:18px 0 6px;padding:0;list-style:none}
+    .stepper li{flex:1;font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);border-top:3px solid var(--line);padding-top:8px}
+    .stepper li.on{color:var(--dark);border-color:var(--green)}.stepper li.done{color:var(--green);border-color:#8fcca5}
+    .panel[hidden]{display:none}
+    label{display:block;margin:18px 0 6px;font-weight:700;font-size:14px}
+    .hint{display:block;font-weight:400;color:var(--muted);font-size:13px;margin-top:3px}
+    input,select,textarea{width:100%;padding:13px 14px;border:1px solid #c5d4ca;border-radius:12px;background:#fff;color:var(--ink);font:inherit;font-size:16px}
+    textarea{min-height:96px;resize:vertical}
+    input:focus,select:focus,textarea:focus,button:focus-visible{outline:3px solid #a9dcbc;outline-offset:1px;border-color:var(--green)}
+    input[aria-invalid="true"]{border-color:var(--red)}
+    .otp{font-family:var(--mono);font-size:26px;letter-spacing:.5em;text-align:center;max-width:280px}
+    .methods{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+    .method{position:relative;display:block;margin:0;border:1.5px solid var(--line);border-radius:14px;padding:14px 14px 14px 42px;cursor:pointer;font-weight:400;background:#fff}
+    .method input{position:absolute;left:14px;top:17px;width:auto;accent-color:var(--green)}
+    .method strong{display:block;font-size:15px}.method span{font-size:13px;color:var(--muted)}
+    .method:has(input:checked){border-color:var(--green);background:var(--mint)}
+    .check{display:flex;gap:12px;align-items:flex-start;margin:14px 0;font-size:14.5px;font-weight:400;padding:14px;border:1px solid var(--line);border-radius:12px;background:#fff}
+    .check input{width:20px;height:20px;margin-top:2px;flex:none;accent-color:var(--green)}
+    .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:20px}
+    button{border:0;border-radius:12px;padding:14px 20px;background:var(--green);color:#fff;font:inherit;font-weight:700;cursor:pointer;min-height:48px;transition:transform .12s ease,opacity .12s}
+    button:active{transform:translateY(1px)}button:disabled{opacity:.55;cursor:not-allowed}
+    button.danger{background:var(--red)}
+    button.ghost{background:transparent;color:var(--dark);border:1px solid var(--line)}
+    button.link{background:none;color:var(--green);padding:6px 0;min-height:0;text-decoration:underline}
+    .result{margin-top:16px;padding:14px 16px;border-radius:12px;font-size:14.5px}
+    .result:empty{display:none}
+    .result.ok{background:var(--mint);color:#11522f}.result.error{background:var(--redbg);color:var(--red)}.result.info{background:#eef3ef;color:var(--muted)}
+    .receipt{border:1.5px dashed #9cc9ac;border-radius:16px;padding:20px;background:#fff}
+    .receipt dl{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;margin:12px 0 0;font-size:14.5px}
+    .receipt dt{color:var(--muted)}.receipt dd{margin:0;font-family:var(--mono);font-size:14px;word-break:break-all}
+    .badge{display:inline-block;padding:3px 10px;border-radius:999px;background:var(--mint);color:var(--dark);font-family:var(--mono);font-size:12px;letter-spacing:.04em}
+    .timeline{list-style:none;padding:0;margin:14px 0 0;border-left:2px solid var(--line)}
+    .timeline li{position:relative;padding:0 0 12px 18px;font-size:14px}
+    .timeline li::before{content:"";position:absolute;left:-6px;top:6px;width:10px;height:10px;border-radius:50%;background:var(--green)}
+    .timeline time{display:block;color:var(--muted);font-size:12.5px}
+    .facts h3{margin-top:20px}.facts h3:first-of-type{margin-top:4px}.facts p,.facts ul{font-size:15px;margin:4px 0 0}.facts ul{padding-left:20px}
+    .retain{background:var(--amberbg);border-color:#efdca8}.retain h2{color:var(--amber)}
+    .skel{height:14px;border-radius:6px;background:linear-gradient(90deg,#e7eee9,#f4f8f5,#e7eee9);background-size:200% 100%;animation:sh 1.2s infinite linear;margin:8px 0}
+    @keyframes sh{to{background-position:-200% 0}}
+    .split{display:grid;grid-template-columns:1fr 1fr;gap:28px;margin-top:28px}
+    footer{padding:28px 20px 40px;color:#66756c;font-size:13px;text-align:center}
+    .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+    @media(max-width:860px){.hero,.layout,.split{grid-template-columns:1fr}.hero{gap:22px}}
+    @media(max-width:560px){.wrap{width:calc(100% - 28px)}.card{padding:22px 18px;border-radius:18px}.methods{grid-template-columns:1fr}.brand{font-size:19px}.brand img{width:34px;height:34px}main{padding:26px 0 48px}.row button{width:100%}.stepper li{font-size:10px}}
+    @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
   </style>
 </head>
 <body>
-  <header class="site-header"><div class="header-inner">
+  <header class="site-header"><div class="wrap header-inner">
     <a class="brand" href="/"><img src="assets/assets/image/servicepay_logo.png" alt="ServicePay logo"><span>ServicePay</span></a>
     <a class="back" href="/">Back to ServicePay</a>
   </div></header>
-  <main><div class="content">
+
+  <main><div class="wrap">
     <section class="hero">
-      <h1>Delete Your ServicePay Account</h1>
-      <p class="lead">Use this page to request closure of your ServicePay account or ask us to handle specific personal data. Your request is reviewed securely by ServicePay Support.</p>
-      <div class="notice"><strong>Important:</strong> Do not enter your password, transaction PIN, OTP, BVN, NIN, identity document or any other secret on this page.</div>
+      <div>
+        <div class="eyebrow">Account and data deletion</div>
+        <h1>Delete your ServicePay account</h1>
+        <p class="lead">Request permanent deletion of your ServicePay account and the associated personal data that is eligible for deletion. You must prove you own the account before we act on the request.</p>
+        <p class="operator">ServicePay is operated by YUMPAY GLOBAL TECH LTD, Nigeria.</p>
+      </div>
+      <aside class="warn" aria-labelledby="warn-title">
+        <h3 id="warn-title">Deletion cannot be undone</h3>
+        <ul>
+          <li>You will lose access to your account, profile, saved details and service history in the app.</li>
+          <li>You cannot sign in again with this account or recover it later.</li>
+          <li>Withdraw any wallet balance and settle pending orders, deliveries, financing or disputes first.</li>
+          <li>Never share your transaction PIN, BVN or NIN on this page. ServicePay staff will never ask for them.</li>
+        </ul>
+      </aside>
     </section>
-    <div class="grid">
-      <section class="card">
-        <h2>Delete your account</h2>
-        <p class="muted">Account deletion is irreversible after approval. We will verify the request before taking action.</p>
-        <form data-form="deletion">
-          <label for="delete-name">Full name</label><input id="delete-name" name="fullName" required maxlength="120" autocomplete="name">
-          <label for="delete-phone">Registered phone number</label><input id="delete-phone" name="phone" required maxlength="20" autocomplete="tel">
-          <label for="delete-email">Registered email address</label><input id="delete-email" name="email" type="email" required maxlength="254" autocomplete="email">
-          <label for="delete-reason">Reason (optional)</label><textarea id="delete-reason" name="reason" maxlength="2000"></textarea>
-          <label class="check"><input type="checkbox" name="confirmation" required><span>I understand that account deletion is irreversible and that some legal, financial, fraud, security, dispute and audit records may be retained.</span></label>
-          <button type="submit">Request Account Deletion</button><div class="result" role="status"></div>
-        </form>
-      </section>
-      <section class="card">
-        <h2>Request specific data</h2>
-        <p class="muted">Ask to access, correct, port or object to processing of specific personal data without requesting account closure.</p>
-        <form data-form="data">
-          <label for="data-name">Full name</label><input id="data-name" name="fullName" required maxlength="120" autocomplete="name">
-          <label for="data-phone">Registered phone number</label><input id="data-phone" name="phone" required maxlength="20" autocomplete="tel">
-          <label for="data-email">Registered email address</label><input id="data-email" name="email" type="email" required maxlength="254" autocomplete="email">
-          <label for="data-type">Request type</label><select id="data-type" name="requestType" required><option value="">Choose one</option><option value="ACCESS">Access my data</option><option value="CORRECTION">Correct my data</option><option value="PORTABILITY">Provide a copy of my data</option><option value="OBJECTION">Object to specific processing</option><option value="OTHER">Other privacy request</option></select>
-          <label for="data-description">Describe your request</label><textarea id="data-description" name="description" required minlength="10" maxlength="2000"></textarea>
-          <button type="submit">Submit Data Request</button><div class="result" role="status"></div>
-        </form>
-      </section>
-      <section class="card wide">
-        <h2>What happens next</h2>
-        <ol class="steps"><li>We create a unique reference ID and send confirmation to the email address you provide.</li><li>ServicePay Support verifies the request and may contact you through your registered details. We will never ask for your password, PIN or OTP.</li><li>Approved account deletion disables account access and removes or anonymizes eligible personal information.</li><li>We retain information required for legal, regulatory, financial, fraud-prevention, security, dispute-resolution and audit purposes. Transaction, wallet, payment, KYC and other evidence is not automatically deleted.</li></ol>
-        <p class="contact">Questions? Contact <a href="mailto:admin@servicepay.ng">admin@servicepay.ng</a>, or use the secondary public address <a href="mailto:support@servicepay.ng">support@servicepay.ng</a> or <a href="tel:+2349136151515">+2349136151515</a>. Read the <a href="/privacy-policy">Privacy Policy</a>.</p>
-      </section>
+
+    <div class="layout">
+      <div>
+        <section class="card" aria-labelledby="del-title">
+          <h2 id="del-title">Request account deletion</h2>
+          <p class="muted">Three short steps. Your password or one-time code is used only to verify ownership and is not saved by this page.</p>
+          <ol class="stepper" aria-label="Progress">
+            <li data-step="1" class="on">1. Account</li>
+            <li data-step="2">2. Verify</li>
+            <li data-step="3">3. Confirm</li>
+          </ol>
+
+          <!-- Step 1 -->
+          <form class="panel" id="step1" novalidate>
+            <label for="identifier">Registered phone number or email address<span class="hint">Use the phone number or email registered on your ServicePay account.</span></label>
+            <input id="identifier" name="identifier" required maxlength="254" autocomplete="username" inputmode="email" spellcheck="false" autocapitalize="off">
+            <div class="methods" role="radiogroup" aria-label="Verification method">
+              <label class="method"><input type="radio" name="method" value="otp" checked><strong>Email code</strong><span>We send a 6-digit code if a verified email is on the account.</span></label>
+              <label class="method"><input type="radio" name="method" value="password"><strong>Account password</strong><span>Confirm with your current ServicePay password.</span></label>
+            </div>
+            <div class="row"><button type="submit" id="step1-btn">Continue</button></div>
+            <div class="result" id="step1-result" role="status" aria-live="polite"></div>
+          </form>
+
+          <!-- Step 2 -->
+          <form class="panel" id="step2" hidden novalidate>
+            <div id="otp-block">
+              <div class="result info" id="otp-note"></div>
+              <label for="code">6-digit code<span class="hint">Codes expire. Check your inbox and spam folder.</span></label>
+              <input id="code" name="code" class="otp" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" placeholder="------">
+              <p class="muted">No code? It will only arrive if this account has a verified email. You can <button type="button" class="link" id="request-new">request a new code</button> or <button type="button" class="link" id="use-password">verify with your password instead</button>.</p>
+            </div>
+            <div id="pw-block" hidden>
+              <label for="password">Current ServicePay password</label>
+              <input id="password" name="currentPassword" type="password" autocomplete="current-password" maxlength="128">
+              <p class="muted">Forgotten your password? Reset it in the app first, or <button type="button" class="link" id="use-otp">use an email code</button>.</p>
+            </div>
+            <div class="row"><button type="submit">Continue</button><button type="button" class="ghost" data-back="1">Back</button></div>
+            <div class="result" id="step2-result" role="status" aria-live="polite"></div>
+          </form>
+
+          <!-- Step 3 -->
+          <form class="panel" id="step3" hidden novalidate>
+            <p class="muted">Account: <strong id="confirm-id"></strong></p>
+            <label for="reason">Reason for leaving (optional)</label>
+            <textarea id="reason" name="reason" maxlength="2000"></textarea>
+            <label class="check"><input type="checkbox" id="c1"><span>I understand that deleting my ServicePay account is permanent and that I will lose access to the account and its associated eligible data.</span></label>
+            <label class="check"><input type="checkbox" id="c2"><span>I understand that records ServicePay is legally required to keep, including financial, transaction, KYC, fraud-prevention and audit records, will be retained and not deleted.</span></label>
+            <label class="check"><input type="checkbox" id="c3"><span>I understand that an unresolved balance, order, dispute, financing obligation or legal hold must be reviewed and may delay or prevent completion.</span></label>
+            <div class="row"><button type="submit" class="danger" id="submit-del">Delete my account</button><button type="button" class="ghost" data-back="2">Back</button></div>
+            <div class="result" id="step3-result" role="status" aria-live="polite"></div>
+          </form>
+
+          <!-- Receipt -->
+          <div class="panel" id="receipt" hidden>
+            <div class="receipt">
+              <span class="badge" id="r-status"></span>
+              <h3 style="margin-top:10px">Deletion request received</h3>
+              <p class="muted">Your request now goes to Head Office for manual review. Keep your reference ID for Support. ServicePay processes verified requests within 30 calendar days. Support will explain any unresolved obligation or legal hold affecting your request.</p>
+              <dl><dt>Reference</dt><dd id="r-ref"></dd><dt>Submitted</dt><dd id="r-at"></dd><dt id="r-dl-t" hidden>Process by</dt><dd id="r-dl" hidden></dd></dl>
+              <div id="r-history"></div>
+              <div class="row"><button type="button" id="check-status">Check status</button><button type="button" class="ghost" id="forget">Forget receipt</button></div>
+              <div class="result" id="status-result" role="status" aria-live="polite"></div>
+            </div>
+            <p class="muted" style="margin-top:14px">This receipt is kept only in this browser tab session so you can reload and check status. Select Forget receipt on a shared device.</p>
+          </div>
+        </section>
+
+        <section class="card" aria-labelledby="data-title">
+          <h2 id="data-title">Request specific data instead</h2>
+          <p class="muted">Ask to access, correct, port or object to processing of specific personal data without deleting your account.</p>
+          <form data-form="data">
+            <label for="data-name">Full name</label><input id="data-name" name="fullName" required maxlength="120" autocomplete="name">
+            <label for="data-phone">Registered phone number</label><input id="data-phone" name="phone" required maxlength="20" autocomplete="tel" inputmode="tel">
+            <label for="data-email">Registered email address</label><input id="data-email" name="email" type="email" required maxlength="254" autocomplete="email">
+            <label for="data-type">Request type</label><select id="data-type" name="requestType" required><option value="">Choose one</option><option value="ACCESS">Access my data</option><option value="CORRECTION">Correct my data</option><option value="PORTABILITY">Provide a copy of my data</option><option value="OBJECTION">Object to specific processing</option><option value="OTHER">Other privacy request</option></select>
+            <label for="data-description">Describe your request</label><textarea id="data-description" name="description" required minlength="10" maxlength="2000"></textarea>
+            <div class="row"><button type="submit">Submit data request</button></div>
+            <div class="result" role="status" aria-live="polite"></div>
+          </form>
+        </section>
+      </div>
+
+      <aside>
+        <section class="card facts" aria-labelledby="what-title">
+          <h2 id="what-title">What happens</h2>
+          <h3>1. Ownership verification</h3>
+          <p>Every request must be verified with an email code or your current password. Requests that cannot be verified are not processed.</p>
+          <h3>2. Review</h3>
+          <p>Every verified request is reviewed manually by ServicePay Head Office. Unresolved wallet balances, orders, deliveries, financing, disputes or legal holds require review before deletion can complete. Support may contact you through your registered details.</p>
+          <h3>3. Deletion</h3>
+          <p>On approval, ServicePay automatically erases eligible profile and sign-in details and saved contacts, and signs you out of all sessions. Financial records are preserved.</p>
+          <h3>4. Connected systems and partners</h3>
+          <p>Before marking the request complete, Head Office reviews other connected ServicePay systems and documents what was erased there, any deletion requests sent to payment processors or other partners, the records kept for legal reasons, the legal policy that applies and when retained records will be reviewed again. Partner deletion is not automatic; partners act under their own obligations.</p>
+          <h3>Timing</h3>
+          <p>Processing deadline: 30 calendar days after your ownership is verified. If an unresolved obligation or legal hold affects your request, ServicePay Support will explain it to you.</p>
+        </section>
+
+        <section class="card retain" aria-labelledby="ret-title">
+          <h2 id="ret-title">What we must keep</h2>
+          <p class="muted" style="color:var(--ink)">Nigerian law and financial regulation require some records to be retained after account deletion. These are kept only as long as required and are not used for marketing.</p>
+          <ul class="muted" style="color:var(--ink);padding-left:20px">
+            <li>Transaction, wallet, payment and withdrawal records</li>
+            <li>KYC and identity verification records</li>
+            <li>Fraud-prevention, security and audit logs</li>
+            <li>Records needed for disputes, legal claims or regulator requests</li>
+          </ul>
+          <p class="muted" style="color:var(--ink)">Required records remain in financial and audit systems under existing access controls; they are not part of your active customer profile. Retention periods depend on the record type and applicable law. If an unresolved obligation or legal hold applies, Support will explain it.</p>
+          <p class="muted" style="color:var(--ink)">Payment processors, banks and other partners hold their own records under their own legal obligations and privacy notices.</p>
+        </section>
+
+        <section class="card" aria-labelledby="help-title">
+          <h2 id="help-title">Need help?</h2>
+          <p class="muted">Contact ServicePay Support at <a href="mailto:support@servicepay.ng">support@servicepay.ng</a> or <a href="mailto:admin@servicepay.ng">admin@servicepay.ng</a>, or call <a href="tel:+2349136151515">+2349136151515</a>. Read the <a href="/privacy-policy">Privacy Policy</a>.</p>
+        </section>
+      </aside>
     </div>
   </div></main>
-  <footer>© 2026 ServicePay. All rights reserved. · <a href="/news/">News</a> · <a href="/contact/">Contact</a></footer>
+
+  <footer>&copy; 2026 ServicePay, operated by YUMPAY GLOBAL TECH LTD. All rights reserved. &middot; <a href="/privacy-policy">Privacy</a> &middot; <a href="/news/">News</a> &middot; <a href="/contact/">Contact</a></footer>
+
   <script>
-    const endpoint = (kind) => kind === 'deletion' ? 'https://api.servicepay.ng/api/privacy/account-deletion-requests' : 'https://api.servicepay.ng/api/privacy/data-requests';
-    for (const form of document.querySelectorAll('form[data-form]')) {
-      form.addEventListener('submit', async (event) => {
-        event.preventDefault();
-        const button = form.querySelector('button'), result = form.querySelector('.result');
-        const body = Object.fromEntries(new FormData(form).entries());
-        body.confirmation = form.elements.confirmation ? form.elements.confirmation.checked : undefined;
-        button.disabled = true; result.className = 'result'; result.textContent = 'Submitting securely…';
-        try {
-          const response = await fetch(endpoint(form.dataset.form), {method:'POST', headers:{'Content-Type':'application/json','Accept':'application/json'}, body:JSON.stringify(body)});
-          const payload = await response.json();
-          if (!response.ok || payload.success === false) throw new Error(payload.message || 'We could not submit your request.');
-          result.className = 'result ok'; result.textContent = `Request received. Reference ID: ${payload.data.referenceId}. Keep this reference for Support.`;
-          form.reset();
-        } catch (error) { result.className = 'result error'; result.textContent = error.message || 'We could not submit your request. Please try again.'; }
-        finally { button.disabled = false; }
-      });
+  (function(){
+    'use strict';
+    var host = location.hostname;
+    var API = (host === 'servicepay.ng' || host === 'www.servicepay.ng') ? 'https://api.servicepay.ng/api/privacy' : '/api/privacy';
+    var RECEIPT_KEY = 'servicepay.deletion.receipt';
+    var $ = function(id){ return document.getElementById(id); };
+
+    var state = { identifier:'', method:'otp', challengeId:null, otpRequested:false };
+
+    function msg(el, kind, text){ el.className = 'result ' + kind; el.textContent = text || ''; }
+    function clear(el){ el.className = 'result'; el.textContent = ''; }
+
+    async function post(path, body){
+      var res;
+      try {
+        res = await fetch(API + path, { method:'POST', credentials:'omit', cache:'no-store', headers:{'Content-Type':'application/json','Accept':'application/json'}, body: JSON.stringify(body) });
+      } catch (e) { throw new Error('We could not reach ServicePay. Check your connection and try again.'); }
+      var payload = null;
+      try { payload = await res.json(); } catch (e) { payload = null; }
+      if (!res.ok || !payload || payload.success === false) {
+        var m = payload && typeof payload.message === 'string' ? payload.message : '';
+        if (res.status === 429 && !m) m = 'Too many attempts. Please wait a while before trying again.';
+        throw new Error(m || 'We could not complete this step. Please try again.');
+      }
+      return payload.data || {};
     }
+
+    function busy(btn, on, label){
+      if (on) { btn.dataset.label = btn.textContent; btn.textContent = label; btn.disabled = true; btn.setAttribute('aria-busy','true'); }
+      else { btn.textContent = btn.dataset.label || btn.textContent; btn.disabled = false; btn.removeAttribute('aria-busy'); }
+    }
+
+    function show(step){
+      ['step1','step2','step3','receipt'].forEach(function(id){ $(id).hidden = true; });
+      var n = step === 'receipt' ? 4 : step;
+      document.querySelectorAll('.stepper li').forEach(function(li){
+        var s = Number(li.dataset.step);
+        li.className = s < n ? 'done' : (s === n ? 'on' : '');
+      });
+      var panel = step === 'receipt' ? $('receipt') : $('step' + step);
+      panel.hidden = false;
+      var f = panel.querySelector('input:not([type=hidden]):not([type=radio]):not([type=checkbox]), button');
+      if (f && step !== 1) f.focus({preventScroll:true});
+    }
+
+    function setMethod(m){
+      state.method = m;
+      $('otp-block').hidden = m !== 'otp';
+      $('pw-block').hidden = m !== 'password';
+      $('code').value = ''; $('password').value = '';
+    }
+
+    function wipeSecrets(){ $('code').value = ''; $('password').value = ''; state.challengeId = null; }
+
+    async function requestChallenge(btn){
+      var note = $('otp-note');
+      busy(btn, true, 'Requesting...');
+      try {
+        var d = await post('/account-deletion/challenges', { identifier: state.identifier });
+        state.challengeId = d.challengeId || null;
+        state.otpRequested = true;
+        var exp = d.expiresAt ? new Date(d.expiresAt) : null;
+        msg(note, 'info', 'If this account has a verified registered email, a 6-digit code has been sent to it.' + (exp && !isNaN(exp) ? ' The code expires at ' + exp.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) + '.' : ''));
+        return true;
+      } catch (e) { msg($('step1').hidden ? $('step2-result') : $('step1-result'), 'error', e.message); return false; }
+      finally { busy(btn, false); }
+    }
+
+    // Step 1
+    $('step1').addEventListener('submit', async function(ev){
+      ev.preventDefault();
+      var r = $('step1-result'); clear(r);
+      var id = $('identifier').value.trim();
+      var looksEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(id);
+      var looksPhone = /^\+?[0-9][0-9\s-]{6,18}$/.test(id);
+      if (!looksEmail && !looksPhone) { $('identifier').setAttribute('aria-invalid','true'); msg(r,'error','Enter the phone number or email address registered on your ServicePay account.'); $('identifier').focus(); return; }
+      $('identifier').removeAttribute('aria-invalid');
+      state.identifier = id;
+      var m = (this.querySelector('input[name=method]:checked') || {}).value || 'otp';
+      setMethod(m); clear($('step2-result'));
+      if (m === 'otp') { var ok = await requestChallenge($('step1-btn')); if (!ok) return; }
+      show(2);
+    });
+
+    $('request-new').addEventListener('click', async function(){ clear($('step2-result')); await requestChallenge(this); });
+    $('use-password').addEventListener('click', function(){ setMethod('password'); clear($('step2-result')); $('password').focus(); });
+    $('use-otp').addEventListener('click', async function(){
+      setMethod('otp'); clear($('step2-result'));
+      if (!state.challengeId) { msg($('otp-note'),'info','Select request a new code to receive an email code.'); }
+    });
+    $('code').addEventListener('input', function(){ this.value = this.value.replace(/\D/g,'').slice(0,6); });
+
+    // Step 2
+    $('step2').addEventListener('submit', function(ev){
+      ev.preventDefault();
+      var r = $('step2-result'); clear(r);
+      if (state.method === 'otp') {
+        if (!state.challengeId) { msg(r,'error','Request a code first, or verify with your password.'); return; }
+        if (!/^\d{6}$/.test($('code').value)) { $('code').setAttribute('aria-invalid','true'); msg(r,'error','Enter the 6-digit code.'); $('code').focus(); return; }
+        $('code').removeAttribute('aria-invalid');
+      } else {
+        if (!$('password').value) { $('password').setAttribute('aria-invalid','true'); msg(r,'error','Enter your current password.'); $('password').focus(); return; }
+        $('password').removeAttribute('aria-invalid');
+      }
+      $('confirm-id').textContent = state.identifier;
+      clear($('step3-result'));
+      show(3);
+    });
+
+    document.querySelectorAll('[data-back]').forEach(function(b){
+      b.addEventListener('click', function(){ var s = Number(b.dataset.back); if (s === 1) wipeSecrets(); show(s); });
+    });
+
+    // Step 3
+    $('step3').addEventListener('submit', async function(ev){
+      ev.preventDefault();
+      var r = $('step3-result'); clear(r);
+      if (!$('c1').checked || !$('c2').checked || !$('c3').checked) { msg(r,'error','Please confirm all three statements to continue.'); return; }
+      var reason = $('reason').value.trim();
+      var body = state.method === 'otp'
+        ? { challengeId: state.challengeId, code: $('code').value, confirmation: true }
+        : { identifier: state.identifier, currentPassword: $('password').value, confirmation: true };
+      if (reason) body.reason = reason;
+      var btn = $('submit-del');
+      busy(btn, true, 'Submitting securely...');
+      try {
+        var d = await post('/account-deletion-requests', body);
+        body = null; wipeSecrets();
+        var receipt = { requestId: d.requestId, referenceId: d.referenceId, status: d.status, submittedAt: d.submittedAt, processingDeadlineAt: d.processingDeadlineAt || null, statusToken: d.statusToken, history: [] };
+        try { sessionStorage.setItem(RECEIPT_KEY, JSON.stringify(receipt)); } catch (e) {}
+        $('step1').reset(); $('step3').reset();
+        renderReceipt(receipt); show('receipt');
+      } catch (e) {
+        body = null;
+        msg(r,'error', e.message + ' If your code expired, go back and request a new one.');
+      } finally { busy(btn, false); }
+    });
+
+    function fmt(t){ var d = new Date(t); return isNaN(d) ? String(t || '') : d.toLocaleString([], {dateStyle:'medium', timeStyle:'short'}); }
+    function label(s){ return String(s || 'SUBMITTED').replace(/_/g,' '); }
+
+    function renderReceipt(rc){
+      $('r-status').textContent = label(rc.status);
+      $('r-ref').textContent = rc.referenceId || '';
+      $('r-at').textContent = fmt(rc.submittedAt);
+      var dl = rc.processingDeadlineAt ? new Date(rc.processingDeadlineAt) : null, okDl = dl && !isNaN(dl);
+      $('r-dl').textContent = okDl ? dl.toLocaleDateString([], {dateStyle:'medium'}) : '';
+      $('r-dl').hidden = !okDl; $('r-dl-t').hidden = !okDl;
+      var h = $('r-history'); h.textContent = '';
+      if (rc.history && rc.history.length) {
+        var ol = document.createElement('ol'); ol.className = 'timeline';
+        rc.history.forEach(function(it){
+          var li = document.createElement('li');
+          var st = document.createElement('strong'); st.textContent = label(it.status);
+          var tm = document.createElement('time'); tm.textContent = fmt(it.changedAt);
+          li.appendChild(st); li.appendChild(tm);
+          if (it.note) { var p = document.createElement('div'); p.textContent = it.note; li.appendChild(p); }
+          ol.appendChild(li);
+        });
+        h.appendChild(ol);
+      }
+    }
+
+    function loadReceipt(){ try { var v = sessionStorage.getItem(RECEIPT_KEY); return v ? JSON.parse(v) : null; } catch (e) { return null; } }
+
+    $('check-status').addEventListener('click', async function(){
+      var rc = loadReceipt(), r = $('status-result');
+      if (!rc) { msg(r,'error','No receipt found in this session.'); return; }
+      var h = $('r-history'); h.innerHTML = '<div class="skel"></div><div class="skel" style="width:70%"></div>';
+      busy(this, true, 'Checking...'); clear(r);
+      try {
+        var d = await post('/account-deletion-requests/status', { requestId: rc.requestId, statusToken: rc.statusToken });
+        rc.status = d.status || rc.status; rc.referenceId = d.referenceId || rc.referenceId; rc.submittedAt = d.submittedAt || rc.submittedAt; if (d.processingDeadlineAt) rc.processingDeadlineAt = d.processingDeadlineAt; rc.history = Array.isArray(d.history) ? d.history : [];
+        try { sessionStorage.setItem(RECEIPT_KEY, JSON.stringify(rc)); } catch (e) {}
+        renderReceipt(rc); msg(r,'ok','Status updated ' + fmt(new Date()) + '.');
+      } catch (e) { renderReceipt(rc); msg(r,'error', e.message); }
+      finally { busy(this, false); }
+    });
+
+    $('forget').addEventListener('click', function(){
+      try { sessionStorage.removeItem(RECEIPT_KEY); } catch (e) {}
+      state = { identifier:'', method:'otp', challengeId:null, otpRequested:false };
+      wipeSecrets(); clear($('status-result')); show(1);
+      msg($('step1-result'),'info','Receipt removed from this browser.');
+    });
+
+    var existing = loadReceipt();
+    if (existing && existing.requestId && existing.statusToken) { renderReceipt(existing); show('receipt'); } else { show(1); }
+
+    // Data request form (existing contract preserved)
+    var dataForm = document.querySelector('form[data-form="data"]');
+    dataForm.addEventListener('submit', async function(ev){
+      ev.preventDefault();
+      var btn = dataForm.querySelector('button[type=submit]'), r = dataForm.querySelector('.result');
+      if (!dataForm.checkValidity()) { dataForm.reportValidity(); return; }
+      var body = Object.fromEntries(new FormData(dataForm).entries());
+      busy(btn, true, 'Submitting securely...'); clear(r);
+      try {
+        var d = await post('/data-requests', body);
+        msg(r,'ok','Request received. Reference ID: ' + (d.referenceId || '') + '. Keep this reference for Support.');
+        dataForm.reset();
+      } catch (e) { msg(r,'error', e.message); }
+      finally { busy(btn, false); }
+    });
+  })();
   </script>
 </body>
 </html>
