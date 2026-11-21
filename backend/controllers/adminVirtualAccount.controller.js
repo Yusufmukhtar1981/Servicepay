@@ -3,6 +3,7 @@ const mongoose = require("mongoose");
 const User = require("../models/user.model");
 const Audit = require("../models/adminAuditLog.model");
 const securewave = require("./securewave.controller");
+const access = require("../services/operationsControlAccess.service");
 
 const REQUESTED = "VIRTUAL_ACCOUNT_GENERATION_REQUESTED";
 const RESULT = "VIRTUAL_ACCOUNT_GENERATION_RESULT";
@@ -16,14 +17,8 @@ const select = "fullName phone email role status isDeleted deletedAt " +
     "isDeleted", "deletedAt"].map(key => `virtualAccount.${key}`).join(" ") +
   " +virtualAccount.creationAttemptId";
 
-async function target(req) {
-  if (!req.user?._id) throw fail(401, "Authentication is required.");
-  if (req.user.role !== "HEAD_OFFICE") throw fail(403, "Head Office access is required.");
-  const actor = await User.findOne({
-    _id: req.user._id, role: "HEAD_OFFICE", status: "ACTIVE",
-    isDeleted: { $ne: true }, deletedAt: null,
-  }).select("_id");
-  if (!actor) throw fail(403, "An active Head Office administrator is required.");
+async function target(req, permission) {
+  await access.assertActor(req, permission);
   if (!mongoose.isValidObjectId(req.params.id)) throw fail(400, "Invalid customer ID.");
   const user = await User.findOne({ _id: req.params.id, role: "CUSTOMER" }).select(select);
   if (!user) throw fail(404, "Customer account not found.");
@@ -71,7 +66,7 @@ function accountView(va = {}) {
   return view;
 }
 
-async function snapshot(user, before) {
+async function snapshot(user, before, req) {
   const query = { targetUserId: user._id, action: { $in: [REQUESTED, RESULT] } };
   if (before) {
     if (!mongoose.isValidObjectId(before)) throw fail(400, "Invalid history cursor.");
@@ -88,9 +83,14 @@ async function snapshot(user, before) {
     outcome: row.metadata?.outcome || "REQUEST_RECORDED",
     requestId: row.metadata?.requestId || null,
   }));
+  const permittedToGenerate = req?.user?.role === "HEAD_OFFICE" ||
+    access.permitted(req || {}, access.CAPABILITIES.virtualAccountsGenerate);
+  const availability = eligibility(user);
   return {
     customer: { fullName: user.fullName, phone: user.phone, email: user.email || null },
-    virtualAccount: accountView(user.virtualAccount), eligibility: eligibility(user),
+    virtualAccount: accountView(user.virtualAccount), eligibility: { ...availability,
+      canGenerate: permittedToGenerate && availability.canGenerate,
+      canRetry: permittedToGenerate && availability.canRetry },
     history, nextCursor: rows.length > 50 ? String(rows[49]._id) : null,
     // No supported dedicated-account lookup-by-customer contract is currently established.
     // Withdrawal bank-info is NOT a virtual-account absence check.
@@ -108,14 +108,14 @@ function error(res, err) {
 
 exports.get = async (req, res) => {
   try {
-    const user = await target(req);
-    return res.json({ success: true, data: await snapshot(user, req.query?.before) });
+    const user = await target(req, access.CAPABILITIES.virtualAccountsView);
+    return res.json({ success: true, data: await snapshot(user, req.query?.before, req) });
   } catch (err) { return error(res, err); }
 };
 
 exports.generate = async (req, res) => {
   try {
-    const user = await target(req);
+    const user = await target(req, access.CAPABILITIES.virtualAccountsGenerate);
     if (!req.body || Object.keys(req.body).some(key => !["reason", "requestId"].includes(key))) {
       throw fail(400, "Only an administrative reason and request ID are accepted.");
     }
@@ -133,25 +133,25 @@ exports.generate = async (req, res) => {
       .update(`admin-virtual-account:${user._id}:${requestId.toLowerCase()}`).digest("hex").slice(0, 24));
     const intent = await Audit.findById(intentId).select("_id");
     if (intent) return res.json({ success: true, message: "Request already recorded. Current account status returned.",
-      data: await snapshot(user) });
+      data: await snapshot(user, undefined, req) });
     if (user.isDeleted || user.deletedAt || user.status !== "ACTIVE") {
       throw fail(403, "Generation is unavailable for deleted, blocked or inactive customers.");
     }
     if (user.virtualAccount?.accountNumber) {
       return res.json({ success: true, message: "Existing account returned without creating another account.",
-        data: await snapshot(user) });
+        data: await snapshot(user, undefined, req) });
     }
     const allowed = eligibility(user);
     if (!allowed.canGenerate && !allowed.canRetry) {
       return res.status(allowed.requiresReconciliation ? 409 : 400).json({
-        success: false, message: allowed.reason, data: await snapshot(user),
+        success: false, message: allowed.reason, data: await snapshot(user, undefined, req),
       });
     }
     const recent = await Audit.countDocuments({ targetUserId: user._id, action: REQUESTED,
       createdAt: { $gt: new Date(Date.now() - 15 * 60 * 1000) } });
     if (recent >= 5) throw fail(429, "Too many generation attempts. Check the existing status before retrying later.");
     const audit = {
-      actorId: req.user._id, actorRole: "HEAD_OFFICE", actorName: req.user.fullName || "",
+      actorId: req.user._id, actorRole: req.user.role, actorName: req.user.fullName || "",
       targetUserId: user._id, targetUserName: user.fullName, reason,
     };
     try {
@@ -161,7 +161,7 @@ exports.generate = async (req, res) => {
     } catch (err) {
       if (err.code !== 11000) throw err;
       const current = await User.findById(user._id).select(select);
-      return res.json({ success: true, data: await snapshot(current) });
+      return res.json({ success: true, data: await snapshot(current, undefined, req) });
     }
     let status = 500;
     // Reuse the exact customer controller and its atomic provisioning claim.
@@ -180,7 +180,7 @@ exports.generate = async (req, res) => {
     await Audit.create({ ...audit, action: RESULT, metadata: {
       requestId, intentId: String(intentId), outcome, responseStatus: status,
     } });
-    const data = await snapshot(current);
+    const data = await snapshot(current, undefined, req);
     if (status >= 400) return res.status(status).json({
       success: false,
       message: data.eligibility.reason,
@@ -189,3 +189,8 @@ exports.generate = async (req, res) => {
     return res.status(status).json({ success: true, data });
   } catch (err) { return error(res, err); }
 };
+
+// One eligibility authority for individual actions, directory rows and bulk jobs.
+exports.accountEligibility = eligibility;
+exports.accountProjection = select;
+exports.accountView = accountView;

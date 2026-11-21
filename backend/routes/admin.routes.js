@@ -81,8 +81,10 @@ router.use("/manual-refunds", require("./manualRefund.routes"));
 const customerProfile = require("../controllers/customerProfile.controller");
 const contactProposal = require("../controllers/customerContactProposal.controller");
 const adminVirtualAccount = require("../controllers/adminVirtualAccount.controller");
-router.get("/users/:id/virtual-account", protect, loadStaffRole, requirePermission(P.USERS_VIEW), adminVirtualAccount.get);
-router.post("/users/:id/virtual-account", protect, loadStaffRole, requirePermission(P.USERS_UPDATE), adminVirtualAccount.generate);
+router.get("/users/:id/virtual-account", protect, loadStaffRole, requirePermission(P.OPERATIONS_VIRTUAL_ACCOUNTS_VIEW), adminVirtualAccount.get);
+router.use("/virtual-account-management", protect, loadStaffRole,
+  require("../routes/operationsVirtualAccountJobs.routes"));
+router.post("/users/:id/virtual-account", protect, loadStaffRole, requirePermission(P.OPERATIONS_VIRTUAL_ACCOUNTS_GENERATE), adminVirtualAccount.generate);
 router.get("/users/:id/profile/contact-proposal", protect, loadStaffRole, requirePermission(P.USERS_VIEW), contactProposal.get);
 router.put("/users/:id/profile/contact-proposal", protect, loadStaffRole, requirePermission(P.USERS_UPDATE), contactProposal.put);
 router.delete("/users/:id/profile/contact-proposal", protect, loadStaffRole, requirePermission(P.USERS_UPDATE), contactProposal.withdraw);
@@ -366,6 +368,8 @@ router.patch("/marketplace/products/:id/approve", ...marketplaceModerate, adminM
 router.patch("/marketplace/products/:id/reject", ...marketplaceModerate, adminMarketplaceController.rejectMarketplaceProduct);
 router.patch("/marketplace/products/:id/suspend", ...marketplaceModerate, adminMarketplaceController.suspendMarketplaceProduct);
 
+router.get("/customer360/directory", protect, loadStaffRole, requirePermission(P.CUSTOMER360_VIEW),
+  require("../controllers/adminCustomer360.controller").directory);
 router.get("/customer360/search", protect, loadStaffRole, requirePermission(P.CUSTOMER360_VIEW), searchCustomer360);
 router.get("/customer360/:customerId", protect, loadStaffRole, requirePermission(P.CUSTOMER360_VIEW), requireTargetUserScope("customerId"), getCustomer360Overview);
 router.get("/customer360/:customerId/timeline", protect, loadStaffRole, requirePermission(P.CUSTOMER360_VIEW), requireTargetUserScope("customerId"), getCustomer360Timeline);

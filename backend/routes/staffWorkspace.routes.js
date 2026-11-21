@@ -7,6 +7,19 @@ const management = require("../controllers/operationsManagement.controller");
 const router = express.Router();
 router.use(protect, loadStaffRole);
 router.use(require("../middleware/adminAccessLog.middleware"));
+const operationsStaff = require("../controllers/operationsStaff.controller");
+router.get("/control-centre/staff/options", operationsStaff.options);
+router.get("/control-centre/managers", operationsStaff.managers);
+router.put("/control-centre/managers/:id/access", operationsStaff.updateManagerAccess);
+router.get("/control-centre/head-office-dashboard",
+  require("../services/adminDashboard.service").getOperationsExecutiveDashboard);
+router.get("/control-centre/staff", operationsStaff.list);
+router.post("/control-centre/staff", operationsStaff.create);
+router.get("/control-centre/staff/:staffId", operationsStaff.detail);
+router.put("/control-centre/staff/:staffId", operationsStaff.update);
+router.put("/control-centre/staff/:staffId/status", operationsStaff.status);
+router.post("/control-centre/managers/zonal", operationsStaff.createZonal);
+router.post("/control-centre/managers/state", operationsStaff.createState);
 // Operational records span the company: scoped roles must not gain global access.
 router.use((req, res, next) => {
   const access = req.staffAccess;

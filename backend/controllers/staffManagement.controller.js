@@ -37,6 +37,7 @@ const createAuditLog = async (
     session = null,
   }
 ) => {
+  session ||= req.operationsStaffSession || null;
   const auditData = {
     actorId: req.user._id,
     actorRole: String(req.user.role || "UNKNOWN").toUpperCase(),
@@ -61,12 +62,21 @@ const createAuditLog = async (
 
 const actorCanGrant = (req, permissions) => {
   if (req.staffAccess?.isHeadOffice) return true;
+  if (req.operationsSupportDelegation) {
+    const supportOnly = new Set(["support.workspace.view", "support.view", "support.assign", "support.resolve"]);
+    return permissions.every(permission => supportOnly.has(permission));
+  }
   const granted = new Set(req.staffAccess?.permissions || []);
   return permissions.every((permission) => granted.has(permission));
 };
 
 const actorCanManageRole = (req, role) => {
   if (req.staffAccess?.isHeadOffice) return true;
+  // Explicit, server-bound Support delegation is independent of legacy role
+  // numbers. It never permits choosing or editing any other role.
+  if (req.operationsSupportDelegation) return role?.name === "CUSTOMER_SUPPORT" &&
+    String(role._id) === String(req.operationsSupportRoleId) &&
+    role.status === "ACTIVE" && role.scopeType === "GLOBAL";
   if (role?.isSystemRole) return false;
   return Number(role?.hierarchyLevel || 20) < Number(req.staffAccess?.hierarchyLevel || 0);
 };
@@ -131,9 +141,11 @@ const staffHierarchyLevel = (staff) =>
 const canAccessStaff = (req, staff, { allowSelf = true, requireHierarchy = false } = {}) => {
   if (!staff) return false;
   if (req.staffAccess?.isHeadOffice) return true;
+  if (req.operationsSupportDelegation &&
+      String(staff.staffRoleId?._id || staff.staffRoleId) !== String(req.operationsSupportRoleId)) return false;
   if (!allowSelf && String(staff._id) === String(req.user._id)) return false;
   if (!isUserWithinScope(req.staffAccess, staff)) return false;
-  return !requireHierarchy ||
+  return req.operationsSupportDelegation === true || !requireHierarchy ||
     staffHierarchyLevel(staff) < Number(req.staffAccess?.hierarchyLevel || 0);
 };
 
@@ -589,9 +601,10 @@ exports.createStaff = async (req, res) => {
     }
     if (
       !actorCanGrant(req, staffRole.permissions || []) ||
-      (!req.staffAccess?.isHeadOffice &&
-        Number(staffRole.hierarchyLevel || 20) >=
-          Number(req.staffAccess?.hierarchyLevel || 0))
+      (req.operationsSupportDelegation
+        ? !actorCanManageRole(req, staffRole)
+        : (!req.staffAccess?.isHeadOffice &&
+          Number(staffRole.hierarchyLevel || 20) >= Number(req.staffAccess?.hierarchyLevel || 0)))
     ) {
       return res.status(403).json({
         success: false,
@@ -664,7 +677,7 @@ exports.createStaff = async (req, res) => {
         "0"
       )}`;
 
-    const staff = await User.create({
+    const staff = await new User({
       fullName: String(fullName).trim(),
       phone: normalizedPhone,
       email: normalizedEmail,
@@ -684,7 +697,7 @@ exports.createStaff = async (req, res) => {
       walletBalance: 0,
       commissionBalance: 0,
       totalEarnings: 0,
-    });
+    }).save(req.operationsStaffSession ? { session: req.operationsStaffSession } : {});
 
     await staff.populate(
       "staffRoleId",
@@ -692,7 +705,9 @@ exports.createStaff = async (req, res) => {
     );
     await createAuditLog(req, {
       action: "STAFF_ROLE_ASSIGNED",
-      reason: `Assigned ${staffRole.name} to new staff account.`,
+      reason: req.operationsSupportDelegation
+        ? String(req.body.reason).trim()
+        : `Assigned ${staffRole.name} to new staff account.`,
       targetUser: staff,
       newData: { roleId: staffRole._id, roleName: staffRole.name },
     });
@@ -728,6 +743,7 @@ exports.getStaff = async (req, res) => {
       isStaff: true,
       role: "STAFF",
     };
+    if (req.operationsSupportDelegation) query.staffRoleId = req.operationsSupportRoleId;
 
     if (status !== "ALL") {
       query.status = status;
@@ -811,7 +827,7 @@ exports.getStaffDetail = async (req, res) => {
 
 exports.updateStaff = async (req, res) => {
   try {
-    const staff = await staffLookup(req.params.staffId);
+    const staff = await staffLookup(req.params.staffId).session(req.operationsStaffSession || null);
     if (!staff) {
       return res.status(404).json({ success: false, message: "Staff account was not found." });
     }
@@ -877,7 +893,7 @@ exports.updateStaff = async (req, res) => {
     await staff.save({ validateBeforeSave: false });
     await createAuditLog(req, {
       action: "STAFF_UPDATED",
-      reason: "Updated staff account details.",
+      reason: req.operationsSupportDelegation ? req.body.reason : "Updated staff account details.",
       targetUser: staff,
       previousData: before,
       newData: publicStaff(staff),
@@ -965,6 +981,7 @@ exports.updateStaffStatus = async (req, res) => {
       isStaff: true,
       role: "STAFF",
     })
+      .session(req.operationsStaffSession || null)
       .select("+authTokenVersion")
       .populate("staffRoleId", "name permissions hierarchyLevel status");
 
@@ -997,7 +1014,7 @@ exports.updateStaffStatus = async (req, res) => {
     });
     await createAuditLog(req, {
       action: "STAFF_STATUS_UPDATED",
-      reason: `Changed staff account status from ${previousStatus} to ${status}.`,
+      reason: req.operationsSupportDelegation ? req.body.reason : `Changed staff account status from ${previousStatus} to ${status}.`,
       targetUser: staff,
       previousData: { status: previousStatus },
       newData: { status },

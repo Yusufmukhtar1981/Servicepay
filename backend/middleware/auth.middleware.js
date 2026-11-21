@@ -146,6 +146,17 @@ const protect = async (req, res, next) => {
         message: "You must change your temporary password before continuing.",
       });
     }
+    // A read-only management profile is enforced at the shared authentication
+    // boundary, including legacy role-only routes. It cannot be bypassed by
+    // calling another product endpoint. Password setup and own logout remain
+    // available; existing accounts without this optional restriction are intact.
+    const ownLogout = /^\/api\/auth\/logout\/?(?:\?.*)?$/.test(String(req.originalUrl || req.url || ""));
+    if (user.role === "ZONAL_MANAGER" && user.managementAccess === "READ_ONLY" &&
+        !["GET", "HEAD", "OPTIONS"].includes(String(req.method || "").toUpperCase()) &&
+        !changingPassword && !ownLogout) {
+      return res.status(403).json({ success: false, code: "MANAGEMENT_READ_ONLY",
+        message: "Your assigned management permissions are read-only." });
+    }
 
     return next();
   } catch (error) {

@@ -148,6 +148,54 @@ const identityMatches = async (req, query) => {
   ].map((id) => new mongoose.Types.ObjectId(id));
 };
 
+exports.directory = async (req, res) => {
+  try {
+    if (!can(req, P.CUSTOMER360_VIEW)) return res.status(403).json({ success: false, message: "Customer 360 permission required." });
+    const scope = req.staffAccess?.scope;
+    if (!req.staffAccess?.isHeadOffice &&
+        (!scope || !["GLOBAL", "ZONE", "STATE", "SELF"].includes(scope.type) ||
+         scope.type === "ZONE" && !scope.zone ||
+         scope.type === "STATE" && (!scope.zone || !scope.state) ||
+         scope.type === "SELF" && !scope.userId)) {
+      return res.status(403).json({ success: false, message: "A valid customer data scope is required." });
+    }
+    const q = clean(req.query.q, 100);
+    const status = clean(req.query.status, 20).toUpperCase();
+    const account = clean(req.query.account, 20).toUpperCase();
+    if (status && !["ACTIVE", "INACTIVE"].includes(status) ||
+        account && !["WITH", "WITHOUT"].includes(account) ||
+        q && q.length < 2) {
+      return res.status(400).json({ success: false, message: "Use a two-character search and valid customer/account filters." });
+    }
+    const { page, limit, skip } = pageValues(req.query);
+    if (page > 10000) return res.status(400).json({ success: false, message: "Narrow the search before requesting further pages." });
+    const filter = { role: "CUSTOMER", isDeleted: { $ne: true }, deletedAt: null, ...customerScopeFilter(req) };
+    if (status) filter.status = status === "ACTIVE" ? "ACTIVE" : { $ne: "ACTIVE" };
+    if (account) filter["virtualAccount.accountNumber"] = account === "WITH" ? /\S/ : { $not: /\S/ };
+    if (q) filter.$or = ["fullName", "phone", "email"].map(key => ({ [key]: new RegExp(escapeRegex(q), "i") }));
+    const accounts = require("./adminVirtualAccount.controller");
+    const access = require("../services/operationsControlAccess.service");
+    const mayGenerate = req.staffAccess?.isHeadOffice === true ||
+      access.permitted(req, access.CAPABILITIES.virtualAccountsGenerate);
+    const [rows, total] = await Promise.all([
+      User.find(filter).select(accounts.accountProjection).sort({ fullName: 1, _id: 1 })
+        .skip(skip).limit(limit).maxTimeMS(5000).lean(),
+      User.countDocuments(filter).maxTimeMS(5000),
+    ]);
+    return res.json({ success: true, data: { items: rows.map(user => {
+      const eligibility = accounts.accountEligibility(user);
+      return { id: String(user._id), fullName: user.fullName, phone: user.phone, email: user.email || "",
+        status: user.status, active: user.status === "ACTIVE",
+        hasVirtualAccount: Boolean(String(user.virtualAccount?.accountNumber || "").trim()),
+        accountStatus: user.virtualAccount?.status || "NOT_CREATED",
+        eligibility: { ...eligibility, canGenerate: mayGenerate && eligibility.canGenerate,
+          canRetry: mayGenerate && eligibility.canRetry } };
+    }), pagination: { page, limit, total, pages: Math.ceil(total / limit) } } });
+  } catch (_) {
+    return res.status(503).json({ success: false, message: "Customer directory is temporarily unavailable. Retry safely." });
+  }
+};
+
 exports.searchCustomers = async (req, res) => {
   try {
     const query = clean(req.query.query || req.query.search, 120);

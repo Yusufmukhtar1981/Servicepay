@@ -177,7 +177,14 @@ exports.createStateManager = async (req, res) => {
       loggedInUser.role
     ).toUpperCase();
 
-    if (loggedInRole !== "ZONAL_MANAGER") {
+    const delegated = req.operationsManagerCreation === true;
+    if (delegated) {
+      const access = require("../services/operationsControlAccess.service");
+      await access.assertActor(req, access.CAPABILITIES.staffManage);
+      if (!mongoose.isValidObjectId(req.body?.zonalManagerId)) {
+        return res.status(400).json({ success: false, message: "Select an existing active Zonal Manager." });
+      }
+    } else if (loggedInRole !== "ZONAL_MANAGER") {
       return res.status(403).json({
         success: false,
         message:
@@ -250,7 +257,7 @@ exports.createStateManager = async (req, res) => {
 
     let stateManager;
     await withParentFence(
-      loggedInUser._id || loggedInUser.id,
+      delegated ? req.body.zonalManagerId : loggedInUser._id || loggedInUser.id,
       "ZONAL_MANAGER",
       async (parent, lineage, session) => {
         const existingUser = await User.findOne({ $or: duplicateConditions })
@@ -270,8 +277,19 @@ exports.createStateManager = async (req, res) => {
           state: cleanState,
           lga: cleanLga || undefined,
           zonalManagerId: parent._id,
+          ...(delegated ? { mustChangePassword: true } : {}),
         });
         await stateManager.save({ session });
+        if (delegated) {
+          await require("../models/adminAuditLog.model").create([{
+            actorId: req.user._id, actorRole: req.user.role, actorName: req.user.fullName || "",
+            targetUserId: stateManager._id, targetUserName: stateManager.fullName,
+            action: "USER_CREATED", reason: req.body.reason,
+            metadata: { role: "STATE_MANAGER", zone: lineage.zone, state: cleanState,
+              zonalManagerId: String(parent._id), source: "OPERATIONS_CONTROL_CENTRE" },
+            requestMethod: req.method, requestPath: req.originalUrl,
+          }], { session });
+        }
       },
     );
 

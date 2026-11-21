@@ -2,6 +2,11 @@ const permission = (key, value, module, label, description, risk = "STANDARD") =
   Object.freeze({ key, value, module, label, description, risk });
 
 const STAFF_PERMISSION_CATALOG = Object.freeze([
+  permission("OPERATIONS_VIRTUAL_ACCOUNTS_VIEW", "operations.virtual_accounts.view", "OPERATIONS", "View virtual account operations", "Global Operations Manager account directory and generation history; no wallet authority.", "HIGH"),
+  permission("OPERATIONS_VIRTUAL_ACCOUNTS_GENERATE", "operations.virtual_accounts.generate", "OPERATIONS", "Generate eligible customer virtual accounts", "Explicit Operations Manager grant; existing account preservation and uncertain-attempt protections remain mandatory.", "HIGH"),
+  permission("OPERATIONS_VIRTUAL_ACCOUNTS_BULK", "operations.virtual_accounts.bulk", "OPERATIONS", "Run controlled virtual account batches", "Confirmed, audited background jobs for eligible customers; no replay of unknown provider outcomes.", "HIGH"),
+  permission("OPERATIONS_STAFF_MANAGE", "operations.staff.manage", "OPERATIONS", "Manage subordinate Operations staff", "Create and manage canonical Zonal, State and approved Support accounts only; cannot grant Head Office or peer Operations authority.", "HIGH"),
+  permission("OPERATIONS_EXECUTIVE_VIEW", "operations.executive.view", "OPERATIONS", "View authorized Head Office dashboard metrics", "Read-only global Operations dashboard, including authorized customer wallet aggregates; no wallet mutation or settings authority.", "HIGH"),
   permission("ENTERPRISE_DEVICES_VIEW", "enterprise.devices.view", "ENTERPRISE_DEVICES", "View enterprise devices", "Read company device inventory and audited identifiers."),
   permission("ENTERPRISE_DEVICES_MANAGE", "enterprise.devices.manage", "ENTERPRISE_DEVICES", "Manage enterprise devices", "Register, assign, retire and configure company devices.", "PRIVILEGED"),
   permission("ENTERPRISE_DEVICES_ENROLL", "enterprise.devices.enroll", "ENTERPRISE_DEVICES", "Enroll enterprise companions", "Issue single-use enrollment and revoke device access.", "PRIVILEGED"),
@@ -417,6 +422,9 @@ const effectivePermissionsForUser = (user = {}) => {
       ? validateStaffPermissions(user.branchManagerPermissions).permissions
       : directRolePermissions.BRANCH_MANAGER;
     return requested.filter((permission) => directRolePermissions.BRANCH_MANAGER.includes(permission));
+  }
+  if (canonical === "ZONAL_MANAGER" && user.managementAccess === "READ_ONLY") {
+    return directRolePermissions.ZONAL_MANAGER.filter(permission => permission.endsWith(".view"));
   }
   return [...(directRolePermissions[canonical] || [])];
 };

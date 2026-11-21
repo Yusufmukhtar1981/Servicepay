@@ -105,6 +105,8 @@ const loadStaffRole = async (req, res, next) => {
         Array.isArray(req.user.branchManagerPermissions)
         ? normalizePermissionList(req.user.branchManagerPermissions)
             .filter((permission) => directRolePermissions.BRANCH_MANAGER.includes(permission))
+        : role === "ZONAL_MANAGER" && req.user.managementAccess === "READ_ONLY"
+          ? directRolePermissions.ZONAL_MANAGER.filter(permission => permission.endsWith(".view"))
         : [...directRolePermissions[role]];
       req.staffAccess = {
         isHeadOffice: false,

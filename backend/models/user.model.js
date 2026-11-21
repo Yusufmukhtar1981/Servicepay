@@ -251,6 +251,9 @@ const userSchema = new mongoose.Schema(
       type: [{ type: String }],
       default: [],
     },
+    // Optional restriction for newly provisioned Zonal Managers. No default or
+    // backfill is applied to existing customers or existing management accounts.
+    managementAccess: { type: String, enum: ["STANDARD", "READ_ONLY"], default: undefined },
     // Saved only while a STAFF account is temporarily promoted to manage a
     // branch, so demotion/replacement restores its previous access exactly.
     branchManagerPreviousRole: { type: String, default: null },

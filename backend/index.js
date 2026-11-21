@@ -525,6 +525,7 @@ async function startServer() {
   console.log(`ServicePay API listening on 0.0.0.0:${PORT}`);
   require("./services/revenueAccount.service").startWorker();
   require("./services/manualRefundEmail.service").startWorker();
+  require("./services/operationsVirtualAccountJobs.service").startWorker();
   require("./services/pendingResolutionMonitor.service").start();
   require("./services/marketingPerformance.service").startNotifications();
   require("./services/businessNetwork.service").start();

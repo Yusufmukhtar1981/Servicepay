@@ -60,9 +60,13 @@ const readPermissions = (user = {}) => new Set(
   [...(Array.isArray(user.permissions) ? user.permissions : []), ...(Array.isArray(user.staffRole?.permissions) ? user.staffRole.permissions : [])]
     .map((item) => String(item).trim().toLowerCase()).filter(Boolean),
 );
-const hasPermission = (user = {}, permission) => FULL_ACCESS_ROLES.has(String(user.role || "").toUpperCase())
+const operationsDashboardRead = Symbol("verified-global-operations-dashboard-read");
+const operationsReadPermissions = new Set(["dashboard.view", "users.view", "transactions.view", "wallets.view"]);
+const hasPermission = (user = {}, permission) => (user[operationsDashboardRead] === true && operationsReadPermissions.has(permission))
+  || FULL_ACCESS_ROLES.has(String(user.role || "").toUpperCase())
   || readPermissions(user).has("*") || readPermissions(user).has(String(permission).toLowerCase());
 const buildScopeFilter = (user = {}, domain = "user") => {
+  if (user[operationsDashboardRead] === true) return {};
   const role = String(user.role || "").toUpperCase();
   if (FULL_ACCESS_ROLES.has(role)) return {};
   if (role === "ZONAL_MANAGER" && user._id && ["user", "transaction"].includes(domain)) return { zonalManagerId: user._id };
@@ -245,6 +249,31 @@ const getExecutiveDashboard = async (req, res) => {
   }
 };
 
+// The existing dashboard calculation is reused with a request-local, explicitly
+// validated read capability. The actor's role is never changed to Head Office,
+// and this capability is unavailable to targets, exports or financial writes.
+const getOperationsExecutiveDashboard = async (req, res) => {
+  try {
+    const access = require("./operationsControlAccess.service");
+    await access.assertActor(req, access.CAPABILITIES.executiveView);
+    const aliases = { day: "today", week: "7d", month: "30d" };
+    const requested = String(req.query?.range || "today");
+    const range = aliases[requested] || requested;
+    if (!Object.hasOwn(RANGE_DAYS, range) && !(req.query?.startDate && req.query?.endDate)) {
+      return res.status(400).json({ success: false, message: "Choose today, 7d, 30d or an explicit supported date window." });
+    }
+    const source = typeof req.user.toObject === "function" ? req.user.toObject() : req.user;
+    const actor = { ...source, permissions: [...(req.staffAccess?.permissions || [])], staffRole: req.staffRole,
+      [operationsDashboardRead]: true };
+    const scopedRequest = Object.assign(Object.create(req), { user: actor });
+    Object.defineProperty(scopedRequest, "query", { value: { ...req.query, range } });
+    return getExecutiveDashboard(scopedRequest, res);
+  } catch (error) {
+    return res.status(error.statusCode || 503).json({ success: false,
+      message: error.statusCode ? error.message : "The Operations dashboard is temporarily unavailable." });
+  }
+};
+
 const getDashboardTargets = async (req, res) => {
   if (!targetAccess(req.user)) return res.status(403).json({ success: false, message: "Head Office access is required." });
   const target = await DashboardTarget.findOne({ key: "executive" }).select("values updatedAt").lean();
@@ -273,4 +302,4 @@ const getDashboardExport = async (req, res) => {
   res.set("Content-Disposition", `attachment; filename="servicepay-executive-${window.range}.csv"`);
   return res.send(`\uFEFF${csv}`);
 };
-module.exports = { RANGE_DAYS, MAX_CUSTOM_RANGE_DAYS, normalizeRange, getDateWindow, getRequestedDateWindow, readPermissions, hasPermission, buildScopeFilter, getExecutiveDashboard, getDashboardTargets, updateDashboardTargets, getDashboardExport };
+module.exports = { RANGE_DAYS, MAX_CUSTOM_RANGE_DAYS, normalizeRange, getDateWindow, getRequestedDateWindow, readPermissions, hasPermission, buildScopeFilter, getExecutiveDashboard, getOperationsExecutiveDashboard, getDashboardTargets, updateDashboardTargets, getDashboardExport };

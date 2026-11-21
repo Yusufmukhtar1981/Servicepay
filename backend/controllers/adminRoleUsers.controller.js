@@ -44,7 +44,10 @@ const ensureHeadOffice = (req, res) => {
 
 exports.createZonalManager = async (req, res) => {
   try {
-    if (!ensureHeadOffice(req, res)) return;
+    if (req.operationsManagerCreation === true) {
+      const access = require("../services/operationsControlAccess.service");
+      await access.assertActor(req, access.CAPABILITIES.staffManage);
+    } else if (!ensureHeadOffice(req, res)) return;
     const { fullName, phone, email, password, zone } = req.body || {};
     const cleanPhone = String(phone || "").replace(/\s+/g, "").trim();
     const cleanEmail = String(email || "").trim().toLowerCase();
@@ -53,16 +56,29 @@ exports.createZonalManager = async (req, res) => {
     }
     const exists = await User.findOne({ $or: [{ phone: cleanPhone }, ...(cleanEmail ? [{ email: cleanEmail }] : [])] }).select("_id");
     if (exists) return res.status(409).json({ success: false, message: "Phone number or email address already exists." });
-    const user = await User.create({
-      fullName: String(fullName).trim(), phone: cleanPhone, email: cleanEmail || undefined,
-      password: String(password), role: "ZONAL_MANAGER", status: "ACTIVE", zone: String(zone).trim(),
-    });
-    await AdminAuditLog.create({
-      actorId: req.user._id, actorRole: "HEAD_OFFICE", actorName: req.user.fullName || "",
-      targetUserId: user._id, targetUserName: user.fullName, action: "USER_CREATED",
-      reason: "Created canonical Zonal Manager.", metadata: { role: "ZONAL_MANAGER", zone: user.zone },
-      requestMethod: req.method, requestPath: req.originalUrl,
-    });
+    let user;
+    const session = req.operationsManagerCreation ? await mongoose.startSession() : null;
+    try {
+      const persist = async () => {
+        user = await new User({
+          fullName: String(fullName).trim(), phone: cleanPhone, email: cleanEmail || undefined,
+          password: String(password), role: "ZONAL_MANAGER", status: req.operationsManagerCreation ? req.body.status || "ACTIVE" : "ACTIVE",
+          zone: String(zone).trim(),
+          ...(req.operationsManagerCreation ? { mustChangePassword: true,
+            managementAccess: req.body.permissionProfile || "STANDARD" } : {}),
+        }).save(session ? { session } : {});
+        await AdminAuditLog.create([{
+          actorId: req.user._id, actorRole: req.user.role, actorName: req.user.fullName || "",
+          targetUserId: user._id, targetUserName: user.fullName, action: "USER_CREATED",
+          reason: req.operationsManagerCreation ? req.body.reason : "Created canonical Zonal Manager.",
+          metadata: { role: "ZONAL_MANAGER", zone: user.zone,
+            ...(req.operationsManagerCreation ? { permissionProfile: user.managementAccess, status: user.status } : {}) },
+          requestMethod: req.method, requestPath: req.originalUrl,
+        }], session ? { session } : {});
+      };
+      if (session) await session.withTransaction(persist);
+      else await persist();
+    } finally { await session?.endSession(); }
     return res.status(201).json({ success: true, user: { id: user._id, fullName: user.fullName, phone: user.phone, email: user.email || "", role: user.role, status: user.status, zone: user.zone } });
   } catch (error) {
     if (error?.code === 11000) return res.status(409).json({ success: false, message: "Phone number or email address already exists." });
