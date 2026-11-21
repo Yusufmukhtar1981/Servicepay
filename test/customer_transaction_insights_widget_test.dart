@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:servicepay_app/customer_transaction_insights.dart';
 import 'package:servicepay_app/widgets/customer_dashboard_visibility.dart';
+import 'package:servicepay_app/widgets/customer_dashboard_visuals.dart';
 import 'package:servicepay_app/widgets/customer_transaction_insights.dart';
 
 Map<String, dynamic> _row(String id, String status, num amount, DateTime at,
@@ -215,5 +216,60 @@ void main() {
     }
     expect(find.byKey(const Key('insights-declined-more')), findsNothing);
     expect(calls, 1);
+  });
+
+  testWidgets('semantic metric accents, green toggles and matching chart series',
+      (tester) async {
+    await tester.pumpWidget(_host(CustomerTransactionInsightsSection(
+      loader: (p) async => _sample(p),
+    )));
+    await tester.pumpAndSettle();
+    Color fill(String key) => (tester
+            .widget<Container>(find.descendant(
+                of: find.byKey(Key(key)), matching: find.byType(Container)).first)
+            .decoration! as BoxDecoration)
+        .color!;
+    expect(fill('insights-period-weekly'), CustomerDashboardPalette.activeGreen);
+    expect(fill('insights-period-monthly'), CustomerDashboardPalette.inactiveGreen);
+    expect(fill('insights-mode-count'), CustomerDashboardPalette.activeGreen);
+    for (final (key, color) in <(String, Color)>[
+      ('metric-total', CustomerDashboardPalette.seriesBlue),
+      ('metric-successful', CustomerDashboardPalette.seriesEmerald),
+      ('metric-declined', CustomerDashboardPalette.seriesCoral),
+      ('metric-pending', CustomerDashboardPalette.seriesAmber),
+      ('metric-total-value', CustomerDashboardPalette.seriesBlue),
+      ('metric-successful-value', CustomerDashboardPalette.seriesEmerald),
+      ('metric-declined-value', CustomerDashboardPalette.seriesCoral),
+    ]) {
+      final icon = tester.widget<Icon>(find.descendant(
+          of: find.byKey(Key('$key-icon')), matching: find.byType(Icon)));
+      expect(icon.color, color, reason: key);
+    }
+    // Legend swatches use exactly the series colours.
+    for (final c in <Color>[
+      CustomerDashboardPalette.seriesBlue,
+      CustomerDashboardPalette.seriesEmerald,
+      CustomerDashboardPalette.seriesCoral,
+    ]) {
+      expect(
+          find.byWidgetPredicate((w) =>
+              w is Container &&
+              w.decoration is BoxDecoration &&
+              (w.decoration! as BoxDecoration).color == c),
+          findsWidgets);
+    }
+    expect(find.text('₦1,850.50'), findsWidgets);
+    await tester.ensureVisible(find.byKey(const Key('insights-mode-value')));
+    await tester.tap(find.byKey(const Key('insights-mode-value')));
+    await tester.pumpAndSettle();
+    expect(fill('insights-mode-value'), CustomerDashboardPalette.activeGreen);
+    expect(fill('insights-mode-count'), CustomerDashboardPalette.inactiveGreen);
+    expect(find.textContaining('Daily value in naira'), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const Key('insights-period-monthly')));
+    await tester.tap(find.byKey(const Key('insights-period-monthly')));
+    await tester.pumpAndSettle();
+    expect(fill('insights-period-monthly'), CustomerDashboardPalette.activeGreen);
+    expect(fill('insights-period-weekly'), CustomerDashboardPalette.inactiveGreen);
+    expect(tester.takeException(), isNull);
   });
 }

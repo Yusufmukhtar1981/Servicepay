@@ -3021,8 +3021,8 @@ class _DashboardScreenState extends State<DashboardScreen>
     _DashboardService service, {
     required int index,
   }) {
-    const Color accent = CustomerDashboardPalette.royalBlue;
-    const Color accentSurface = CustomerDashboardPalette.paleBlue;
+    final Color accent = CustomerServiceColors.iconFor(service.title);
+    final Color accentSurface = CustomerServiceColors.tintFor(service.title);
     return _floating(
       index: index + 3,
       child: Material(
@@ -3051,7 +3051,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                     iconColor: accent,
                     size: 38,
                     iconSize: 22,
-                    radius: 13,
+                    radius: 19,
                   ),
                 ),
                 const SizedBox(height: 4),

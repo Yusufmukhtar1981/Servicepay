@@ -329,4 +329,38 @@ void main() {
       }
     }
   });
+
+  testWidgets('nine Home service icons use exact brief colours in tinted circles',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(390, 1600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(const MaterialApp(home: DashboardScreen()));
+    await tester.pump(const Duration(milliseconds: 120));
+    const expected = <String, Color>{
+      'Data': Color(0xFF38BDF8),
+      'Airtime': Color(0xFF34D399),
+      'Delivery': Color(0xFFFB923C),
+      'NIN Verification': Color(0xFFA78BFA),
+      'Marketplace': Color(0xFFFBBF24),
+      'Electricity': Color(0xFFFDE047),
+      'EduPay': Color(0xFF818CF8),
+      'Keke Napep': Color(0xFFFB7185),
+      'Flight Booking': Color(0xFF60A5FA),
+    };
+    for (final entry in expected.entries) {
+      final tile = find
+          .byKey(Key('customer-quick-service-${entry.key.toLowerCase()}'));
+      expect(tile, findsOneWidget, reason: entry.key);
+      final glyph = tester.widget<CustomerServiceGlyph>(
+          find.descendant(of: tile, matching: find.byType(CustomerServiceGlyph)));
+      expect(glyph.iconColor, entry.value, reason: entry.key);
+      expect(glyph.backgroundColor, entry.value.withValues(alpha: 0.16));
+      expect(glyph.radius, glyph.size / 2);
+      expect(
+          tester.widget<Text>(find.descendant(
+                  of: tile, matching: find.text(entry.key))).style?.color,
+          CustomerDashboardPalette.text);
+    }
+    expect(tester.takeException(), isNull);
+  });
 }

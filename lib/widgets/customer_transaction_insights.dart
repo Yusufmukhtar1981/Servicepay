@@ -564,12 +564,12 @@ class _Toggle extends StatelessWidget {
           alignment: Alignment.center,
           decoration: BoxDecoration(
             color: selected
-                ? CustomerDashboardPalette.royalBlue
-                : CustomerDashboardPalette.paleBlue,
+                ? CustomerDashboardPalette.activeGreen
+                : CustomerDashboardPalette.inactiveGreen,
             borderRadius: BorderRadius.circular(22),
             border: Border.all(
                 color: selected
-                    ? CustomerDashboardPalette.royalBlue
+                    ? CustomerDashboardPalette.activeGreen
                     : CustomerDashboardPalette.border),
           ),
           child: Text(label,
@@ -592,48 +592,55 @@ class _MetricsGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final metrics = <(String, String, Color, Key)>[
+    final metrics = <(String, String, Color, Key, IconData)>[
       (
         'Total transactions',
         '${totals.totalCount}',
-        CustomerDashboardPalette.text,
-        const Key('metric-total')
+        CustomerDashboardPalette.seriesBlue,
+        const Key('metric-total'),
+        Icons.receipt_long_rounded
       ),
       (
         'Successful',
         '${totals.successfulCount}',
-        CustomerDashboardPalette.success,
-        const Key('metric-successful')
+        CustomerDashboardPalette.seriesEmerald,
+        const Key('metric-successful'),
+        Icons.check_circle_rounded
       ),
       (
         'Declined',
         '${totals.declinedCount}',
-        CustomerDashboardPalette.error,
-        const Key('metric-declined')
+        CustomerDashboardPalette.seriesCoral,
+        const Key('metric-declined'),
+        Icons.cancel_rounded
       ),
       (
         'Pending or processing',
         '${totals.pendingCount}',
-        CustomerDashboardPalette.warning,
-        const Key('metric-pending')
+        CustomerDashboardPalette.seriesAmber,
+        const Key('metric-pending'),
+        Icons.hourglass_top_rounded
       ),
       (
         'Total value',
         insightMoney(totals.totalValue),
-        CustomerDashboardPalette.text,
-        const Key('metric-total-value')
+        CustomerDashboardPalette.seriesBlue,
+        const Key('metric-total-value'),
+        Icons.account_balance_wallet_rounded
       ),
       (
         'Successful value',
         insightMoney(totals.successfulValue),
-        CustomerDashboardPalette.success,
-        const Key('metric-successful-value')
+        CustomerDashboardPalette.seriesEmerald,
+        const Key('metric-successful-value'),
+        Icons.payments_rounded
       ),
       (
         'Declined value',
         insightMoney(totals.declinedValue),
-        CustomerDashboardPalette.error,
-        const Key('metric-declined-value')
+        CustomerDashboardPalette.seriesCoral,
+        const Key('metric-declined-value'),
+        Icons.money_off_rounded
       ),
     ];
     return LayoutBuilder(builder: (context, constraints) {
@@ -660,15 +667,34 @@ class _MetricsGrid extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: CustomerDashboardPalette.paleBlue,
                   borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: m.$3.withValues(alpha: 0.28)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Text(m.$1,
-                        style: const TextStyle(
-                            color: CustomerDashboardPalette.muted,
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w700)),
+                    Row(
+                      children: <Widget>[
+                        Container(
+                          key: Key('${(m.$4 as ValueKey<String>).value}-icon'),
+                          width: 24,
+                          height: 24,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            color: m.$3.withValues(alpha: 0.16),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(m.$5, color: m.$3, size: 14),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(m.$1,
+                              style: const TextStyle(
+                                  color: CustomerDashboardPalette.muted,
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w700)),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 4),
                     Text(m.$2,
                         style: TextStyle(

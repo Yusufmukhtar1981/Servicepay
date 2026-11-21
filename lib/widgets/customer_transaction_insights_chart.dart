@@ -17,6 +17,10 @@ class _InsightsChart extends StatelessWidget {
   final int? selected;
   final ValueChanged<int> onSelect;
 
+  static const Color _allColor = CustomerDashboardPalette.seriesBlue;
+  static const Color _okColor = CustomerDashboardPalette.seriesEmerald;
+  static const Color _badColor = CustomerDashboardPalette.seriesCoral;
+
   double _total(InsightBucket b) =>
       showValue ? b.totals.totalValue : b.totals.totalCount.toDouble();
   double _ok(InsightBucket b) => showValue
@@ -55,9 +59,9 @@ class _InsightsChart extends StatelessWidget {
           spacing: 14,
           runSpacing: 6,
           children: <Widget>[
-            legend(CustomerDashboardPalette.muted, 'All transactions'),
-            legend(CustomerDashboardPalette.success, 'Successful'),
-            legend(CustomerDashboardPalette.error, 'Declined'),
+            legend(_allColor, 'All transactions'),
+            legend(_okColor, 'Successful'),
+            legend(_badColor, 'Declined'),
           ],
         ),
         const SizedBox(height: 6),
@@ -125,12 +129,22 @@ class _InsightsChart extends StatelessWidget {
     double h(double v) =>
         max <= 0 || v <= 0 ? 0 : (v / max * area).clamp(2.0, area);
     final double barWidth = ((slot - 10) / 3).clamp(4.0, 16.0);
-    Widget bar(double v, Color color) => Container(
+    final Duration motion = MediaQuery.disableAnimationsOf(context)
+        ? Duration.zero
+        : const Duration(milliseconds: 260);
+    // Height is exactly the scaled value; zero stays zero (no false bars).
+    // Snap width to the new slot when switching periods; animate height only.
+    Widget bar(double v, Color color) => SizedBox(
           width: barWidth,
-          height: h(v),
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(3)),
+          child: AnimatedContainer(
+            duration: motion,
+            curve: Curves.easeOutCubic,
+            height: h(v),
+            decoration: BoxDecoration(
+              color: isSelected ? color : color.withValues(alpha: 0.85),
+              borderRadius: BorderRadius.vertical(
+                  top: Radius.circular(math.min(barWidth / 2, 6))),
+            ),
           ),
         );
     return Semantics(
@@ -159,11 +173,11 @@ class _InsightsChart extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: <Widget>[
-                    bar(_total(b), CustomerDashboardPalette.muted),
+                    bar(_total(b), _allColor),
                     const SizedBox(width: 1),
-                    bar(_ok(b), CustomerDashboardPalette.success),
+                    bar(_ok(b), _okColor),
                     const SizedBox(width: 1),
-                    bar(_bad(b), CustomerDashboardPalette.error),
+                    bar(_bad(b), _badColor),
                   ],
                 ),
               ),

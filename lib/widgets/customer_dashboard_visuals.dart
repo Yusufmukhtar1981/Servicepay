@@ -24,6 +24,40 @@ abstract final class CustomerDashboardPalette {
   static const onWallet = Color(0xFFFFFFFF);
   /// Darker inset fill for secondary wallet actions; carries white text.
   static const walletInset = Color(0xFF0A4A3F);
+
+  /// ServicePay bright green for active segmented selections.
+  static const activeGreen = Color(0xFF36C99A);
+  /// Muted green fill for inactive segmented selections.
+  static const inactiveGreen = Color(0xFF16483D);
+
+  /// Shared semantic series colours. Metric cards, chart bars and chart
+  /// legends all read from these so a legend always matches its series.
+  static const seriesBlue = Color(0xFF60A5FA);
+  static const seriesEmerald = Color(0xFF34D399);
+  static const seriesCoral = Color(0xFFFB7185);
+  static const seriesAmber = Color(0xFFFBBF24);
+}
+
+/// Exact per-service icon colours for the nine Home shortcuts.
+abstract final class CustomerServiceColors {
+  static const Map<String, Color> byTitle = <String, Color>{
+    'Data': Color(0xFF38BDF8),
+    'Airtime': Color(0xFF34D399),
+    'Delivery': Color(0xFFFB923C),
+    'NIN Verification': Color(0xFFA78BFA),
+    'Marketplace': Color(0xFFFBBF24),
+    'Electricity': Color(0xFFFDE047),
+    'EduPay': Color(0xFF818CF8),
+    'Keke Napep': Color(0xFFFB7185),
+    'Flight Booking': Color(0xFF60A5FA),
+  };
+
+  /// Icon colour for [title]; unknown services keep the emerald accent.
+  static Color iconFor(String title) =>
+      byTitle[title] ?? CustomerDashboardPalette.royalBlue;
+
+  /// Subtle tinted circle: the icon colour at low opacity over the card.
+  static Color tintFor(String title) => iconFor(title).withValues(alpha: 0.16);
 }
 
 class CustomerServiceGlyph extends StatelessWidget {
