@@ -5,6 +5,24 @@ const PrivacyRequestRateLimit = require("../models/privacyRequestRateLimit.model
 const User = require("../models/user.model");
 const AdminAuditLog = require("../models/adminAuditLog.model");
 const { sendEmail } = require("../services/email.service");
+const { createDeletionVerification } = require("../services/privacyDeletionVerification.service");
+const { createDeletionProcessor, assertVerifiedOwner } = require("../services/privacyDeletionProcessing.service");
+const deletionProcessor = createDeletionProcessor({
+  users: User,
+  wallets: require("../models/wallet.model"),
+  cashbackEntries: require("../models/cashbackEntry.model"),
+  transactions: require("../models/transaction.model"),
+  beneficiaries: require("../models/customerBeneficiary.model"),
+  deviceSessions: require("../models/deviceSession.model"),
+  requests: PrivacyRequest, audits: AdminAuditLog,
+  startSession: () => mongoose.startSession(),
+  reauthenticate: (actor, password) => require("../services/accountRecovery.service").reauthenticate(actor, password),
+});
+
+const deletionVerification = createDeletionVerification({
+  requests: PrivacyRequest, users: User, sendEmail,
+  makeId: () => new mongoose.Types.ObjectId(),
+});
 
 const ACTIVE_STATUSES = ["PENDING", "UNDER_REVIEW", "APPROVED", "OPEN", "IN_REVIEW"];
 const PUBLIC_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -26,8 +44,8 @@ const requesterFilter = (email) => ({
 });
 
 const audit = (req, action, reason, request) => AdminAuditLog.create({
-  actorId: actorId(req),
-  actorRole: String(req.user?.role || "PUBLIC"),
+  actorId: actorId(req) || request?.ownershipVerification?.subjectUser,
+  actorRole: String(req.user?.role || (request?.ownershipVerification?.subjectUser ? "CUSTOMER" : "PUBLIC")),
   actorName: req.user?.fullName || "Public request",
   targetUserId: request?.subjectUser || undefined,
   targetUserName: request?.requester?.fullName || undefined,
@@ -145,14 +163,45 @@ const createPublicRequest = async (req, res, next, kind) => {
   }
 };
 
-exports.createAccountDeletionRequest = (req, res, next) =>
-  createPublicRequest(req, res, next, "ACCOUNT_DELETION");
+exports.createDeletionChallenge = async (req, res, next) => {
+  try {
+    const data = await deletionVerification.challenge(req.body?.identifier);
+    return res.status(202).json({
+      success: true,
+      message: "If the details match an account with a verified email, a code will be sent there. Otherwise, use password verification or contact Support.",
+      data,
+    });
+  } catch (error) { return next(error); }
+};
+
+exports.createAccountDeletionRequest = async (req, res, next) => {
+  try {
+    const data = await deletionVerification.submit(req.body || {});
+    const request = await PrivacyRequest.findById(data.requestId);
+    await Promise.all([
+      audit(req, "PRIVACY_REQUEST_VERIFIED", "Verified customer requested account and associated-data deletion.", request),
+      sendRequesterEmail(request, "ServicePay deletion request received", "Your verified account-deletion request was received and is pending review. No money has been moved."),
+      sendAdminEmail(request),
+    ]);
+    return res.status(201).json({ success: true, message: "Verified account-deletion request received.", data });
+  } catch (error) { return next(error); }
+};
+
+exports.getDeletionRequestStatus = async (req, res, next) => {
+  try {
+    const data = await deletionVerification.status(req.body || {});
+    return res.json({ success: true, data });
+  } catch (error) { return next(error); }
+};
 exports.createDataRequest = (req, res, next) =>
   createPublicRequest(req, res, next, "DATA_REQUEST");
 
 exports.listAccountDeletionRequests = async (req, res, next) => {
   try {
-    const filter = { requestKind: req.query.kind ? String(req.query.kind).toUpperCase() : { $in: ["ACCOUNT_DELETION", "DATA_REQUEST"] } };
+    const filter = {
+      requestKind: req.query.kind ? String(req.query.kind).toUpperCase() : { $in: ["ACCOUNT_DELETION", "DATA_REQUEST"] },
+      status: { $nin: ["AWAITING_VERIFICATION", "EXPIRED"] },
+    };
     if (req.query.status) filter.status = String(req.query.status).toUpperCase();
     if (req.query.type) filter.dataRequestType = String(req.query.type).toUpperCase();
     if (req.query.search) {
@@ -188,27 +237,6 @@ const transitionAllowed = {
   REJECTED: [],
 };
 
-const anonymizeCustomer = async (request, req) => {
-  if (!request.subjectUser) return false;
-  const userId = request.subjectUser;
-  const suffix = String(userId);
-  const update = {
-    $set: {
-      fullName: "Deleted ServicePay Customer",
-      phone: `DELETED_${suffix}`,
-      email: `deleted-${suffix}@deleted.servicepay.ng`,
-      status: "BLOCKED",
-      isDeleted: true,
-      deletedAt: new Date(),
-      deletedBy: String(actorId(req) || "PRIVACY_WORKFLOW"),
-    },
-    $inc: { authTokenVersion: 1 },
-    $unset: { passwordResetToken: 1, passwordResetExpires: 1, transactionPin: 1 },
-  };
-  const result = await User.updateOne({ _id: userId, role: "CUSTOMER" }, update);
-  return result.modifiedCount === 1 || Boolean(await User.exists({ _id: userId, isDeleted: true }));
-};
-
 exports.updateAccountDeletionRequest = async (req, res, next) => {
   try {
     const status = String(req.body.status || "").toUpperCase();
@@ -219,18 +247,35 @@ exports.updateAccountDeletionRequest = async (req, res, next) => {
     if (request.status === status) return res.json({ success: true, data: request });
     if (!transitionAllowed[request.status]?.includes(status)) return res.status(409).json({ success: false, message: "This privacy request transition is not allowed." });
     if ((status === "REJECTED" || status === "COMPLETED") && note.length < 10) return res.status(400).json({ success: false, message: "A meaningful note of at least 10 characters is required." });
-    if (status === "COMPLETED" && request.requestKind === "ACCOUNT_DELETION") {
-      const anonymized = await anonymizeCustomer(request, req);
-      if (!anonymized) return res.status(409).json({ success: false, message: "Verify the customer account before completing this deletion request." });
+    if (request.requestKind === "ACCOUNT_DELETION" && ["APPROVED", "COMPLETED"].includes(status)) {
+      assertVerifiedOwner(request);
     }
-    request.status = status;
-    request.history.push({ status, note, changedBy: actorId(req), actorType: "ADMIN" });
-    if (["COMPLETED", "REJECTED"].includes(status)) request.activeRequestKey = undefined;
-    await request.save();
+    if (status === "COMPLETED" && request.requestKind === "ACCOUNT_DELETION") {
+      const result = await deletionProcessor.complete({
+        requestId: request._id, actor: req.user, body: req.body,
+        ipAddress: req.ip || "", userAgent: req.headers["user-agent"] || "",
+      });
+      await sendRequesterEmail(
+        { ...result.request.toObject(), status: "COMPLETED" },
+        "ServicePay account deletion processed",
+        "Your account-deletion request has been processed. Access was revoked and eligible account data erased. Head Office has documented associated-system and processor handling. Records legally required for financial, regulatory, fraud, dispute or audit purposes remain restricted under the applicable retention policy. Contact Support with your reference for details.",
+      );
+      const completed = await PrivacyRequest.findById(request._id);
+      return res.json({ success: true, data: completed });
+    }
+    const change = {
+      $set: { status },
+      $push: { history: { status, note, changedBy: actorId(req), actorType: "ADMIN" } },
+      ...(["COMPLETED", "REJECTED"].includes(status) ? { $unset: { activeRequestKey: 1 } } : {}),
+    };
+    const changed = await PrivacyRequest.findOneAndUpdate(
+      { _id: request._id, status: request.status }, change, { returnDocument: "after", runValidators: true },
+    );
+    if (!changed) return res.status(409).json({ success: false, message: "Request changed during review. Refresh before retrying." });
     await Promise.all([
-      audit(req, "PRIVACY_REQUEST_UPDATED", `Privacy request marked ${status}`, request),
-      sendRequesterEmail(request, `ServicePay privacy request ${status.toLowerCase()}`, `Your privacy request has been marked ${status.toLowerCase()}.`),
+      audit(req, "PRIVACY_REQUEST_UPDATED", `Privacy request marked ${status}`, changed),
+      sendRequesterEmail(changed, `ServicePay privacy request ${status.toLowerCase()}`, `Your privacy request has been marked ${status.toLowerCase()}.`),
     ]);
-    return res.json({ success: true, data: request });
+    return res.json({ success: true, data: changed });
   } catch (error) { return next(error); }
 };

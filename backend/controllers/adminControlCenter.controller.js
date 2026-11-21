@@ -231,6 +231,7 @@ exports.updatePrivacy = async (req, res, next) => { try {
   const note = String(req.body.note ?? req.body.resolutionNote ?? "").slice(0, 1000);
   if (!["OPEN", "IN_REVIEW", "COMPLETED", "REJECTED"].includes(status)) return res.status(400).json({ success: false, message: "Invalid privacy request status." });
   const request = await PrivacyRequest.findById(req.params.id); if (!request) return res.status(404).json({ success: false, message: "Privacy request not found." });
+  if (request.requestKind === "ACCOUNT_DELETION" || request.type === "ACCOUNT_DELETION") return res.status(409).json({ success: false, message: "Use Account & Data Requests so customer ownership verification and deletion safeguards are enforced." });
   if (status === "COMPLETED" && request.type === "ERASURE") return res.status(409).json({ success: false, message: "ERASURE requests cannot be completed because no approved anonymization and retention pipeline is available." });
   if (status === "COMPLETED" && note.trim().length < 10) return res.status(400).json({ success: false, message: "A meaningful resolution note of at least 10 characters is required to complete this privacy request." });
   const allowed = { OPEN: ["IN_REVIEW", "REJECTED"], IN_REVIEW: ["OPEN", "COMPLETED", "REJECTED"], COMPLETED: [], REJECTED: ["OPEN"] };

@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const {
   MAX_REQUESTS_PER_WINDOW,
   createPrivacyRequestRateLimit,
+  deletionIdentityKey,
 } = require("../middleware/privacyRequestRateLimit.middleware");
 
 test("public privacy intake is rate limited without storing raw contact data", async () => {
@@ -45,4 +46,13 @@ test("public privacy intake is rate limited without storing raw contact data", a
   assert.equal(typeof seen[0].filter.key, "string");
   assert.equal(seen[0].filter.key.length, 64);
   assert.equal(JSON.stringify(seen).includes("customer@example.com"), false);
+});
+
+test("deletion account limits cannot be bypassed using equivalent phone formatting", () => {
+  const key = identifier => deletionIdentityKey({ body: { identifier } });
+  const canonical = key("08031234567");
+  for (const phone of ["+2348031234567", "2348031234567", "0803 123 4567", "(0803)-123-4567"]) {
+    assert.equal(key(phone), canonical);
+  }
+  assert.equal(key("Person@Example.Invalid"), key("person@example.invalid"));
 });
