@@ -103,6 +103,9 @@ class PublicChecks(unittest.TestCase):
         llms = (ROOT / "llms.txt").read_text()
         self.assertTrue(llms.startswith("# ServicePay"))
         self.assertIn("YUMPAY GLOBAL TECH. LTD", llms)
+        css = (ROOT / "assets/seo-public.css").read_text()
+        self.assertIn(".public-knowledge .nav .links{display:none}", css)
+        self.assertNotIn("@media(max-width:760px){.nav .links{display:none}", css)
 
     def test_flutter_bootstrap_and_session_preserved(self):
         text = (ROOT / "index.html").read_text()

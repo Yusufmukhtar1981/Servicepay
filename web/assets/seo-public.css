@@ -11,4 +11,4 @@ main{overflow:hidden}.hero{padding:92px 0 72px;position:relative}.hero:after{con
 .mnav nav{display:grid;gap:4px;margin-top:10px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:10px}.mnav nav a{padding:8px 10px;text-decoration:none}
 .steps{padding-left:22px}.steps li{margin:8px 0;color:var(--muted)}a.card.svc{text-decoration:none;color:var(--ink);display:block}a.card.svc:hover{border-color:var(--green)}
 .prose .grid{margin-top:20px}
-@media(max-width:760px){.nav .links{display:none}.mnav{display:block;order:3;width:100%}}
+@media(max-width:760px){.public-knowledge .nav .links{display:none}.mnav{display:block;order:3;width:100%}}

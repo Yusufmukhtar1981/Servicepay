@@ -243,7 +243,7 @@ EXTRA_CSS = """
 .mnav nav{display:grid;gap:4px;margin-top:10px;background:#fff;border:1px solid var(--line);border-radius:14px;padding:10px}.mnav nav a{padding:8px 10px;text-decoration:none}
 .steps{padding-left:22px}.steps li{margin:8px 0;color:var(--muted)}a.card.svc{text-decoration:none;color:var(--ink);display:block}a.card.svc:hover{border-color:var(--green)}
 .prose .grid{margin-top:20px}
-@media(max-width:760px){.nav .links{display:none}.mnav{display:block;order:3;width:100%}}
+@media(max-width:760px){.public-knowledge .nav .links{display:none}.mnav{display:block;order:3;width:100%}}
 """
 
 
@@ -278,7 +278,7 @@ def render(pg):
 <meta name="twitter:card" content="summary"><meta name="twitter:title" content="{t}"><meta name="twitter:description" content="{d}"><meta name="twitter:image" content="{LOGO}">
 <script type="application/ld+json">{ld}</script>
 <link rel="stylesheet" href="{rel}assets/seo-public.css"><link rel="icon" href="{rel}favicon.png"></head>
-<body><a class="skip" href="#main">Skip to content</a>
+<body class="public-knowledge"><a class="skip" href="#main">Skip to content</a>
 <header class="site-header"><div class="wrap nav"><a class="brand" href="/"><img src="{rel}assets/assets/image/servicepay_logo.png" alt="ServicePay logo" width="46" height="46"><span>Service<b>Pay</b></span></a>
 <nav class="links" aria-label="Main">{links}</nav><a class="nav-cta" href="/?mode=login">Open ServicePay</a>
 <details class="mnav"><summary aria-label="Open menu">Menu</summary><nav aria-label="Mobile">{links}<a href="/?mode=register">Create account</a></nav></details></div></header>
