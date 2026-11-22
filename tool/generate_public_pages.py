@@ -302,6 +302,14 @@ def main():
         s = s[: s.index(marker)].rstrip() + "\n"
     css.write_text(s + EXTRA_CSS.lstrip("\n"), encoding="utf-8")
     print(f"wrote {len(PAGES)} pages")
+    # Preserve the search/help extension when regenerating the base documents.
+    extension = Path(__file__).resolve().parent / "servicepay-help-content.py"
+    if extension.exists():
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("servicepay_help_content", extension)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        module.main()
 
 
 if __name__ == "__main__":

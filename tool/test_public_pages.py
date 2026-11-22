@@ -17,6 +17,7 @@ PUBLIC = [
     "/faq/", "/how-to-register/", "/how-to-use/", "/contact/", "/help/",
     "/download/", "/knowledge/", "/privacy-policy", "/delete-account",
     "/terms-and-conditions", "/news/",
+    "/account-wallet/", "/virtual-account/", "/transactions/", "/security/", "/complaints/",
 ]
 
 
@@ -88,7 +89,8 @@ class PublicChecks(unittest.TestCase):
                         continue
                     if href.path == "/":
                         continue
-                    self.assertTrue(href.path in PUBLIC or href.path + "/" in PUBLIC,
+                    self.assertTrue(href.path in PUBLIC or href.path + "/" in PUBLIC or
+                                    href.path == "/knowledge/search/",
                                     "Unknown internal link: " + href.path)
 
     def test_discovery_files(self):

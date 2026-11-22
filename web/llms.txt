@@ -41,3 +41,12 @@ Service availability depends on the customer's account, location, current catalo
 The Android listing linked by the application is https://play.google.com/store/apps/details?id=ng.servicepay.app .
 No customer, wallet or private transaction information belongs in this public resource.
 This file is a navigation aid, not a guarantee of indexing, ranking or AI citations.
+
+## Customer search and help
+- [Search and Help Centre](https://servicepay.ng/knowledge/): browse public guides; search results are not indexable and do not expose private accounts.
+- [Virtual Account help](https://servicepay.ng/virtual-account/)
+- [Account and Wallet help](https://servicepay.ng/account-wallet/)
+- [Transaction guidance](https://servicepay.ng/transactions/)
+- [Account security](https://servicepay.ng/security/)
+- [Complaints and human support](https://servicepay.ng/complaints/)
+Public guide answers quote curated guidance, not live account evidence. AI Smart Support and complaint records require customer sign-in.
