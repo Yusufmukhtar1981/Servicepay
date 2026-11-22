@@ -8,4 +8,11 @@ Disallow: /auth
 Disallow: /auth/
 Disallow: /api
 Disallow: /api/
+Disallow: /login
+Disallow: /register
+Disallow: /dashboard
+Disallow: /wallet
+Disallow: /transactions
+Disallow: /profile
+Disallow: /*?mode=
 Sitemap: https://servicepay.ng/sitemap.xml

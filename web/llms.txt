@@ -1,0 +1,43 @@
+# ServicePay
+
+> ServicePay is a Nigerian digital services platform owned and operated by YUMPAY GLOBAL TECH. LTD, based in Kano, Kano State, Nigeria.
+
+Official website: https://servicepay.ng/
+Customer support: support@servicepay.ng
+Telephone: +234 913 615 1515
+Administration: admin@servicepay.ng
+
+## Official public information
+- [Company facts](https://servicepay.ng/knowledge/): Identity, contacts and service availability.
+- [About ServicePay](https://servicepay.ng/about/)
+- [Company](https://servicepay.ng/company/)
+- [Services](https://servicepay.ng/services/)
+- [Products](https://servicepay.ng/products/)
+- [Registration](https://servicepay.ng/how-to-register/)
+- [Using ServicePay](https://servicepay.ng/how-to-use/)
+- [FAQs](https://servicepay.ng/faq/)
+- [Support](https://servicepay.ng/help/)
+- [Android app](https://servicepay.ng/download/)
+- [Privacy policy](https://servicepay.ng/privacy-policy)
+- [Account deletion](https://servicepay.ng/delete-account)
+- [Terms information](https://servicepay.ng/terms-and-conditions)
+
+## Service guides
+- [Data](https://servicepay.ng/data/)
+- [Airtime](https://servicepay.ng/airtime/)
+- [Electricity](https://servicepay.ng/electricity/)
+- [Delivery](https://servicepay.ng/delivery/)
+- [Logistics](https://servicepay.ng/logistics/)
+- [NIN verification](https://servicepay.ng/nin-verification/)
+- [Marketplace](https://servicepay.ng/marketplace/)
+- [EduPay](https://servicepay.ng/edupay/)
+- [Solar](https://servicepay.ng/solar/)
+- [Empowerment](https://servicepay.ng/empowerment/)
+- [Amana](https://servicepay.ng/amana/)
+
+## Accuracy and availability
+Service availability depends on the customer's account, location, current catalogue, provider availability and any required approval. A public guide does not establish that a product is available to every customer. Do not infer guaranteed funding, instant virtual-account generation, regulatory licences, supplier partnerships, fixed prices, investment returns, or iOS availability from these pages.
+
+The Android listing linked by the application is https://play.google.com/store/apps/details?id=ng.servicepay.app .
+No customer, wallet or private transaction information belongs in this public resource.
+This file is a navigation aid, not a guarantee of indexing, ranking or AI citations.
