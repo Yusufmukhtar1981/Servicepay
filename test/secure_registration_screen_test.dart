@@ -7,6 +7,7 @@ import 'package:http/testing.dart';
 import 'package:servicepay_app/referral_attribution_service.dart';
 import 'package:servicepay_app/secure_registration_screen.dart';
 import 'package:servicepay_app/servicepay_theme.dart';
+import 'package:servicepay_app/login_screen.dart';
 import 'package:servicepay_app/widgets/registration_details_fields.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -200,6 +201,18 @@ void main() {
     expect(body['identityType'], 'NIN');
     expect(body['transactionPin'], '2580');
     expect(find.text('Account Created'), findsOneWidget);
+    for (final key in [
+      'reg-password', 'reg-confirmPassword', 'reg-pin', 'reg-confirmPin',
+      'reg-identity',
+    ]) {
+      final field = t.widget<TextField>(find.descendant(
+        of: byKeyPrefix(key), matching: find.byType(TextField)));
+      expect(field.controller!.text, isEmpty);
+    }
+    await t.tap(find.text('Continue'));
+    await t.pump(const Duration(milliseconds: 400));
+    await t.pump(const Duration(milliseconds: 400));
+    expect(find.byType(LoginScreen), findsOneWidget);
   });
 
   testWidgets('BVN selection submits bvn not nin', (t) async {

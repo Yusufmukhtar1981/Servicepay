@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'referral_attribution_service.dart';
 import 'security_utils.dart';
 import 'servicepay_theme.dart';
+import 'login_screen.dart';
 import 'widgets/registration_details_fields.dart';
 
 export 'widgets/registration_details_fields.dart'
@@ -1127,6 +1128,15 @@ class _SecureRegistrationScreenState extends State<SecureRegistrationScreen> {
           response.statusCode < 300 &&
           data is Map &&
           data['success'] == true) {
+        for (final controller in [
+          passwordController,
+          confirmPasswordController,
+          pinController,
+          confirmPinController,
+          ninController,
+        ]) {
+          controller.clear();
+        }
         await _referralService.clearPending();
         if (!mounted) return;
 
@@ -1150,7 +1160,13 @@ class _SecureRegistrationScreenState extends State<SecureRegistrationScreen> {
         );
 
         if (!mounted) return;
-        Navigator.maybePop(context);
+        if (Navigator.of(context).canPop()) {
+          Navigator.of(context).pop();
+        } else {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute<void>(builder: (_) => const LoginScreen()),
+          );
+        }
         return;
       }
 
