@@ -1071,6 +1071,7 @@ class _ImagePromotionCard extends StatelessWidget {
           child: SizedBox.expand(
             child: Image.network(
               announcement.imageUrl!,
+              webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
               key: const Key('announcement-promotion-image'),
               fit: BoxFit.contain,
               alignment: Alignment.center,
@@ -1324,6 +1325,7 @@ class AnnouncementPopup extends StatelessWidget {
               ClipRRect(
                 borderRadius: BorderRadius.circular(15),
                 child: Image.network(announcement.imageUrl!,
+                    webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
                     width: double.infinity,
                     height: 150,
                     fit: BoxFit.contain,
@@ -1763,29 +1765,16 @@ class _AnnouncementSurfaceState extends State<AnnouncementSurface> {
           : (right.createdAt ?? DateTime(1970))
               .compareTo(left.createdAt ?? DateTime(1970)));
     final List<Widget> children = <Widget>[];
-    if (banners.isNotEmpty) {
-      children.add(
-        AnnouncementPromotionCarousel(
-          announcements: banners,
-          onDismiss: _dismissBanner,
-          onAcknowledge: (item) => unawaited(_acknowledgeBanner(item)),
-          onAction: (item) => unawaited(_action(item)),
-          referralPolicy: widget.referralPolicy,
-          onReferralAction: widget.onReferralAction,
-        ),
-      );
-    } else if (widget.referralPolicy != null) {
-      children.add(
-        AnnouncementPromotionCarousel(
-          announcements: const <ServicePayAnnouncement>[],
-          onDismiss: _dismissBanner,
-          onAcknowledge: (item) => unawaited(_acknowledgeBanner(item)),
-          onAction: (item) => unawaited(_action(item)),
-          referralPolicy: widget.referralPolicy,
-          onReferralAction: widget.onReferralAction,
-        ),
-      );
-    }
+    children.add(
+      AnnouncementPromotionCarousel(
+        announcements: banners,
+        onDismiss: _dismissBanner,
+        onAcknowledge: (item) => unawaited(_acknowledgeBanner(item)),
+        onAction: (item) => unawaited(_action(item)),
+        referralPolicy: widget.referralPolicy,
+        onReferralAction: widget.onReferralAction,
+      ),
+    );
     for (final ServicePayAnnouncement item in _trackedBanners) {
       children.add(
         RewardProgressCard(

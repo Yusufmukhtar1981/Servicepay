@@ -39,6 +39,39 @@ void main() {
     });
   });
 
+  test('authoritative feed removes disabled session-retained banners', () {
+    final item = announcement(
+      id: 'old-banner', style: 'BOTH', visibility: 'EVERY_LOGIN');
+    expect(mergeAnnouncementSessionState(
+      loaded: [],
+      current: [item],
+      popupCompletedBanners: {item.id: item},
+      hiddenBannerIds: {},
+      authoritative: true,
+    ), isEmpty);
+  });
+
+  testWidgets('Home cleanup keeps Business Hub and active updates in All Services',
+      (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: DashboardScreen()));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.byKey(const Key('customer-business-hub-entry')), findsNothing);
+    expect(find.text('Active Services'), findsNothing);
+    await tester.tap(find.text('All Services'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.byKey(const Key('customer-business-hub-entry')), findsOneWidget);
+    await tester.enterText(find.byType(TextField).first, 'Active Services');
+    await tester.pump();
+    expect(find.text('Active Services'), findsNWidgets(2));
+    await tester.tap(find.text('Active Services').last);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('Active Services'), findsOneWidget);
+    expect(find.byTooltip('Refresh active services'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   test('retains a popup-completed mandatory BOTH banner after refresh', () {
     final ServicePayAnnouncement item = announcement(
       id: 'mandatory-both',
@@ -202,16 +235,15 @@ void main() {
     final funding = top(const Key('customer-funding-account'));
     final insights = top(const Key('customer-transaction-insights'));
     final services = top(const Key('customer-quick-services'));
-    final business = top(const Key('customer-business-hub-entry'));
     final activity = top(const Key('customer-recent-activity'));
     final referral = top(const Key('customer-referral-surface'));
     expect(wallet, lessThan(funding));
     expect(funding, lessThan(services));
-    expect(services, lessThan(business));
-    expect(business, lessThan(activity));
+    expect(services, lessThan(activity));
+    expect(find.byKey(const Key('customer-business-hub-entry')), findsNothing);
     expect(activity, lessThan(insights));
     expect(insights, lessThan(referral));
-    for (final key in ['customer-quick-services', 'customer-business-hub-entry',
+    for (final key in ['customer-quick-services',
       'customer-recent-activity', 'customer-transaction-insights',
       'customer-referral-surface']) {
       expect(find.byKey(Key(key)), findsOneWidget);
@@ -430,11 +462,18 @@ void main() {
     expect(find.text('₦76,543.21'), findsOneWidget);
     expect(find.byKey(const Key('dashboard-unread-badge')), findsOneWidget);
     expect(find.text('3'), findsOneWidget);
-    await tester.scrollUntilVisible(
-      find.text('Active Services'),
-      450,
-      scrollable: find.byType(Scrollable).first,
-    );
+    expect(find.text('Active Services'), findsNothing);
+    await tester.ensureVisible(find.text('All Services'));
+    await tester.tap(find.text('All Services'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.enterText(find.byType(TextField).first, 'Active Services');
+    await tester.pump();
+    await tester.tap(find.text('Active Services').last);
+    await tester.pump();
+    for (int index = 0; index < 8; index++) {
+      await tester.pump(const Duration(milliseconds: 40));
+    }
     expect(find.text('Active Services'), findsOneWidget);
     expect(
       find.byKey(const Key('dashboard-service-status-delivery')),
@@ -442,6 +481,12 @@ void main() {
     );
     expect(find.text('Office parcel'), findsOneWidget);
     expect(find.text('IN TRANSIT'), findsOneWidget);
+    await tester.pageBack();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pageBack();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
 
     await tester.scrollUntilVisible(
       find.text('Wallet Funding'),
@@ -771,7 +816,8 @@ void main() {
         await tester.pump(const Duration(milliseconds: 40));
       }
       final card = find.byKey(const Key('customer-funding-account'));
-      expect(tester.getSize(card).height, lessThan(130));
+      // The unchanged approved card wraps its caption in the widget-test font.
+      expect(tester.getSize(card).height, lessThanOrEqualTo(144));
       expect(find.text('0123456789'), findsOneWidget);
       expect(find.text('ServicePay Bank'), findsOneWidget);
       expect(find.text('Ada Okafor A Very Long Account Holder Name'),

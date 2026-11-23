@@ -73,9 +73,16 @@ List<ServicePayAnnouncement> mergeAnnouncementSessionState({
   required List<ServicePayAnnouncement> current,
   required Map<String, ServicePayAnnouncement> popupCompletedBanners,
   required Set<String> hiddenBannerIds,
+  bool authoritative = false,
 }) {
+  final now = DateTime.now();
+  bool scheduled(ServicePayAnnouncement item) =>
+      (item.startsAt == null || !now.isBefore(item.startsAt!)) &&
+      (item.endsAt == null || now.isBefore(item.endsAt!));
   final List<ServicePayAnnouncement> visibleLoaded =
-      loaded.where((item) => !hiddenBannerIds.contains(item.id)).toList();
+      loaded.where((item) =>
+          scheduled(item) && !hiddenBannerIds.contains(item.id)).toList();
+  if (authoritative) return visibleLoaded;
   final Set<String> loadedIds = visibleLoaded.map((item) => item.id).toSet();
   final Map<String, ServicePayAnnouncement> retained =
       <String, ServicePayAnnouncement>{
@@ -91,7 +98,7 @@ List<ServicePayAnnouncement> mergeAnnouncementSessionState({
   };
   return <ServicePayAnnouncement>[
     ...visibleLoaded,
-    ...retained.values,
+    ...retained.values.where(scheduled),
   ];
 }
 
@@ -179,6 +186,9 @@ class _DashboardScreenState extends State<DashboardScreen>
   bool _announcementsLoading = true;
   bool _announcementResponseEmpty = false;
   String? _announcementsError;
+  Timer? _announcementRefreshTimer;
+  Timer? _announcementExpiryTimer;
+  bool _announcementsRequestInFlight = false;
   RewardProgressService? _rewardProgressService;
   final Map<String, ServicePayAnnouncement> _sessionPopupCompletedBanners =
       <String, ServicePayAnnouncement>{};
@@ -220,13 +230,20 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
     _loadSavedProfilePhoto();
     loadDashboard();
+    _announcementRefreshTimer = Timer.periodic(
+      const Duration(seconds: 60), (_) => unawaited(_refreshPromotions()),
+    );
     unawaited(_checkAppUpdate());
   }
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    final wasVisible = _dashboardTabVisible;
     _dashboardTabVisible = CustomerDashboardVisibility.of(context);
+    if (!wasVisible && _dashboardTabVisible) {
+      unawaited(_refreshPromotions());
+    }
     if (!_walletAlertsVisible) unawaited(_alertMedia.stopAll());
     if (MediaQuery.disableAnimationsOf(context)) {
       _motionController.stop();
@@ -249,6 +266,8 @@ class _DashboardScreenState extends State<DashboardScreen>
     _motionController.dispose();
     _refreshController.dispose();
     _walletAlertPoller?.dispose();
+    _announcementRefreshTimer?.cancel();
+    _announcementExpiryTimer?.cancel();
     unawaited(_alertMedia.stopAll());
     CustomerSettingsEvents.changes.removeListener(_applyCustomerSettingsEvent);
     searchController.dispose();
@@ -263,6 +282,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     if (state == AppLifecycleState.resumed && mounted) {
       _loadServiceAvailability();
       unawaited(_checkAppUpdate());
+      unawaited(_refreshPromotions());
     } else {
       unawaited(_alertMedia.stopAll());
     }
@@ -400,7 +420,6 @@ class _DashboardScreenState extends State<DashboardScreen>
       // Secondary services have their own state and cannot delay the dashboard.
       unawaited(_loadRecentTransactions(token));
       unawaited(_loadNotificationSummary(token));
-      unawaited(_loadActiveServiceStatuses(token));
       unawaited(_loadSchoolPortalMemberships(token));
       unawaited(_loadFundingAccount(token));
       // Referral presentation is independently fetched and never gates the
@@ -759,7 +778,44 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
-  Future<void> _loadAnnouncements(String token) async {
+  Future<void> _refreshPromotions() async {
+    if (!_walletAlertsVisible || _announcementsRequestInFlight) return;
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final token = await getSavedAuthToken(preferences);
+      if (token != null && token.isNotEmpty && mounted) {
+        await _loadAnnouncements(token, silent: true);
+      }
+    } catch (_) {
+      // The existing refresh control remains available; never interrupt Home.
+    }
+  }
+
+  void _schedulePromotionExpiry() {
+    _announcementExpiryTimer?.cancel();
+    final now = DateTime.now();
+    final ends = announcements
+        .map((item) => item.endsAt)
+        .whereType<DateTime>()
+        .where((end) => end.isAfter(now))
+        .toList()..sort();
+    if (ends.isEmpty) return;
+    _announcementExpiryTimer = Timer(
+        ends.first.difference(now) + const Duration(milliseconds: 1), () {
+      if (!mounted) return;
+      final current = DateTime.now();
+      setState(() {
+        announcements = announcements.where((item) =>
+            item.endsAt == null || current.isBefore(item.endsAt!)).toList();
+        _announcementResponseEmpty = announcements.isEmpty;
+      });
+      _schedulePromotionExpiry();
+    });
+  }
+
+  Future<void> _loadAnnouncements(String token, {bool silent = false}) async {
+    if (_announcementsRequestInFlight) return;
+    _announcementsRequestInFlight = true;
     final AnnouncementService service = AnnouncementService(
       client: _client,
       token: token,
@@ -774,11 +830,13 @@ class _DashboardScreenState extends State<DashboardScreen>
     try {
       if (mounted) {
         setState(() {
-          _announcementsLoading = true;
+          if (!silent) _announcementsLoading = true;
           _announcementsError = null;
         });
       }
-      final List<ServicePayAnnouncement> loaded = await service.fetchActive();
+      final List<ServicePayAnnouncement> loaded = await service.fetchActive(
+        retainedBannerIds: _sessionPopupCompletedBanners.keys,
+      );
       if (mounted) {
         final List<ServicePayAnnouncement> visible =
             mergeAnnouncementSessionState(
@@ -786,6 +844,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           current: announcements,
           popupCompletedBanners: _sessionPopupCompletedBanners,
           hiddenBannerIds: _sessionHiddenBannerIds,
+          authoritative: service.authoritativeDashboardFeed,
         )
                 .where((item) => !promotesHiddenCustomerService(
                     '${item.title} ${item.message} ${item.cta ?? ''}'))
@@ -795,10 +854,11 @@ class _DashboardScreenState extends State<DashboardScreen>
           // per login token. Popup-completed BOTH banners are also retained
           // independently, unless the customer explicitly removed the banner.
           announcements = visible;
-          _announcementResponseEmpty = loaded.isEmpty && visible.isEmpty;
+          _announcementResponseEmpty = visible.isEmpty;
           _announcementsLoading = false;
           _announcementsError = null;
         });
+        _schedulePromotionExpiry();
       }
     } catch (_) {
       if (mounted) {
@@ -809,6 +869,8 @@ class _DashboardScreenState extends State<DashboardScreen>
         });
       }
       // Campaign delivery must never interrupt dashboard usage.
+    } finally {
+      _announcementsRequestInFlight = false;
     }
   }
 
@@ -2675,7 +2737,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     );
   }
 
-  Widget buildActiveServiceStatuses() {
+  Widget buildActiveServiceStatuses({bool showHeading = true}) {
     if (!isLoadingServiceStatuses && activeServiceStatuses.isEmpty) {
       return const SizedBox.shrink();
     }
@@ -2683,7 +2745,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: <Widget>[
-        const Text(
+        if (showHeading) const Text(
           'Active Services',
           style: TextStyle(
             color: CustomerDashboardPalette.text,
@@ -2691,7 +2753,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             fontWeight: FontWeight.w700,
           ),
         ),
-        const SizedBox(height: 10),
+        if (showHeading) const SizedBox(height: 10),
         if (isLoadingServiceStatuses && activeServiceStatuses.isEmpty)
           Container(
             key: const Key('dashboard-service-status-loading'),
@@ -2722,6 +2784,66 @@ class _DashboardScreenState extends State<DashboardScreen>
             ),
       ],
     );
+  }
+
+  void _openActiveServices() {
+    Future<void> refresh() async {
+      final preferences = await SharedPreferences.getInstance();
+      final token = await getSavedAuthToken(preferences);
+      if (token == null || token.isEmpty) {
+        throw StateError('Sign in again to view active service updates.');
+      }
+      await _loadActiveServiceStatuses(token);
+    }
+
+    Future<void> beginRefresh() {
+      final pending = refresh();
+      // Observe errors immediately, before the pushed route's first frame.
+      // FutureBuilder still receives the original future and shows its error.
+      pending.ignore();
+      return pending;
+    }
+
+    Future<void> loading = beginRefresh();
+    openScreen(StatefulBuilder(builder: (context, updatePage) {
+      return Scaffold(
+        backgroundColor: CustomerDashboardPalette.canvas,
+        appBar: AppBar(
+          title: const Text('Active Services'),
+          backgroundColor: CustomerDashboardPalette.header,
+          foregroundColor: CustomerDashboardPalette.text,
+          actions: [
+            IconButton(
+              tooltip: 'Refresh active services',
+              onPressed: () => updatePage(() => loading = beginRefresh()),
+              icon: const Icon(Icons.refresh_rounded),
+            ),
+          ],
+        ),
+        body: FutureBuilder<void>(
+          future: loading,
+          builder: (context, snapshot) => ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              if (snapshot.connectionState != ConnectionState.done)
+                const Center(child: CircularProgressIndicator())
+              else if (snapshot.hasError)
+                const Text(
+                  'Service updates could not be loaded. Tap refresh to retry.',
+                  style: TextStyle(color: CustomerDashboardPalette.softText),
+                )
+              else if (activeServiceStatuses.isEmpty)
+                const Text(
+                  'No active service updates to display.',
+                  style: TextStyle(color: CustomerDashboardPalette.softText),
+                )
+              else
+                buildActiveServiceStatuses(showHeading: false),
+            ],
+          ),
+        ),
+      );
+    }));
   }
 
   Widget _buildActiveServiceStatusCard(_DashboardServiceStatus item) {
@@ -3131,6 +3253,12 @@ class _DashboardScreenState extends State<DashboardScreen>
       final List<_DashboardService> all = <_DashboardService>[
         ...byTitle.values,
         _customerServiceEntry(
+          'Active Services',
+          Icons.assignment_outlined,
+          _openActiveServices,
+          subtitle: 'Your ongoing services and updates',
+        ),
+        _customerServiceEntry(
           'Cashback',
           Icons.savings_outlined,
           () => openScreen(const CashbackScreen()),
@@ -3193,6 +3321,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       }
       openScreen(_ServicePayAllServicesScreen(
         services: unique.values.toList(),
+        businessHubBuilder: (_) => _buildBusinessHubEntry(),
       ));
     }
 
@@ -6090,8 +6219,6 @@ class _DashboardScreenState extends State<DashboardScreen>
                         const SizedBox(height: 14),
                       buildCustomerQuickServices(),
                       const SizedBox(height: 14),
-                      _buildBusinessHubEntry(),
-                      const SizedBox(height: 14),
                       // Admin announcements (and their popup lifecycle) stay in
                       // this single surface. Referral is presented separately
                       // further down so it never shifts announcement tracking.
@@ -6099,10 +6226,20 @@ class _DashboardScreenState extends State<DashboardScreen>
                           _announcementsError != null ||
                           announcements.isNotEmpty ||
                           _announcementResponseEmpty) ...[
+                        const Text(
+                          'Promotions',
+                          style: TextStyle(
+                            color: CustomerDashboardPalette.text,
+                            fontSize: 19,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
                         CustomerCampaignFrame(
                           key: const Key('customer-announcement-surface'),
                           child: _announcementService != null &&
-                                  announcements.isNotEmpty
+                                  announcements.isNotEmpty &&
+                                  _announcementsError == null
                               ? AnnouncementSurface(
                                   announcements: announcements,
                                   service: _announcementService!,
@@ -6119,6 +6256,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                                       announcements = announcements
                                           .where((value) => value.id != item.id)
                                           .toList();
+                                      _announcementResponseEmpty =
+                                          announcements.isEmpty;
                                     });
                                   },
                                 )
@@ -6135,12 +6274,6 @@ class _DashboardScreenState extends State<DashboardScreen>
                         refreshVersion: _championsRefreshVersion,
                       ),
                       const SizedBox(height: 12),
-                      if (isLoadingServiceStatuses ||
-                          activeServiceStatuses.isNotEmpty) ...[
-                        const SizedBox(height: 14),
-                        buildActiveServiceStatuses(),
-                        const SizedBox(height: 14),
-                      ],
                       if (schoolPortalMemberships.isNotEmpty) ...[
                         const SizedBox(height: 14),
                         buildSchoolPortalCard(),
@@ -6171,9 +6304,6 @@ class _DashboardScreenState extends State<DashboardScreen>
                           ),
                         ),
                       ],
-                      if (isLoadingServiceStatuses ||
-                          activeServiceStatuses.isNotEmpty)
-                        const SizedBox(height: 4),
                       if (isRefreshing)
                         const Padding(
                           padding: EdgeInsets.only(top: 18),
@@ -6700,9 +6830,11 @@ class _PopularServiceCard extends StatelessWidget {
 // ===== SERVICEPAY ALL SERVICES SCREEN =====
 class _ServicePayAllServicesScreen extends StatefulWidget {
   final List<_DashboardService> services;
+  final WidgetBuilder? businessHubBuilder;
 
   const _ServicePayAllServicesScreen({
     required this.services,
+    this.businessHubBuilder,
   });
 
   @override
@@ -6714,6 +6846,11 @@ class _ServicePayAllServicesScreenState
     extends State<_ServicePayAllServicesScreen> {
   final TextEditingController _controller = TextEditingController();
   String query = '';
+  bool get _showBusinessHub =>
+      widget.businessHubBuilder != null &&
+      (query.trim().isEmpty ||
+          'business hub agent merchant register business'
+              .contains(query.trim().toLowerCase()));
 
   static const Color _green = CustomerDashboardPalette.royalBlue;
   static const Color _softGreen = CustomerDashboardPalette.paleBlue;
@@ -6909,7 +7046,7 @@ class _ServicePayAllServicesScreenState
               ),
             ),
             Expanded(
-              child: groups.isEmpty
+              child: groups.isEmpty && !_showBusinessHub
                   ? const Center(
                       child: Text(
                         'No service found',
@@ -6923,6 +7060,10 @@ class _ServicePayAllServicesScreenState
                   : ListView(
                       padding: const EdgeInsets.fromLTRB(18, 12, 18, 30),
                       children: [
+                        if (_showBusinessHub) ...[
+                          widget.businessHubBuilder!(context),
+                          const SizedBox(height: 20),
+                        ],
                         for (final entry in groups.entries) ...[
                           _buildSection(
                             entry.key,

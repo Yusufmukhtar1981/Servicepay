@@ -24,6 +24,7 @@ class ServicePayAnnouncement {
     this.campaignTrackingEnabled = false,
     this.requirements,
     this.rewardDescription,
+    this.popupEligible = true,
   });
 
   final String id;
@@ -46,8 +47,10 @@ class ServicePayAnnouncement {
   final bool campaignTrackingEnabled;
   final Map<String, dynamic>? requirements;
   final String? rewardDescription;
+  final bool popupEligible;
 
-  bool get isPopup => displayStyle == 'POPUP' || displayStyle == 'BOTH';
+  bool get isPopup =>
+      popupEligible && (displayStyle == 'POPUP' || displayStyle == 'BOTH');
   bool get isBanner => displayStyle == 'BANNER' || displayStyle == 'BOTH';
   bool get canDismiss => !mandatory;
   String? get ctaText => cta?['text']?.toString().trim().isEmpty == true
@@ -115,6 +118,7 @@ class ServicePayAnnouncement {
           json['campaignTracking'] == true,
       requirements: parsedRequirements,
       rewardDescription: json['rewardDescription']?.toString(),
+      popupEligible: json['popupEligible'] != false,
     );
   }
 }
@@ -129,20 +133,33 @@ class AnnouncementService {
   final http.Client _client;
   final String baseUrl;
   final String token;
+  bool authoritativeDashboardFeed = false;
 
   Map<String, String> get _headers => <String, String>{
         'Accept': 'application/json',
         'Authorization': 'Bearer $token',
       };
 
-  Future<List<ServicePayAnnouncement>> fetchActive() async {
+  Future<List<ServicePayAnnouncement>> fetchActive({
+    Iterable<String> retainedBannerIds = const [],
+  }) async {
     final response = await _client
-        .get(Uri.parse('$baseUrl/announcements/active'), headers: _headers)
+        .get(Uri.parse('$baseUrl/announcements/active').replace(
+          queryParameters: {
+            'surface': 'dashboard',
+            if (retainedBannerIds.isNotEmpty)
+              'retainedBannerIds': retainedBannerIds.take(100).join(','),
+          },
+        ), headers: _headers)
         .timeout(const Duration(seconds: 12));
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw StateError('Announcements are temporarily unavailable.');
     }
     final dynamic decoded = jsonDecode(response.body);
+    authoritativeDashboardFeed = decoded is Map &&
+        decoded['data'] is Map &&
+        decoded['data']['surface'] == 'dashboard' &&
+        decoded['data']['authoritative'] == true;
     dynamic list = decoded;
     if (decoded is Map) {
       list = decoded['announcements'] ?? decoded['data'] ?? decoded['items'];
@@ -150,16 +167,23 @@ class AnnouncementService {
         list = list['announcements'] ?? list['items'];
       }
     }
-    if (list is! List) return <ServicePayAnnouncement>[];
+    if (list is! List) {
+      throw const FormatException('Invalid announcements response.');
+    }
     final now = DateTime.now();
     return list
         .whereType<Map>()
+        .where((item) =>
+            item['isActive'] != false &&
+            item['active'] != false &&
+            (item['campaignTrackingEnabled'] != true ||
+                item['campaignStatus'] == 'ACTIVE'))
         .map((item) =>
             ServicePayAnnouncement.fromJson(Map<String, dynamic>.from(item)))
         .where((item) {
       return item.id.isNotEmpty &&
           (item.startsAt == null || !now.isBefore(item.startsAt!)) &&
-          (item.endsAt == null || !now.isAfter(item.endsAt!));
+          (item.endsAt == null || now.isBefore(item.endsAt!));
     }).toList()
       ..sort((a, b) => b.priority != a.priority
           ? b.priority.compareTo(a.priority)

@@ -4,6 +4,36 @@ import 'package:http/testing.dart';
 import 'package:servicepay_app/services/announcement_service.dart';
 
 void main() {
+  test('dashboard feed is authoritative and separates popup eligibility', () async {
+    final service = AnnouncementService(
+      token: 'test-token',
+      client: MockClient((request) async {
+        expect(request.url.queryParameters['surface'], 'dashboard');
+        expect(request.url.queryParameters['retainedBannerIds'], 'completed');
+        return http.Response(
+          '{"data":{"surface":"dashboard","authoritative":true,"announcements":['
+          '{"id":"valid","style":"BOTH","popupEligible":false},'
+          '{"id":"disabled","isActive":false},'
+          '{"id":"draft","campaignTrackingEnabled":true,"campaignStatus":"DRAFT"},'
+          '{"id":"expired","endAt":"2020-01-01T00:00:00Z"},'
+          '{"id":"future","startAt":"2099-01-01T00:00:00Z"}]}}', 200);
+      }),
+    );
+    final result = await service.fetchActive(retainedBannerIds: ['completed']);
+    expect(service.authoritativeDashboardFeed, isTrue);
+    expect(result.map((item) => item.id), ['valid']);
+    expect(result.single.isBanner, isTrue);
+    expect(result.single.isPopup, isFalse);
+  });
+
+  test('malformed response is an error, not an empty promotion feed', () async {
+    final service = AnnouncementService(
+      token: 'test-token',
+      client: MockClient((_) async => http.Response('{"success":true}', 200)),
+    );
+    await expectLater(service.fetchActive(), throwsFormatException);
+  });
+
   test('fetches, unwraps and prioritises active announcements', () async {
     final client = MockClient((request) async {
       expect(request.url.path, '/api/announcements/active');
