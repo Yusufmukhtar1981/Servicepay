@@ -354,7 +354,7 @@ class _MainNavigationState extends State<MainNavigation> {
         : const Duration(milliseconds: 220);
     final bool customerNavigation = userRole == 'CUSTOMER';
     final Color activeColor =
-        customerNavigation ? CustomerDashboardPalette.royalBlue : primaryGreen;
+        customerNavigation ? CustomerDashboardPalette.serviceCyan : primaryGreen;
     final Color selectedSurface = customerNavigation
         ? CustomerDashboardPalette.paleBlue
         : const Color(0xFFE8F5EC);

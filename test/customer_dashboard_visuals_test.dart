@@ -168,7 +168,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('customer navigation selects the green treatment and routes',
+  testWidgets('customer navigation selects the turquoise treatment and routes',
       (WidgetTester tester) async {
     tester.view.physicalSize = const Size(390, 844);
     tester.view.devicePixelRatio = 1;
@@ -187,7 +187,7 @@ void main() {
             widget is Text &&
             widget.key == const Key('customer-navigation-label-1') &&
             widget.data == 'History' &&
-            widget.style?.color == CustomerDashboardPalette.royalBlue,
+            widget.style?.color == CustomerDashboardPalette.serviceCyan,
       ),
       findsOneWidget,
     );
@@ -373,22 +373,22 @@ void main() {
     }
   });
 
-  testWidgets('nine Home service icons retain their colours in solid dark wells',
+  testWidgets('nine Home service icons share turquoise in softly tinted wells',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 1600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(const MaterialApp(home: DashboardScreen()));
     await tester.pump(const Duration(milliseconds: 120));
     const expected = <String, Color>{
-      'Data': Color(0xFF38BDF8),
-      'Airtime': Color(0xFF34D399),
-      'Delivery': Color(0xFFFB923C),
-      'NIN Verification': Color(0xFFA78BFA),
-      'Marketplace': Color(0xFFFBBF24),
-      'Electricity': Color(0xFFFDE047),
-      'EduPay': Color(0xFF818CF8),
-      'Keke Napep': Color(0xFFFB7185),
-      'Flight Booking': Color(0xFF60A5FA),
+      'Data': Color(0xFF22D3EE),
+      'Airtime': Color(0xFF22D3EE),
+      'Delivery': Color(0xFF22D3EE),
+      'NIN Verification': Color(0xFF22D3EE),
+      'Marketplace': Color(0xFF22D3EE),
+      'Electricity': Color(0xFF22D3EE),
+      'EduPay': Color(0xFF22D3EE),
+      'Keke Napep': Color(0xFF22D3EE),
+      'Flight Booking': Color(0xFF22D3EE),
     };
     for (final entry in expected.entries) {
       final tile = find
@@ -397,8 +397,8 @@ void main() {
       final glyph = tester.widget<CustomerServiceGlyph>(
           find.descendant(of: tile, matching: find.byType(CustomerServiceGlyph)));
       expect(glyph.iconColor, entry.value, reason: entry.key);
-      expect(glyph.backgroundColor, const Color(0xFF0B382D));
-      expect(glyph.radius, glyph.size / 2);
+      expect(glyph.backgroundColor, const Color(0xFF104C43));
+      expect(glyph.radius, 12);
       expect(
           tester.widget<Text>(find.descendant(
                   of: tile, matching: find.text(entry.key))).style?.color,

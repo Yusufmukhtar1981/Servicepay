@@ -3051,7 +3051,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                     iconColor: accent,
                     size: 38,
                     iconSize: 22,
-                    radius: 19,
+                    radius: 12,
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -3169,7 +3169,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       key: const Key('customer-quick-services'),
       padding: const EdgeInsets.fromLTRB(14, 15, 14, 14),
       decoration: BoxDecoration(
-        color: CustomerDashboardPalette.card,
+        color: CustomerDashboardPalette.paleBlue,
         borderRadius: BorderRadius.circular(21),
         border: Border.all(color: CustomerDashboardPalette.border),
       ),
@@ -5649,7 +5649,10 @@ class _DashboardScreenState extends State<DashboardScreen>
         children: <Widget>[
           LayoutBuilder(
             builder: (BuildContext context, BoxConstraints constraints) {
-              final bool compact = constraints.maxWidth < 360;
+              final double textScale =
+                  MediaQuery.textScalerOf(context).scale(14) / 14;
+              final bool compact =
+                  constraints.maxWidth < 360 * math.max(1, textScale);
               return Row(
                 children: <Widget>[
                   const Expanded(
@@ -5924,7 +5927,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       child: Ink(
         padding: const EdgeInsets.all(17),
         decoration: BoxDecoration(
-          color: CustomerDashboardPalette.card,
+          color: CustomerDashboardPalette.paleBlue,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: CustomerDashboardPalette.border),
         ),
@@ -5932,7 +5935,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           children: [
             Icon(
               Icons.hub_outlined,
-              color: CustomerDashboardPalette.royalBlue,
+              color: CustomerDashboardPalette.serviceCyan,
               size: 30,
             ),
             SizedBox(width: 13),
@@ -5952,7 +5955,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                   Text(
                     'Become an Agent or register your business',
                     style: TextStyle(
-                      color: CustomerDashboardPalette.muted,
+                      color: CustomerDashboardPalette.softText,
                       fontSize: 14,
                     ),
                   ),

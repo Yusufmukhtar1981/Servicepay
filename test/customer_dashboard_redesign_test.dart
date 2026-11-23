@@ -561,6 +561,10 @@ void main() {
     expect(find.text('Wallet'), findsWidgets);
     expect(find.text('Profile'), findsOneWidget);
     expect(find.text('Scan'), findsNothing);
+    expect(
+      tester.widget<Text>(find.text('Home')).style?.color,
+      CustomerDashboardPalette.serviceCyan,
+    );
     expect(tester.widget<Scaffold>(find.byType(Scaffold).first).backgroundColor,
         CustomerDashboardPalette.canvas);
     expect(

@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:servicepay_app/dashboard_screen.dart';
+import 'package:servicepay_app/business_network/business_hub_screen.dart';
 import 'package:servicepay_app/id_verification_screen.dart';
 import 'package:servicepay_app/keke_order_screen.dart';
 import 'package:servicepay_app/widgets/flight_booking_unavailable_screen.dart';
@@ -153,9 +154,23 @@ void main() {
       navigator.pop();
       await tester.pump();
     }
+    final int beforeBusinessHub = observer.pushedRoutes.length;
+    await tester.ensureVisible(
+      find.byKey(const Key('customer-business-hub-entry')),
+    );
+    await tester.tap(find.byKey(const Key('customer-business-hub-entry')));
+    expect(observer.pushedRoutes.length, beforeBusinessHub + 1);
+    final businessRoute =
+        observer.pushedRoutes.last as MaterialPageRoute<dynamic>;
+    expect(
+      businessRoute.builder(tester.element(find.byType(DashboardScreen))),
+      isA<BusinessHubScreen>(),
+    );
+    navigator.pop();
+    await tester.pump();
   });
 
-  for (final double width in <double>[320, 360, 412, 600]) {
+  for (final double width in <double>[320, 360, 390, 430, 600]) {
     for (final double textScale in <double>[1, 2]) {
       testWidgets('nine labels fit at width $width and scale $textScale',
           (WidgetTester tester) async {

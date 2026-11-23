@@ -7,6 +7,10 @@ abstract final class CustomerDashboardPalette {
   static const navy = Color(0xFF062A22);
   /// Bright emerald highlight for icons and key accents.
   static const royalBlue = Color(0xFF35E6A8);
+  /// Unified Customer Home icon and active-navigation identity.
+  static const serviceCyan = Color(0xFF22D3EE);
+  /// Opaque, softly turquoise-tinted well on the dark green service cards.
+  static const serviceIconWell = Color(0xFF104C43);
   static const teal = Color(0xFF078553);
   static const canvas = Color(0xFF062A22);
   static const card = Color(0xFF104638);
@@ -38,26 +42,25 @@ abstract final class CustomerDashboardPalette {
   static const seriesAmber = Color(0xFFFBBF24);
 }
 
-/// Exact per-service icon colours for the nine Home shortcuts.
+/// The nine Home shortcuts share the approved turquoise identity.
 abstract final class CustomerServiceColors {
   static const Map<String, Color> byTitle = <String, Color>{
-    'Data': Color(0xFF38BDF8),
-    'Airtime': Color(0xFF34D399),
-    'Delivery': Color(0xFFFB923C),
-    'NIN Verification': Color(0xFFA78BFA),
-    'Marketplace': Color(0xFFFBBF24),
-    'Electricity': Color(0xFFFDE047),
-    'EduPay': Color(0xFF818CF8),
-    'Keke Napep': Color(0xFFFB7185),
-    'Flight Booking': Color(0xFF60A5FA),
+    'Data': CustomerDashboardPalette.serviceCyan,
+    'Airtime': CustomerDashboardPalette.serviceCyan,
+    'Delivery': CustomerDashboardPalette.serviceCyan,
+    'NIN Verification': CustomerDashboardPalette.serviceCyan,
+    'Marketplace': CustomerDashboardPalette.serviceCyan,
+    'Electricity': CustomerDashboardPalette.serviceCyan,
+    'EduPay': CustomerDashboardPalette.serviceCyan,
+    'Keke Napep': CustomerDashboardPalette.serviceCyan,
+    'Flight Booking': CustomerDashboardPalette.serviceCyan,
   };
 
-  /// Icon colour for [title]; unknown services keep the emerald accent.
+  /// Uniform icon colour without changing a service's identity or route.
   static Color iconFor(String title) =>
-      byTitle[title] ?? CustomerDashboardPalette.royalBlue;
+      byTitle[title] ?? CustomerDashboardPalette.serviceCyan;
 
-  /// Solid dark icon well keeps every approved service colour clearly visible.
-  static Color tintFor(String title) => CustomerDashboardPalette.paleBlue;
+  static Color tintFor(String title) => CustomerDashboardPalette.serviceIconWell;
 }
 
 class CustomerServiceGlyph extends StatelessWidget {
