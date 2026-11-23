@@ -184,6 +184,32 @@ void main() {
     expect(bvn.containsKey('nin'), isFalse);
   });
 
+  for (final invalid in <String, String>{
+    'reg-confirmPassword': 'DifferentPass1!',
+    'reg-email': 'not-an-email',
+    'reg-confirmPin': '2581',
+  }.entries) {
+    testWidgets('phone-height submit rejects offscreen ${invalid.key}', (t) async {
+      await pump(t);
+      await fillValid(t);
+      await t.enterText(byKeyPrefix(invalid.key), invalid.value);
+      FocusManager.instance.primaryFocus?.unfocus();
+      t.view.physicalSize = const Size(390, 844);
+      await t.pumpAndSettle();
+      final pageScroll = find.descendant(
+          of: find.byKey(const Key('registration-scroll')),
+          matching: find.byType(Scrollable)).first;
+      await t.scrollUntilVisible(find.byKey(const Key('reg-submit')), 400,
+          scrollable: pageScroll);
+      await t.tap(find.byKey(const Key('reg-submit')));
+      await t.pumpAndSettle();
+      expect(requests.where((r) => r.url.path.endsWith('/auth/register')), isEmpty);
+      expect(find.text('Please correct the highlighted fields.'), findsOneWidget);
+      expect(find.byKey(const Key('reg-confirmPassword')), findsOneWidget);
+      expect(t.takeException(), isNull);
+    });
+  }
+
   testWidgets('valid NIN submission posts normalised payload', (t) async {
     await pump(t);
     await fillValid(t);

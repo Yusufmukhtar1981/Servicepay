@@ -1299,10 +1299,14 @@ class _SecureRegistrationScreenState extends State<SecureRegistrationScreen> {
     final lgas = nigeriaStateLgas[selectedState] ?? const <String>[];
     final digits = [FilteringTextInputFormatter.digitsOnly];
 
-    return ListView(
+    return SingleChildScrollView(
       key: const Key('registration-scroll'),
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-      children: [
+      // Keep all FormFields registered while scrolling. A lazy list can
+      // dispose off-screen validators before Create Account is pressed.
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
         const Text(
           'Create your account',
           style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
@@ -1513,7 +1517,8 @@ class _SecureRegistrationScreenState extends State<SecureRegistrationScreen> {
                 : const Text('Create Account'),
           ),
         ),
-      ],
+        ],
+      ),
     );
   }
 
