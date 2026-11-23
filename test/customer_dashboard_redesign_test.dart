@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:servicepay_app/referral_screen.dart';
 import 'package:servicepay_app/widgets/customer_dashboard_visuals.dart';
@@ -712,4 +713,84 @@ void main() {
     expect(find.text('Account number copied'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
+
+  for (final width in <double>[320, 430]) {
+    testWidgets('compact account and activity remain readable at $width',
+        (WidgetTester tester) async {
+      await tester.binding.setSurfaceSize(Size(width, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      SharedPreferences.setMockInitialValues(<String, Object>{
+        'user_name': 'Ada Okafor',
+        'user_role': 'CUSTOMER',
+        'auth_token': 'test-token',
+      });
+      String? copied;
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        (call) async {
+          if (call.method == 'Clipboard.setData') {
+            copied = (call.arguments as Map)['text'] as String?;
+          }
+          return null;
+        },
+      );
+      addTearDown(() => tester.binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null));
+      final client = MockClient((request) async {
+        if (request.url.path.endsWith('/wallet')) {
+          return http.Response('{"walletBalance":1234}', 200);
+        }
+        if (request.url.path.endsWith('/securewave/virtual-account')) {
+          return http.Response(
+              '{"data":{"virtualAccount":{"status":"ACTIVE",'
+              '"accountNumber":"0123456789",'
+              '"accountName":"Ada Okafor A Very Long Account Holder Name",'
+              '"bankName":"ServicePay Bank"}}}', 200);
+        }
+        if (request.url.path.endsWith('/transactions')) {
+          return http.Response('{"transactions":['
+              '{"_id":"latest","serviceType":"data_purchase",'
+              '"description":"08012345678","amount":1234567.89,'
+              '"direction":"DEBIT","status":"SUCCESS",'
+              '"createdAt":"2026-11-23T12:00:00Z"},'
+              '{"_id":"older","serviceType":"airtime_purchase",'
+              '"description":"08087654321","amount":500,'
+              '"direction":"DEBIT","status":"FAILED",'
+              '"createdAt":"2026-11-22T11:00:00Z"}]}', 200);
+        }
+        return http.Response('{}', 404);
+      });
+      await tester.pumpWidget(
+        MaterialApp(home: DashboardScreen(client: client)),
+      );
+      for (var i = 0; i < 12; i++) {
+        await tester.pump(const Duration(milliseconds: 40));
+      }
+      final card = find.byKey(const Key('customer-funding-account'));
+      expect(tester.getSize(card).height, lessThan(130));
+      expect(find.text('0123456789'), findsOneWidget);
+      expect(find.text('ServicePay Bank'), findsOneWidget);
+      expect(find.text('Ada Okafor A Very Long Account Holder Name'),
+          findsOneWidget);
+      await tester.ensureVisible(find.byKey(const Key('customer-copy-account')));
+      await tester.tap(find.byKey(const Key('customer-copy-account')));
+      await tester.pump();
+      expect(copied, '0123456789');
+      await tester.ensureVisible(find.text('Recent Activity'));
+      await tester.pump();
+      expect(find.text('-₦1234567.89'), findsOneWidget);
+      expect(find.text('08012345678'), findsOneWidget);
+      expect(find.text('SUCCESSFUL'), findsOneWidget);
+      expect(find.text('FAILED'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.ensureVisible(
+          find.byKey(const Key('dashboard-see-all-transactions')));
+      await tester.tap(
+          find.byKey(const Key('dashboard-see-all-transactions')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byType(TransactionsScreen), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
 }

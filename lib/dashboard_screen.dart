@@ -3271,7 +3271,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     if (fundingAccountNumber.isEmpty) return const SizedBox.shrink();
     return Container(
       key: const Key('customer-funding-account'),
-      padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+      padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
       decoration: BoxDecoration(
         color: CustomerDashboardPalette.card,
         borderRadius: BorderRadius.circular(18),
@@ -3279,59 +3279,69 @@ class _DashboardScreenState extends State<DashboardScreen>
       ),
       child: Row(
         children: <Widget>[
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: CustomerDashboardPalette.paleBlue,
-              borderRadius: BorderRadius.circular(13),
-            ),
-            child: const Icon(
-              Icons.account_balance_rounded,
-              color: CustomerDashboardPalette.royalBlue,
-              size: 21,
-            ),
-          ),
-          const SizedBox(width: 12),
           Expanded(
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                const Text(
-                  'SERVICEPAY • ACCOUNT NUMBER',
-                  style: TextStyle(
-                    color: CustomerDashboardPalette.muted,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: .45,
-                  ),
+                const Row(
+                  children: <Widget>[
+                    Icon(
+                      Icons.account_balance_rounded,
+                      color: CustomerDashboardPalette.royalBlue,
+                      size: 16,
+                    ),
+                    SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'ServicePay Account',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: CustomerDashboardPalette.muted,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: .45,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  fundingAccountNumber,
-                  style: const TextStyle(
-                    color: CustomerDashboardPalette.text,
-                    fontSize: 19,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: .3,
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    fundingAccountNumber,
+                    style: const TextStyle(
+                      color: CustomerDashboardPalette.text,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: .3,
+                    ),
                   ),
                 ),
                 if (fundingAccountName.isNotEmpty) ...<Widget>[
                   const SizedBox(height: 2),
-                  Text(
-                    fundingAccountName,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: CustomerDashboardPalette.text,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
+                  Tooltip(
+                    message: fundingAccountName,
+                    child: Text(
+                      fundingAccountName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: CustomerDashboardPalette.text,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ],
                 if (fundingAccountBank.isNotEmpty)
                   Text(
                     fundingAccountBank,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       color: CustomerDashboardPalette.muted,
                       fontSize: 14,
@@ -5628,7 +5638,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(14, 15, 14, 14),
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
       decoration: BoxDecoration(
         color: CustomerDashboardPalette.card,
         borderRadius: BorderRadius.circular(22),
@@ -5690,7 +5700,7 @@ class _DashboardScreenState extends State<DashboardScreen>
               );
             },
           ),
-          const SizedBox(height: 13),
+          const SizedBox(height: 6),
           content,
         ],
       ),
@@ -5725,15 +5735,15 @@ class _DashboardScreenState extends State<DashboardScreen>
         : '${direction == 'CREDIT' ? '+' : direction == 'DEBIT' ? '-' : ''}₦${amount.toStringAsFixed(2)}';
 
     return Padding(
-      padding: EdgeInsets.only(bottom: isLast ? 0 : 14),
+      padding: EdgeInsets.only(bottom: isLast ? 0 : 8),
       child: Column(
         children: <Widget>[
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               Container(
-                width: 42,
-                height: 42,
+                width: 34,
+                height: 34,
                 alignment: Alignment.center,
                 decoration: const BoxDecoration(
                   color: CustomerDashboardPalette.paleBlue,
@@ -5742,26 +5752,55 @@ class _DashboardScreenState extends State<DashboardScreen>
                 child: Icon(
                   _recentTransactionIcon(title),
                   color: CustomerDashboardPalette.royalBlue,
-                  size: 22,
+                  size: 19,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 8),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Text(
-                      title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        color: CustomerDashboardPalette.text,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                        height: 1.25,
-                      ),
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final titleWidget = Text(
+                          title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: CustomerDashboardPalette.text,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            height: 1.2,
+                          ),
+                        );
+                        final amountWidget = Text(
+                          amountLabel,
+                          key: const Key('recent-activity-amount-pill'),
+                          style: TextStyle(
+                            color: directionColor,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        );
+                        // Reflow instead of shrinking money or clipping large text.
+                        if (constraints.maxWidth < 230 ||
+                            MediaQuery.textScalerOf(context).scale(16) > 20) {
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: <Widget>[titleWidget, amountWidget],
+                          );
+                        }
+                        return Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Expanded(child: titleWidget),
+                            const SizedBox(width: 8),
+                            Flexible(child: amountWidget),
+                          ],
+                        );
+                      },
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 2),
                     Text(
                       description,
                       maxLines: 2,
@@ -5770,23 +5809,13 @@ class _DashboardScreenState extends State<DashboardScreen>
                         color: CustomerDashboardPalette.text,
                         fontSize: 15,
                         fontWeight: FontWeight.w500,
-                        height: 1.3,
+                        height: 1.2,
                       ),
                     ),
-                    const SizedBox(height: 6),
-                    Text(
-                      amountLabel,
-                      key: const Key('recent-activity-amount-pill'),
-                      style: TextStyle(
-                        color: directionColor,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 3),
                     Wrap(
                       spacing: 10,
-                      runSpacing: 6,
+                      runSpacing: 3,
                       crossAxisAlignment: WrapCrossAlignment.center,
                       children: <Widget>[
                         Text(
@@ -5800,8 +5829,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                         Container(
                           key: const Key('recent-activity-status-badge'),
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
+                            horizontal: 8,
+                            vertical: 2,
                           ),
                           decoration: BoxDecoration(
                             color: CustomerDashboardPalette.canvas,
@@ -5827,7 +5856,7 @@ class _DashboardScreenState extends State<DashboardScreen>
           ),
           if (!isLast)
             const Padding(
-              padding: EdgeInsets.only(left: 54, top: 14),
+              padding: EdgeInsets.only(left: 42, top: 8),
               child: Divider(
                 height: 1,
                 thickness: 1,
