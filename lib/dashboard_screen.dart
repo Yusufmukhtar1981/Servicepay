@@ -2213,7 +2213,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       child: InkWell(
         key: key,
         onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         child: Stack(
           clipBehavior: Clip.none,
           children: <Widget>[
@@ -2222,8 +2222,8 @@ class _DashboardScreenState extends State<DashboardScreen>
               height: 42,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: CustomerDashboardPalette.card,
-                borderRadius: BorderRadius.circular(14),
+                color: CustomerDashboardPalette.section,
+                borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: CustomerDashboardPalette.border),
               ),
               child: Icon(
@@ -2376,7 +2376,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     return Container(
       key: const Key('servicepay-wallet-card'),
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 15),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           colors: <Color>[
@@ -2386,19 +2386,34 @@ class _DashboardScreenState extends State<DashboardScreen>
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(
-          color: Colors.white.withValues(alpha: .10),
+          color: CustomerDashboardPalette.text.withValues(alpha: .12),
         ),
         boxShadow: const <BoxShadow>[
           BoxShadow(
-            color: Color(0x59020C0A),
-            blurRadius: 24,
-            offset: Offset(0, 12),
+            color: Color(0x47020C0A),
+            blurRadius: 18,
+            offset: Offset(0, 8),
           ),
         ],
       ),
-      child: Column(
+      // Forest scrim keeps the exact emerald gradient visible while giving
+      // small white labels a darker, steadier backdrop than the raw stops.
+      child: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topRight,
+            end: Alignment.bottomLeft,
+            colors: <Color>[
+              Color(0x33061F1A),
+              CustomerDashboardPalette.walletScrim,
+            ],
+          ),
+        ),
+        child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 16, 12, 16),
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           Row(
@@ -2408,7 +2423,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                   'Available Balance',
                   style: TextStyle(
                     color: CustomerDashboardPalette.onWallet,
-                    fontSize: 16,
+                    fontSize: 14,
+                    letterSpacing: .3,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -2450,9 +2466,9 @@ class _DashboardScreenState extends State<DashboardScreen>
             softWrap: true,
             style: TextStyle(
               color: CustomerDashboardPalette.onWallet,
-              fontSize: walletBalanceAvailable || hideBalance ? 36 : 20,
+              fontSize: walletBalanceAvailable || hideBalance ? 38 : 20,
               height: 1.12,
-              letterSpacing: -0.5,
+              letterSpacing: -0.8,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -2469,8 +2485,10 @@ class _DashboardScreenState extends State<DashboardScreen>
               ),
             ),
           ],
-          const SizedBox(height: 17),
-          Row(
+          const SizedBox(height: 16),
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: Row(
             children: <Widget>[
               Expanded(
                 child: _balanceActionButton(
@@ -2496,7 +2514,10 @@ class _DashboardScreenState extends State<DashboardScreen>
               ),
             ],
           ),
+          ),
         ],
+      ),
+      ),
       ),
     );
   }
@@ -2514,18 +2535,24 @@ class _DashboardScreenState extends State<DashboardScreen>
           ? CustomerDashboardPalette.walletAction
           : CustomerDashboardPalette.walletInset,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(14),
         side: BorderSide(
-          color: Colors.white.withValues(alpha: filled ? 0 : 0.16),
+          color: CustomerDashboardPalette.text
+              .withValues(alpha: filled ? 0 : 0.28),
         ),
       ),
+      elevation: filled ? 2 : 0,
+      shadowColor: const Color(0x55020C0A),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(14),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 10),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 11),
+          child: Wrap(
+            alignment: WrapAlignment.center,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 6,
+            runSpacing: 2,
             children: <Widget>[
               Icon(
                 icon,
@@ -2534,7 +2561,6 @@ class _DashboardScreenState extends State<DashboardScreen>
                     ? CustomerDashboardPalette.canvas
                     : CustomerDashboardPalette.onWallet,
               ),
-              const SizedBox(height: 3),
               Text(
                 label,
                 textAlign: TextAlign.center,
@@ -2543,7 +2569,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                   color: filled
                     ? CustomerDashboardPalette.canvas
                     : CustomerDashboardPalette.onWallet,
-                  fontSize: 15,
+                  fontSize: 14,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -3027,19 +3053,21 @@ class _DashboardScreenState extends State<DashboardScreen>
       index: index + 3,
       child: Material(
         color: CustomerDashboardPalette.serviceCard,
-        borderRadius: BorderRadius.circular(15),
+        borderRadius: BorderRadius.circular(14),
         child: InkWell(
           key: Key('customer-quick-service-${service.title.toLowerCase()}'),
           onTap: service.onTap,
-          borderRadius: BorderRadius.circular(15),
+          borderRadius: BorderRadius.circular(14),
           child: Container(
             padding: EdgeInsets.symmetric(
               horizontal: MediaQuery.sizeOf(context).width < 360 ? 1 : 4,
               vertical: 5,
             ),
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(15),
-              border: Border.all(color: CustomerDashboardPalette.border),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: CustomerDashboardPalette.border.withValues(alpha: .75),
+              ),
             ),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -3053,8 +3081,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                     backgroundColor: accentSurface,
                     iconColor: accent,
                     size: 38,
-                    iconSize: 22,
-                    radius: 19,
+                    iconSize: 21,
+                    radius: 12,
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -3177,8 +3205,8 @@ class _DashboardScreenState extends State<DashboardScreen>
         14,
       ),
       decoration: BoxDecoration(
-        color: CustomerDashboardPalette.paleBlue,
-        borderRadius: BorderRadius.circular(21),
+        color: CustomerDashboardPalette.section,
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(color: CustomerDashboardPalette.border),
       ),
       child: Column(
@@ -3280,21 +3308,28 @@ class _DashboardScreenState extends State<DashboardScreen>
     if (fundingAccountNumber.isEmpty) return const SizedBox.shrink();
     return Container(
       key: const Key('customer-funding-account'),
-      padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
+      padding: const EdgeInsets.fromLTRB(14, 12, 10, 12),
       decoration: BoxDecoration(
-        color: CustomerDashboardPalette.card,
-        borderRadius: BorderRadius.circular(18),
+        color: CustomerDashboardPalette.accountCard,
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: CustomerDashboardPalette.border),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x33020C0A),
+            blurRadius: 12,
+            offset: Offset(0, 4),
+          ),
+        ],
       ),
       child: Row(
         children: <Widget>[
           const CustomerServiceGlyph(
             icon: Icons.account_balance_rounded,
             backgroundColor: CustomerDashboardPalette.paleBlue,
-            iconColor: CustomerDashboardPalette.royalBlue,
-            size: 34,
+            iconColor: CustomerDashboardPalette.primaryAccent,
+            size: 38,
             iconSize: 20,
-            radius: 17,
+            radius: 12,
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -3306,10 +3341,10 @@ class _DashboardScreenState extends State<DashboardScreen>
                   'SERVICEPAY · ACCOUNT NUMBER',
                   maxLines: 2,
                   style: TextStyle(
-                    color: CustomerDashboardPalette.text,
-                    fontSize: 14,
+                    color: CustomerDashboardPalette.softText,
+                    fontSize: 12,
                     fontWeight: FontWeight.w700,
-                    letterSpacing: .45,
+                    letterSpacing: .9,
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -3321,8 +3356,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                     style: const TextStyle(
                       color: CustomerDashboardPalette.text,
                       fontSize: 22,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: .3,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.4,
                     ),
                   ),
                 ),
@@ -3359,8 +3394,15 @@ class _DashboardScreenState extends State<DashboardScreen>
             key: const Key('customer-copy-account'),
             tooltip: 'Copy account number',
             onPressed: _copyFundingAccount,
+            style: IconButton.styleFrom(
+              backgroundColor: CustomerDashboardPalette.paleBlue,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+                side: const BorderSide(color: CustomerDashboardPalette.border),
+              ),
+            ),
             icon: const Icon(Icons.copy_rounded,
-                color: CustomerDashboardPalette.royalBlue, size: 19),
+                color: CustomerDashboardPalette.primaryAccent, size: 18),
           ),
         ],
       ),
@@ -3464,24 +3506,9 @@ class _DashboardScreenState extends State<DashboardScreen>
   }
 
   Widget _floating({required int index, required Widget child}) {
-    if (MediaQuery.disableAnimationsOf(context)) {
-      return child;
-    }
-    return AnimatedBuilder(
-      animation: _motionController,
-      child: child,
-      builder: (BuildContext context, Widget? child) {
-        final double phase =
-            _motionController.value * math.pi * 2 + (index * math.pi / 4);
-        return Transform.translate(
-          offset: Offset(0, math.sin(phase) * 1.8),
-          child: Transform.scale(
-            scale: 1 + (math.cos(phase) * 0.012),
-            child: child,
-          ),
-        );
-      },
-    );
+    // Premium finish: no continuous float. The motion controller and its
+    // lifecycle are untouched; cards simply render at rest.
+    return child;
   }
 
   Widget buildWalletCard() {
@@ -4286,12 +4313,19 @@ class _DashboardScreenState extends State<DashboardScreen>
         MediaQuery.sizeOf(context).width < 360 ? 12 : 18,
         12,
         MediaQuery.sizeOf(context).width < 360 ? 12 : 18,
-        16,
+        14,
       ),
       decoration: BoxDecoration(
-        color: CustomerDashboardPalette.card,
-        borderRadius: BorderRadius.circular(22),
+        color: CustomerDashboardPalette.header,
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(color: CustomerDashboardPalette.border),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x33020C0A),
+            blurRadius: 14,
+            offset: Offset(0, 6),
+          ),
+        ],
       ),
       child: Column(
         children: <Widget>[
@@ -4302,11 +4336,23 @@ class _DashboardScreenState extends State<DashboardScreen>
                 height: 40,
                 padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
-                  color: CustomerDashboardPalette.paleBlue,
-                  borderRadius: BorderRadius.circular(13),
+                  color: CustomerDashboardPalette.text,
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                child: Image.asset(
-                  'assets/image/servicepay_logo.png',
+                child: Image(
+                  image: kIsWeb
+                      ? NetworkImage(
+                          'assets/assets/image/servicepay_dashboard_mark.png',
+                          webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
+                        )
+                      : const ResizeImage(
+                          AssetImage('assets/image/servicepay_dashboard_mark.png'),
+                          width: 128,
+                        ),
+                  key: const Key('customer-dashboard-logo'),
+                  semanticLabel: 'ServicePay logo',
+                  width: 28,
+                  height: 28,
                   fit: BoxFit.contain,
                   errorBuilder: (context, error, stackTrace) {
                     return const Icon(
@@ -4328,8 +4374,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                       style: TextStyle(
                         fontSize: 13,
                         height: 1.05,
-                        fontWeight: FontWeight.w900,
-                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        color: CustomerDashboardPalette.text,
                       ),
                     ),
                     const SizedBox(height: 2),
@@ -4338,9 +4384,9 @@ class _DashboardScreenState extends State<DashboardScreen>
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 9,
-                        height: 1,
+                        color: CustomerDashboardPalette.softText,
+                        fontSize: 11,
+                        height: 1.1,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
@@ -4351,9 +4397,9 @@ class _DashboardScreenState extends State<DashboardScreen>
                       style: const TextStyle(
                         fontSize: 16,
                         height: 1.05,
-                        fontWeight: FontWeight.w900,
+                        fontWeight: FontWeight.w700,
                         letterSpacing: -0.3,
-                        color: Colors.white,
+                        color: CustomerDashboardPalette.text,
                       ),
                     ),
                   ],
@@ -5648,10 +5694,10 @@ class _DashboardScreenState extends State<DashboardScreen>
     }
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 10),
+      padding: const EdgeInsets.fromLTRB(14, 8, 14, 14),
       decoration: BoxDecoration(
-        color: CustomerDashboardPalette.card,
-        borderRadius: BorderRadius.circular(22),
+        color: CustomerDashboardPalette.section,
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(color: CustomerDashboardPalette.border),
       ),
       child: Column(
@@ -5672,8 +5718,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: CustomerDashboardPalette.text,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w700,
+                        fontSize: 19,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
                   ),
@@ -5681,7 +5727,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                     key: const Key('dashboard-see-all-transactions'),
                     onPressed: () => openScreen(const TransactionsScreen()),
                     style: TextButton.styleFrom(
-                      foregroundColor: CustomerDashboardPalette.text,
+                      foregroundColor: CustomerDashboardPalette.primaryAccent,
                       padding: const EdgeInsets.symmetric(
                         horizontal: 8,
                         vertical: 8,
@@ -5746,23 +5792,26 @@ class _DashboardScreenState extends State<DashboardScreen>
         : '${direction == 'CREDIT' ? '+' : direction == 'DEBIT' ? '-' : ''}₦${amount.toStringAsFixed(2)}';
 
     return Padding(
-      padding: EdgeInsets.only(bottom: isLast ? 0 : 8),
+      padding: EdgeInsets.only(bottom: isLast ? 0 : 12),
       child: Column(
         children: <Widget>[
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               Container(
-                width: 34,
-                height: 34,
+                width: 38,
+                height: 38,
                 alignment: Alignment.center,
-                decoration: const BoxDecoration(
-                  color: CustomerDashboardPalette.paleBlue,
-                  shape: BoxShape.circle,
+                decoration: BoxDecoration(
+                  color: Color.alphaBlend(
+                    directionColor.withValues(alpha: .14),
+                    CustomerDashboardPalette.section,
+                  ),
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
                   _recentTransactionIcon(title),
-                  color: CustomerDashboardPalette.royalBlue,
+                  color: directionColor,
                   size: 19,
                 ),
               ),
@@ -5817,8 +5866,8 @@ class _DashboardScreenState extends State<DashboardScreen>
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        color: CustomerDashboardPalette.text,
-                        fontSize: 15,
+                        color: CustomerDashboardPalette.softText,
+                        fontSize: 14,
                         fontWeight: FontWeight.w500,
                         height: 1.2,
                       ),
@@ -5832,7 +5881,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                         Text(
                           _recentTransactionDateLabel(transaction),
                           style: const TextStyle(
-                            color: CustomerDashboardPalette.text,
+                            color: CustomerDashboardPalette.softText,
                             fontSize: 14,
                             fontWeight: FontWeight.w500,
                           ),
@@ -5844,9 +5893,14 @@ class _DashboardScreenState extends State<DashboardScreen>
                             vertical: 2,
                           ),
                           decoration: BoxDecoration(
-                            color: CustomerDashboardPalette.canvas,
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: statusColor),
+                            color: Color.alphaBlend(
+                              statusColor.withValues(alpha: .12),
+                              CustomerDashboardPalette.section,
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: statusColor.withValues(alpha: .55),
+                            ),
                           ),
                           child: Text(
                             status,
@@ -5928,25 +5982,28 @@ class _DashboardScreenState extends State<DashboardScreen>
   Widget _buildBusinessHubEntry() {
     return InkWell(
       key: const Key('customer-business-hub-entry'),
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(18),
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => const BusinessHubScreen(),
         ),
       ),
       child: Ink(
-        padding: const EdgeInsets.all(17),
+        padding: const EdgeInsets.fromLTRB(14, 14, 12, 14),
         decoration: BoxDecoration(
-          color: CustomerDashboardPalette.card,
-          borderRadius: BorderRadius.circular(20),
+          color: CustomerDashboardPalette.section,
+          borderRadius: BorderRadius.circular(18),
           border: Border.all(color: CustomerDashboardPalette.border),
         ),
         child: const Row(
           children: [
-            Icon(
-              Icons.hub_outlined,
-              color: CustomerDashboardPalette.serviceCyan,
-              size: 30,
+            CustomerServiceGlyph(
+              icon: Icons.hub_outlined,
+              backgroundColor: CustomerDashboardPalette.paleBlue,
+              iconColor: CustomerDashboardPalette.serviceCyan,
+              size: 44,
+              iconSize: 24,
+              radius: 14,
             ),
             SizedBox(width: 13),
             Expanded(
@@ -5972,10 +6029,20 @@ class _DashboardScreenState extends State<DashboardScreen>
                 ],
               ),
             ),
-            Icon(
-              Icons.arrow_forward_ios_rounded,
-              size: 16,
-              color: CustomerDashboardPalette.royalBlue,
+            SizedBox(width: 8),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: CustomerDashboardPalette.paleBlue,
+                shape: BoxShape.circle,
+              ),
+              child: Padding(
+                padding: EdgeInsets.all(8),
+                child: Icon(
+                  Icons.arrow_forward_rounded,
+                  size: 18,
+                  color: CustomerDashboardPalette.primaryAccent,
+                ),
+              ),
             ),
           ],
         ),

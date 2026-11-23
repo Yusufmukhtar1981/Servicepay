@@ -64,12 +64,17 @@ void main() {
     );
     final BoxDecoration headerDecoration =
         header.decoration! as BoxDecoration;
-    expect(headerDecoration.color, CustomerDashboardPalette.card);
-    expect(headerDecoration.borderRadius, BorderRadius.circular(22));
+    expect(headerDecoration.color, CustomerDashboardPalette.header);
+    expect(headerDecoration.borderRadius, BorderRadius.circular(20));
+    final logo = tester.widget<Image>(
+      find.byKey(const Key('customer-dashboard-logo')),
+    );
+    expect(logo.semanticLabel, 'ServicePay logo');
+    expect(logo.image, isA<ResizeImage>());
     for (final String label in <String>['ServicePay', 'Ada']) {
       expect(
         tester.widget<Text>(find.text(label)).style?.color,
-        Colors.white,
+        CustomerDashboardPalette.text,
       );
     }
     expect(
@@ -82,7 +87,7 @@ void main() {
               'Good evening,',
             ].contains(widget.data),
       )).style?.color,
-      Colors.white,
+      CustomerDashboardPalette.softText,
     );
     for (final Key actionKey in <Key>[
       const Key('dashboard-header-refresh'),
@@ -108,6 +113,31 @@ void main() {
         CustomerDashboardPalette.walletEnd,
       ],
     );
+    // Measure the actual layered wallet, not the raw bright gradient stop.
+    final scrim = (wallet.child! as DecoratedBox).decoration as BoxDecoration;
+    final scrimColours = (scrim.gradient! as LinearGradient).colors;
+    final size = tester.getSize(find.byKey(const Key('servicepay-wallet-card')));
+    final w2 = size.width * size.width;
+    final h2 = size.height * size.height;
+    for (var x = 0; x <= 20; x++) {
+      for (var y = 0; y <= 10; y++) {
+        final dx = x / 20;
+        final dy = y / 10;
+        final backdrop = Color.alphaBlend(
+          Color.lerp(scrimColours.first, scrimColours.last,
+              ((1 - dx) * w2 + dy * h2) / (w2 + h2))!,
+          Color.lerp(CustomerDashboardPalette.walletStart,
+              CustomerDashboardPalette.walletEnd,
+              (dx * w2 + dy * h2) / (w2 + h2))!,
+        );
+        expect(
+          (CustomerDashboardPalette.onWallet.computeLuminance() + .05) /
+              (backdrop.computeLuminance() + .05),
+          greaterThanOrEqualTo(4.5),
+          reason: 'White wallet text must contrast with its layered background',
+        );
+      }
+    }
     final Text balance =
         tester.widget<Text>(find.byKey(const Key('dashboard-balance-value')));
     expect(balance.style?.color, CustomerDashboardPalette.onWallet);
@@ -127,7 +157,10 @@ void main() {
           filled
               ? CustomerDashboardPalette.canvas
               : CustomerDashboardPalette.onWallet;
-      final Color actionBackground = tester.widget<Material>(action).color!;
+      final Color actionBackground = Color.alphaBlend(
+        tester.widget<Material>(action).color!,
+        CustomerDashboardPalette.walletEnd,
+      );
       final double foregroundLuminance = foreground.computeLuminance();
       final double backgroundLuminance = actionBackground.computeLuminance();
       final double contrast = foregroundLuminance > backgroundLuminance
@@ -181,6 +214,12 @@ void main() {
     await tester.pump(const Duration(milliseconds: 250));
 
     expect(find.byType(TransactionsScreen), findsOneWidget);
+    for (final index in <int>[0, 2, 3]) {
+      final label = tester.widget<Text>(
+        find.byKey(Key('customer-navigation-label-$index')),
+      );
+      expect(label.style?.color, CustomerDashboardPalette.text);
+    }
     expect(
       find.byWidgetPredicate(
         (Widget widget) =>
@@ -277,24 +316,26 @@ void main() {
     }
   });
 
-  test('reference teal wallet uses white foreground and turquoise gradient', () {
-    expect(CustomerDashboardPalette.onWallet, const Color(0xFFFFFFFF));
-    expect(CustomerDashboardPalette.walletStart, const Color(0xFF009C9C));
-    expect(CustomerDashboardPalette.walletEnd, const Color(0xFF007C80));
-    expect(CustomerDashboardPalette.walletAction, const Color(0xFF2BE4DD));
+  test('premium emerald wallet preserves the approved gradient and light action', () {
+    expect(CustomerDashboardPalette.onWallet, const Color(0xFFF5FFFB));
+    expect(CustomerDashboardPalette.walletStart, const Color(0xFF00B894));
+    expect(CustomerDashboardPalette.walletEnd, const Color(0xFF087F68));
+    expect(CustomerDashboardPalette.walletAction, CustomerDashboardPalette.text);
   });
 
   test('approved clarity palette uses solid surfaces and readable icon wells', () {
-    expect(CustomerDashboardPalette.canvas, const Color(0xFF07373B));
-    expect(CustomerDashboardPalette.card, const Color(0xFF0E6267));
-    expect(CustomerDashboardPalette.serviceCard, const Color(0xFF0C585D));
-    expect(CustomerDashboardPalette.paleBlue, const Color(0xFF0B6064));
-    expect(CustomerDashboardPalette.border, const Color(0xFF2B8C8D));
+    expect(CustomerDashboardPalette.canvas, const Color(0xFF061F1A));
+    expect(CustomerDashboardPalette.header, const Color(0xFF0A3028));
+    expect(CustomerDashboardPalette.section, const Color(0xFF092B23));
+    expect(CustomerDashboardPalette.serviceCard, const Color(0xFF0B3329));
+    expect(CustomerDashboardPalette.accountCard, const Color(0xFF0C382E));
+    expect(CustomerDashboardPalette.primaryAccent, const Color(0xFF28DDB5));
+    expect(CustomerDashboardPalette.border, const Color(0xFF1C6552));
     expect(CustomerDashboardPalette.activeGreen, const Color(0xFF20D69A));
     expect(CustomerDashboardPalette.royalBlue, const Color(0xFF22D3EE));
-    expect(CustomerDashboardPalette.text, Colors.white);
-    expect(CustomerDashboardPalette.softText, const Color(0xFFB8D8CC));
-    expect(CustomerDashboardPalette.muted, const Color(0xFFB8D8CC));
+    expect(CustomerDashboardPalette.text, const Color(0xFFF5FFFB));
+    expect(CustomerDashboardPalette.softText, const Color(0xFFA9C8BE));
+    expect(CustomerDashboardPalette.muted, const Color(0xFFA9C8BE));
     for (final foreground in <Color>[
       CustomerDashboardPalette.text,
       CustomerDashboardPalette.softText,
@@ -302,23 +343,17 @@ void main() {
     ]) {
       for (final background in <Color>[
         CustomerDashboardPalette.canvas,
-        CustomerDashboardPalette.card,
+        CustomerDashboardPalette.header,
+        CustomerDashboardPalette.section,
+        CustomerDashboardPalette.accountCard,
         CustomerDashboardPalette.paleBlue,
         CustomerDashboardPalette.serviceCard,
-        CustomerDashboardPalette.walletStart,
-        CustomerDashboardPalette.walletEnd,
       ]) {
-        // The large white balance meets the 3:1 large-text threshold at the
-        // brightest gradient endpoint. Body text on solid cards remains 4.5:1.
-        if (background == CustomerDashboardPalette.walletStart ||
-            background == CustomerDashboardPalette.walletEnd) {
-          if (foreground != Colors.white) continue;
-        }
+        // Solid surfaces require normal-text contrast. The actual layered
+        // wallet is measured separately in the wallet widget test.
         final light = foreground.computeLuminance();
         final dark = background.computeLuminance();
-        expect((light + .05) / (dark + .05), greaterThanOrEqualTo(
-          background == CustomerDashboardPalette.walletStart ? 3 : 4.5,
-        ));
+        expect((light + .05) / (dark + .05), greaterThanOrEqualTo(4.5));
       }
     }
     for (final title in CustomerServiceColors.byTitle.keys) {
@@ -407,13 +442,13 @@ void main() {
     await tester.pump(const Duration(milliseconds: 120));
     expect(
       tester.widget<Scaffold>(find.byType(Scaffold).first).backgroundColor,
-      const Color(0xFF07373B),
+      const Color(0xFF061F1A),
     );
     final services = tester.widget<Container>(
       find.byKey(const Key('customer-quick-services')),
     );
     expect((services.decoration as BoxDecoration).color,
-        const Color(0xFF0B6064));
+        const Color(0xFF092B23));
     const expected = <String, Color>{
       'Data': Color(0xFF38BDF8),
       'Airtime': Color(0xFF2DD4BF),
@@ -433,13 +468,13 @@ void main() {
         tester.widget<Material>(
           find.ancestor(of: tile, matching: find.byType(Material)).first,
         ).color,
-        const Color(0xFF0C585D),
+        const Color(0xFF0B3329),
       );
       final glyph = tester.widget<CustomerServiceGlyph>(
           find.descendant(of: tile, matching: find.byType(CustomerServiceGlyph)));
       expect(glyph.iconColor, entry.value, reason: entry.key);
       expect(glyph.backgroundColor, CustomerServiceColors.tintFor(entry.key));
-      expect(glyph.radius, glyph.size / 2);
+      expect(glyph.radius, 12);
       expect(
           tester.widget<Text>(find.descendant(
                   of: tile, matching: find.text(entry.key))).style?.color,

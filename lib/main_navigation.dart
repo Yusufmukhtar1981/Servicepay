@@ -207,9 +207,9 @@ class _MainNavigationState extends State<MainNavigation> {
           padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 6),
           decoration: BoxDecoration(
             color: userRole == 'CUSTOMER'
-                ? CustomerDashboardPalette.card
+                ? CustomerDashboardPalette.nav
                 : Colors.white,
-            borderRadius: BorderRadius.circular(22),
+            borderRadius: BorderRadius.circular(userRole == 'CUSTOMER' ? 20 : 22),
             border: Border.all(
               color: userRole == 'CUSTOMER'
                   ? CustomerDashboardPalette.border
@@ -401,7 +401,7 @@ class _MainNavigationState extends State<MainNavigation> {
                               ? const Color(0xFF06271D)
                               : Colors.white
                           : customerNavigation
-                              ? CustomerDashboardPalette.softText
+                              ? CustomerDashboardPalette.text
                                : const Color(0xFF4B6257),
                       size: selected ? 19 : 21,
                     ),
@@ -430,7 +430,7 @@ class _MainNavigationState extends State<MainNavigation> {
                         color: selected
                             ? activeColor
                             : customerNavigation
-                                ? CustomerDashboardPalette.muted
+                                ? CustomerDashboardPalette.text
                                  : const Color(0xFF4B6257),
                       ),
                     ),

@@ -3,30 +3,41 @@ import 'package:flutter/material.dart';
 /// Customer-home colors are intentionally scoped here so staff dashboards keep
 /// the palette defined by the shared application theme.
 abstract final class CustomerDashboardPalette {
-  static const navy = Color(0xFF07373B);
-  /// Turquoise highlight for Customer Dashboard icons and key accents.
-  static const royalBlue = serviceCyan;
-  /// Turquoise controls and active navigation from the phone reference.
+  // Exact premium base colours from the approved brief.
+  static const canvas = Color(0xFF061F1A);
+  static const header = Color(0xFF0A3028);
+  static const section = Color(0xFF092B23);
+  static const serviceCard = Color(0xFF0B3329);
+  static const accountCard = Color(0xFF0C382E);
+  static const border = Color(0xFF1C6552);
+  static const primaryAccent = Color(0xFF28DDB5);
   static const serviceCyan = Color(0xFF22D3EE);
-  static const teal = Color(0xFF009C9C);
-  static const canvas = Color(0xFF07373B);
-  static const card = Color(0xFF0E6267);
-  static const serviceCard = Color(0xFF0C585D);
+  static const text = Color(0xFFF5FFFB);
+  static const softText = Color(0xFFA9C8BE);
+  static const walletStart = Color(0xFF00B894);
+  static const walletEnd = Color(0xFF087F68);
+
+  /// Legacy aliases kept so other customer surfaces keep compiling.
+  static const navy = canvas;
+  static const royalBlue = serviceCyan;
+  static const teal = primaryAccent;
+  static const card = section;
+  static const muted = softText;
+  /// Raised inset fill (icon wells, selected nav pill) derived from the border.
+  static const paleBlue = Color(0xFF0F4134);
+  /// Hairline divider between compact rows.
+  static const divider = Color(0x331C6552);
   static const success = Color(0xFF5BE3A9);
   static const warning = Color(0xFFFFC56B);
   static const error = Color(0xFFFF9A8B);
-  static const muted = softText;
-  static const border = Color(0xFF2B8C8D);
-  static const paleBlue = Color(0xFF0B6064);
-  static const text = Color(0xFFFFFFFF);
-  static const softText = Color(0xFFB8D8CC);
-  static const walletStart = Color(0xFF009C9C);
-  static const walletEnd = Color(0xFF007C80);
-  /// White wallet text, with a large balance on the reference's teal gradient.
-  static const onWallet = Color(0xFFFFFFFF);
-  /// Darker inset fill for secondary wallet actions; carries white text.
-  static const walletInset = Color(0xFF0A6A70);
-  static const walletAction = Color(0xFF2BE4DD);
+
+  /// Wallet text. The bright gradient is paired with a forest scrim layer and
+  /// heavier weights so small labels never sit on the raw #00B894 stop.
+  static const onWallet = text;
+  static const walletScrim = Color(0x99061F1A);
+  static const walletInset = Color(0x66061F1A);
+  static const walletAction = text;
+  static const nav = header;
 
   /// ServicePay bright green for active segmented selections.
   static const activeGreen = Color(0xFF20D69A);
@@ -60,8 +71,8 @@ abstract final class CustomerServiceColors {
       byTitle[title] ?? CustomerDashboardPalette.serviceCyan;
 
   static Color tintFor(String title) => Color.alphaBlend(
-        iconFor(title).withValues(alpha: .16),
-        CustomerDashboardPalette.canvas,
+        iconFor(title).withValues(alpha: .15),
+        CustomerDashboardPalette.serviceCard,
       );
 }
 
