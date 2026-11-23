@@ -9,6 +9,9 @@ import '../services/reward_progress_service.dart';
 import '../referral_presentation_policy.dart';
 import 'customer_dashboard_visuals.dart';
 
+double _promotionImageHeight(double width) =>
+    (width * .48).clamp(136.0, 190.0).toDouble();
+
 class AnnouncementBanner extends StatelessWidget {
   const AnnouncementBanner({
     super.key,
@@ -386,6 +389,63 @@ class _AnnouncementPromotionCarouselState
         34 + 8 + 11 + 6 + 12;
   }
 
+  double _imageContentHeight(BuildContext context, double width) {
+    final wide = width >= 560;
+    final captionWidth = ((wide ? (width - 4) * 6 / 11 : width - 4) - 32)
+        .clamp(1.0, double.infinity).toDouble();
+    final scaler = MediaQuery.textScalerOf(context);
+    double measure(String text, double size, {double? height,
+        FontWeight weight = FontWeight.w700, double? letterSpacing,
+        double? maxWidth}) {
+      final painter = TextPainter(
+        text: TextSpan(text: text,
+          style: DefaultTextStyle.of(context).style.merge(TextStyle(
+            fontSize: size, height: height, fontWeight: weight,
+            letterSpacing: letterSpacing))),
+        textDirection: Directionality.of(context), textScaler: scaler,
+      )..layout(maxWidth: (maxWidth ?? captionWidth)
+          .clamp(1.0, double.infinity).toDouble());
+      final result = painter.height;
+      painter.dispose();
+      return result;
+    }
+    double tallest = 0;
+    for (final item in widget.announcements) {
+      if (item.imageUrl?.trim().isNotEmpty != true) continue;
+      final label = item.type == 'PROMOTION'
+          ? 'SERVICEPAY PROMOTION' : 'SERVICEPAY UPDATE';
+      final labelHeight = measure(label, 14, letterSpacing: .8,
+        maxWidth: captionWidth - (item.canDismiss ? 40 : 0));
+      double caption = 26 + (labelHeight > 40 ? labelHeight : 40) +
+          5 + measure(item.title, 18, height: 1.1) +
+          5 + measure(item.message, 15, height: 1.3,
+            weight: FontWeight.w400);
+      if (item.startsAt != null) {
+        caption += measure('Live ${_PromotionCard._dateLabel(item.startsAt)}', 14);
+      }
+      if (item.createdAt != null) {
+        caption += 5 + measure(
+          'Published ${_PromotionCard._dateLabel(item.createdAt)}', 14);
+      }
+      final actions = [
+        if (item.ctaText != null) item.ctaText!,
+        if (item.mandatory) 'Acknowledge',
+      ];
+      if (actions.isNotEmpty) caption += 6;
+      for (final action in actions) {
+        final height = measure(action, 16, height: 1.5,
+            maxWidth: captionWidth - 48) + 28;
+        caption += (height > 48 ? height : 48) + 4;
+      }
+      // Reserve actual caption space, not a fixed fraction of the image card.
+      // Keep a small allowance for theme button metrics and card borders.
+      final required = caption + 16 +
+          (wide ? 0 : _promotionImageHeight(width) + 4);
+      if (required > tallest) tallest = required;
+    }
+    return tallest;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -466,7 +526,7 @@ class _AnnouncementPromotionCarouselState
   @override
   Widget build(BuildContext context) {
     if (widget._itemCount == 0) return const SizedBox.shrink();
-    return Semantics(
+    final content = Semantics(
       container: true,
       label: 'ServicePay promotions',
       child: Column(
@@ -497,9 +557,13 @@ class _AnnouncementPromotionCarouselState
                   (baseHeight + scaleExtra).clamp(baseHeight, 560.0);
               final double referralHeight =
                   _referralContentHeight(context, constraints.maxWidth);
-              final double height = referralHeight > fallbackHeight
+              final double contentHeight = referralHeight > fallbackHeight
                   ? referralHeight
                   : fallbackHeight;
+              final imageHeight =
+                  _imageContentHeight(context, constraints.maxWidth);
+              final height = imageHeight > contentHeight
+                  ? imageHeight : contentHeight;
               return SizedBox(
                 key: const Key('announcement-promotion-viewport'),
                 height: height,
@@ -620,6 +684,11 @@ class _AnnouncementPromotionCarouselState
           ],
         ],
       ),
+    );
+    return LayoutBuilder(
+      builder: (context, constraints) => constraints.hasBoundedHeight
+          ? SingleChildScrollView(child: content)
+          : content,
     );
   }
 }
@@ -863,7 +932,7 @@ class _PromotionCard extends StatelessWidget {
   final VoidCallback onAcknowledge;
   final VoidCallback onAction;
 
-  String _dateLabel(DateTime? value) {
+  static String _dateLabel(DateTime? value) {
     if (value == null) return '';
     final date = value.toLocal();
     const months = <String>[
@@ -1202,8 +1271,11 @@ class _ImagePromotionCard extends StatelessWidget {
                 )
               : Column(
                   children: [
-                    Expanded(flex: 5, child: image),
-                    Expanded(flex: 6, child: caption),
+                    SizedBox(
+                      height: _promotionImageHeight(constraints.maxWidth),
+                      child: image,
+                    ),
+                    Expanded(child: caption),
                   ],
                 ),
         );

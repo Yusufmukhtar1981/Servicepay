@@ -804,6 +804,46 @@ void main() {
     expect(selected?.id, 'a');
   });
 
+  for (final width in [320.0, 360.0, 390.0, 430.0]) {
+    testWidgets('image promotion CTA stays inside its caption at $width',
+        (tester) async {
+      bool opened = false;
+      await tester.pumpWidget(MaterialApp(home: Scaffold(
+        body: SingleChildScrollView(child: SizedBox(
+          width: width - 32,
+          child: AnnouncementPromotionCarousel(
+            announcements: [ServicePayAnnouncement.fromJson({
+              'id': 'sizing-fixture',
+              'title': 'Synthetic promotion',
+              'message': 'An eligible offer with readable details and an action.',
+              'style': 'BANNER',
+              'visibility': 'EVERY_LOGIN',
+              'imageUrl': 'https://example.test/banner.png',
+              'startAt': '2026-11-23T00:00:00Z',
+              'createdAt': '2026-11-23T00:00:00Z',
+              'cta': {'text': 'View transactions', 'route': '/transactions'},
+            })],
+            onDismiss: (_) {}, onAcknowledge: (_) {},
+            onAction: (_) => opened = true,
+          ),
+        )),
+      )));
+      await tester.pump();
+      final caption = find.byKey(const Key('announcement-promotion-caption'));
+      final button = find.widgetWithText(FilledButton, 'View transactions');
+      expect(tester.getBottomLeft(button).dy,
+          lessThanOrEqualTo(tester.getBottomLeft(caption).dy - 10));
+      final scroll = find.descendant(
+          of: caption, matching: find.byType(Scrollable));
+      expect(tester.state<ScrollableState>(scroll).position.maxScrollExtent,
+          lessThanOrEqualTo(0.5));
+      await tester.ensureVisible(button);
+      await tester.tap(button);
+      expect(opened, isTrue);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('320px promotion card with CTA has no vertical overflow',
       (tester) async {
     await tester.pumpWidget(
