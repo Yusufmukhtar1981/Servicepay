@@ -322,6 +322,9 @@ app.use(
 app.use("/api/calls", callRoutes);
 
 app.use("/api/admin/revenue", require("./routes/adminRevenue.routes"));
+// Optional company-expense storage is provisioned by an approved operator only.
+// Its routes fail closed independently; startup never creates its collections.
+app.use("/api/admin/expense-management", require("./routes/expenseManagement.routes"));
 // New inventory routes have their own existing staff authentication/permissions.
 // Mount before the broad legacy Admin router; never provision during startup.
 const enterpriseDevices = require("./routes/enterpriseDevice.routes");

@@ -95,4 +95,4 @@ const buildSignedUrl = (document) => {
   });
 };
 
-module.exports = { MAX_DOCUMENT_BYTES, validateFile, uploadOne, createDocumentPublicId, destroyOne, uploadMany, buildSignedUrl };
+module.exports = { MAX_DOCUMENT_BYTES, configureCloudinary, validateFile, uploadOne, createDocumentPublicId, destroyOne, uploadMany, buildSignedUrl };

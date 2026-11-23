@@ -58,6 +58,11 @@ async function recordExpense(input, actor) {
     }
     return { item: publicExpense(existing), idempotent: true };
   }
+  if (await mongoose.connection.db.listCollections(
+    { name: "companyexpenseregistry" }, { nameOnly: true },
+  ).hasNext()) {
+    throw r.fail("New expenses must use Financial Management and its approval workflow. Historical expense records remain unchanged.", 409);
+  }
   const session = await mongoose.startSession();
   let created;
   try {

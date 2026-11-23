@@ -2,6 +2,19 @@ const permission = (key, value, module, label, description, risk = "STANDARD") =
   Object.freeze({ key, value, module, label, description, risk });
 
 const STAFF_PERMISSION_CATALOG = Object.freeze([
+  permission("EXPENSES_VIEW", "expenses.view", "EXPENSE_MANAGEMENT", "View company expenses", "Explicit access to company operating expenses; no customer wallet authority.", "HIGH"),
+  permission("EXPENSES_CREATE", "expenses.create", "EXPENSE_MANAGEMENT", "Create company expenses", "Submit evidenced company expense requests; cannot approve own requests.", "HIGH"),
+  permission("EXPENSES_UPDATE", "expenses.update", "EXPENSE_MANAGEMENT", "Edit submitted expenses", "Audited edits to submitted or rejected requests only.", "HIGH"),
+  permission("EXPENSES_APPROVE", "expenses.approve", "EXPENSE_MANAGEMENT", "Review company expenses", "Approve or reject another submitter's expense at an assigned approval step.", "HIGH"),
+  permission("EXPENSES_PAY", "expenses.pay", "EXPENSE_MANAGEMENT", "Record company expense payments", "Record an externally completed company payment; does not execute payments or debit wallets.", "HIGH"),
+  permission("EXPENSES_CATEGORIES", "expenses.manage_categories", "EXPENSE_MANAGEMENT", "Manage expense categories", "Create, edit and deactivate expense categories without deleting history."),
+  permission("EXPENSES_VENDORS", "expenses.manage_vendors", "EXPENSE_MANAGEMENT", "Manage expense vendors", "Create, edit and deactivate company expense vendors.", "HIGH"),
+  permission("EXPENSES_POLICY", "expenses.manage_policy", "EXPENSE_MANAGEMENT", "Configure expense approvals", "Head Office-controlled explicit expense approval hierarchy; self-approval remains prohibited.", "HIGH"),
+  permission("EXPENSES_DOCUMENTS", "expenses.documents", "EXPENSE_MANAGEMENT", "Access expense evidence", "Upload with creation authority and privately view or download expense receipts and invoices.", "HIGH"),
+  permission("EXPENSES_AUDIT", "expenses.audit", "EXPENSE_MANAGEMENT", "View expense audit history", "Read immutable expense events and previous/new recorded values.", "HIGH"),
+  permission("EXPENSES_EXPORT", "expenses.export", "EXPENSE_MANAGEMENT", "Export expense reports", "Export authorized company expense reports to PDF and Excel.", "HIGH"),
+  permission("EXPENSES_CANCEL", "expenses.cancel", "EXPENSE_MANAGEMENT", "Cancel or reverse expense records", "Audited cancellation or external reversal recording; never refunds customer funds.", "HIGH"),
+  permission("EXPENSES_EXCEPTION", "expenses.evidence_exception", "EXPENSE_MANAGEMENT", "Authorize expense evidence exceptions", "Record a specific documented exception when original supporting evidence is unavailable.", "HIGH"),
   permission("OPERATIONS_VIRTUAL_ACCOUNTS_VIEW", "operations.virtual_accounts.view", "OPERATIONS", "View virtual account operations", "Global Operations Manager account directory and generation history; no wallet authority.", "HIGH"),
   permission("OPERATIONS_VIRTUAL_ACCOUNTS_GENERATE", "operations.virtual_accounts.generate", "OPERATIONS", "Generate eligible customer virtual accounts", "Explicit Operations Manager grant; existing account preservation and uncertain-attempt protections remain mandatory.", "HIGH"),
   permission("OPERATIONS_VIRTUAL_ACCOUNTS_BULK", "operations.virtual_accounts.bulk", "OPERATIONS", "Run controlled virtual account batches", "Confirmed, audited background jobs for eligible customers; no replay of unknown provider outcomes.", "HIGH"),

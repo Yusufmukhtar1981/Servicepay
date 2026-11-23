@@ -129,6 +129,11 @@ function planRows(rows) {
       recordedEarnings: sum(rs, "recordedRevenue") };
   }).sort((a, b) => b.recordedEarnings - a.recordedEarnings);
 }
+function expenseReferenceId(reference) {
+  return crypto.createHash("sha256").update(JSON.stringify(
+    ["financial-expense-reference", text(reference).toUpperCase()],
+  )).digest("hex").slice(0, 24);
+}
 function expense(input, now = new Date()) {
   const amount = bill.money(input.amount), reference = text(input.reference);
   const description = text(input.description), category = text(input.category), date = day(input.date);
@@ -155,8 +160,8 @@ function expense(input, now = new Date()) {
   const digest = v => crypto.createHash("sha256").update(JSON.stringify(v)).digest("hex");
   const fingerprint = digest([category, amount, date, description.toLowerCase().replace(/\s+/g, " ")]);
   return { value, fingerprint, payloadHash: digest(value),
-    id: digest(["financial-expense-reference", reference.toUpperCase()]).slice(0, 24),
+    id: expenseReferenceId(reference),
     claimId: digest(["financial-expense-fingerprint", fingerprint]).slice(0, 24) };
 }
 module.exports = { transaction, totals, grouped, planRows, filters, dateMatch, nigeriaDay, reportNetwork,
-  expense, CATEGORIES, SUCCESS, NON_SALES, sum, fail };
+  expense, expenseReferenceId, CATEGORIES, SUCCESS, NON_SALES, sum, fail };
