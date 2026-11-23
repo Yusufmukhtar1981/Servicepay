@@ -678,6 +678,13 @@ exports.registerUser = async (
   req,
   res
 ) => {
+  if (req.body.role && String(req.body.role).toUpperCase() !== "CUSTOMER") {
+    return res.status(403).json({
+      success: false,
+      message: "Privileged accounts require authorized staff administration.",
+      code: "PRIVILEGED_REGISTRATION_FORBIDDEN",
+    });
+  }
 
   // SERVICEPAY_SECURE_REGISTRATION_POLICY
   // Applied only when creating a NEW account.
@@ -754,9 +761,8 @@ exports.registerUser = async (
       fullName || ""
     ).trim();
 
-    const cleanPhone = String(
-      phone || ""
-    ).trim();
+    const cleanPhone = require("../services/nigerianMsisdn.service")
+      .normalizeNigerianMsisdn(String(phone || ""));
 
     const cleanEmail = String(
       email || ""
@@ -780,7 +786,7 @@ exports.registerUser = async (
       });
     }
 
-    if (cleanPhone.length < 10) {
+    if (!cleanPhone) {
       return res.status(400).json({
         success: false,
         message:
@@ -788,6 +794,12 @@ exports.registerUser = async (
       });
     }
 
+    if (cleanEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      return res.status(400).json({
+        success: false,
+        message: "Enter a valid email address.",
+      });
+    }
     if (cleanPassword.length < 6) {
       return res.status(400).json({
         success: false,
@@ -838,32 +850,21 @@ exports.registerUser = async (
     // ========================================================
 
   // ============================================================
-  // SERVICEPAY_REGISTRATION_NIN_PENDING
-  // NIN remains mandatory for new customer registration.
-  // Registration is NOT blocked by external NIN provider failure.
-  // Verification will be completed separately/manual review.
+  // A valid NIN or BVN is required, but remains unverified at onboarding.
+  // Persist masked metadata only, never raw identity numbers or fabricated
+  // verification results. External verification remains a separate workflow.
   // ============================================================
 
-  const registrationNin = String(
-    req.body.nin ||
-    req.body.ninNumber ||
-    req.body.nin_number ||
-    ""
-  ).replace(/\D/g, "");
-
-  if (!/^\d{11}$/.test(registrationNin)) {
+  let identityMetadata;
+  try {
+    identityMetadata = require("../services/registrationIdentity").registrationIdentity(req.body);
+  } catch (error) {
     return res.status(400).json({
       success: false,
-      message: "Please provide a valid 11-digit NIN.",
-      code: "INVALID_NIN",
+      message: error.message,
+      code: error.code,
     });
   }
-
-  const onboardingNinResult = {
-    maskedNin: `*******${registrationNin.slice(-4)}`,
-    reference: undefined,
-    status: "PENDING",
-  };
 
   
     const servicePayRegistrationPin = String(
@@ -908,16 +909,7 @@ exports.registerUser = async (
   }
   const user = await createCustomerWithUniqueReferralCode({
       
-      // SERVICEPAY_REGISTRATION_NIN_METADATA
-      ninNumberMasked:
-        onboardingNinResult.maskedNin,
-
-      ninVerificationStatus: "PENDING",
-
-      ninVerificationReference:
-        onboardingNinResult.reference,
-
-      ninVerifiedAt: undefined,
+      ...identityMetadata,
 
 fullName: cleanFullName,
       phone: cleanPhone,

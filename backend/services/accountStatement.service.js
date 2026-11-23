@@ -117,6 +117,7 @@ function pdf(data) {
       doc.fillColor("#23372C").fontSize(8).text(`Reference: ${row.reference}`);
       doc.text(String(row.description || "").replace(/[\r\n]/g, " ").slice(0, 240));
       doc.text(`Debit: ${cash(row.debitMinor)}   Credit: ${cash(row.creditMinor)}`);
+      doc.text(`Balance: ${row.balanceMinor == null ? "Not a posted wallet movement" : cash(row.balanceMinor)}`);
       doc.moveDown(0.65);
     }
     if (!data.rows.length) doc.text("No transactions in this period.");

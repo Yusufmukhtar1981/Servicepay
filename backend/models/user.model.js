@@ -1432,6 +1432,19 @@ userSchema.add({
  * Raw NIN/provider response is not stored here.
  */
 userSchema.add({
+  bvnNumberMasked: {
+    type: String,
+    trim: true,
+    default: undefined,
+    select: false,
+  },
+
+  bvnVerificationStatus: {
+    type: String,
+    enum: ["PENDING", "VERIFIED", "FAILED"],
+    default: undefined,
+  },
+
   ninNumberMasked: {
     type: String,
     trim: true,
