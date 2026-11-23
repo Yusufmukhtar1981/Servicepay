@@ -8,27 +8,27 @@ import 'package:flutter/material.dart';
 abstract final class ServicePayColors {
   // Customer "Forest Ledger" system: dark forest dominant, emerald reserved
   // for important actions and highlights.
-  /// Emerald accent (#36C99A). Pair with [onAccent] text, never white.
-  static const accent = Color(0xFF36C99A);
-  static const onAccent = Color(0xFF071F1B);
+  /// Bright primary green. Pair with [onAccent] text, never white.
+  static const accent = Color(0xFF20D69A);
+  static const onAccent = Color(0xFF062A22);
 
-  /// Filled green surface (#087F68) that safely carries white text (5.0:1).
-  static const brand = Color(0xFF087F68);
-  static const brandDeep = Color(0xFF0A6655);
+  /// Rich wallet green that carries white text at >= 4.5:1.
+  static const brand = Color(0xFF078553);
+  static const brandDeep = Color(0xFF086447);
 
-  /// Quiet secondary surface (#16483D) used for chips, icon wells, highlights.
-  static const brandSoft = Color(0xFF16483D);
-  static const canvas = Color(0xFF071F1B);
-  static const surface = Color(0xFF103D34);
-  static const surfaceRaised = Color(0xFF16483D);
+  /// Solid secondary surface used for chips, icon wells and highlights.
+  static const brandSoft = Color(0xFF0B382D);
+  static const canvas = Color(0xFF062A22);
+  static const surface = Color(0xFF104638);
+  static const surfaceRaised = Color(0xFF0B382D);
   static const ink = Color(0xFFFFFFFF);
-  static const muted = Color(0xFFB8D0C8);
+  static const muted = Color(0xFFBCEFE0);
 
   /// Subtle muted-emerald border; strong emerald is reserved for focus.
-  static const border = Color(0xFF2C5E52);
+  static const border = Color(0xFF2D8E6E);
 
-  /// Primary card surface (#103D34).
-  static const card = Color(0xFF103D34);
+  /// Primary Customer card surface.
+  static const card = Color(0xFF104638);
   static const disabled = Color(0xFF86A69C);
   static const disabledSurface = Color(0xFF1A3A33);
   static const success = Color(0xFF5BE3A9);

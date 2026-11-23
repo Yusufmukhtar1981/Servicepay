@@ -20,9 +20,9 @@ void main() {
 
     final ThemeData customer = ServicePayTheme.customer();
     expect(customer.colorScheme.brightness, Brightness.dark);
-    expect(customer.scaffoldBackgroundColor, const Color(0xFF071F1B));
-    expect(customer.colorScheme.primary, const Color(0xFF36C99A));
-    expect(customer.cardTheme.color, const Color(0xFF103D34));
+    expect(customer.scaffoldBackgroundColor, const Color(0xFF062A22));
+    expect(customer.colorScheme.primary, const Color(0xFF20D69A));
+    expect(customer.cardTheme.color, const Color(0xFF104638));
   });
 
   test('audience is derived only from the already-resolved role', () {
@@ -57,7 +57,7 @@ void main() {
     ));
     Color background() => Theme.of(tester.element(find.text('shell')))
         .scaffoldBackgroundColor;
-    expect(background(), const Color(0xFF071F1B));
+    expect(background(), const Color(0xFF062A22));
 
     final Widget staffHome = authenticatedHomeForRole('BRANCH_MANAGER');
     expect(staffHome, isNotNull);
@@ -70,7 +70,7 @@ void main() {
     authenticatedHomeForRole('CUSTOMER');
     await tester.pump();
     await tester.pumpAndSettle();
-    expect(background(), const Color(0xFF071F1B));
+    expect(background(), const Color(0xFF062A22));
   });
 
   testWidgets('the latest audience request cancels stale queued theme changes',

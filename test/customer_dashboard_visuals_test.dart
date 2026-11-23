@@ -229,7 +229,7 @@ void main() {
       return (x > y ? x + 0.05 : y + 0.05) / (x > y ? y + 0.05 : x + 0.05);
     }
 
-    // Secondary text must stay readable on the #087F68 secondary card.
+    // Secondary text must stay readable on both rich-green card surfaces.
     expect(ratio(ServicePayColors.muted, ServicePayColors.card),
         greaterThanOrEqualTo(4.5));
     expect(ratio(CustomerDashboardPalette.muted, CustomerDashboardPalette.card),
@@ -260,8 +260,51 @@ void main() {
 
   test('dark wallet uses exact white foreground and gradient', () {
     expect(CustomerDashboardPalette.onWallet, const Color(0xFFFFFFFF));
-    expect(CustomerDashboardPalette.walletStart, const Color(0xFF087F68));
-    expect(CustomerDashboardPalette.walletEnd, const Color(0xFF0A6655));
+    expect(CustomerDashboardPalette.walletStart, const Color(0xFF078553));
+    expect(CustomerDashboardPalette.walletEnd, const Color(0xFF086447));
+  });
+
+  test('approved clarity palette uses solid surfaces and readable icon wells', () {
+    expect(CustomerDashboardPalette.canvas, const Color(0xFF062A22));
+    expect(CustomerDashboardPalette.card, const Color(0xFF104638));
+    expect(CustomerDashboardPalette.paleBlue, const Color(0xFF0B382D));
+    expect(CustomerDashboardPalette.activeGreen, const Color(0xFF20D69A));
+    expect(CustomerDashboardPalette.royalBlue, const Color(0xFF35E6A8));
+    expect(CustomerDashboardPalette.text, Colors.white);
+    expect(CustomerDashboardPalette.softText, const Color(0xFFBCEFE0));
+    expect(CustomerDashboardPalette.muted, const Color(0xFF8FC8B6));
+    for (final foreground in <Color>[
+      CustomerDashboardPalette.text,
+      CustomerDashboardPalette.softText,
+      CustomerDashboardPalette.muted,
+    ]) {
+      for (final background in <Color>[
+        CustomerDashboardPalette.canvas,
+        CustomerDashboardPalette.card,
+        CustomerDashboardPalette.paleBlue,
+        CustomerDashboardPalette.walletStart,
+        CustomerDashboardPalette.walletEnd,
+      ]) {
+        // Wallet uses pure white; mint/muted labels are restricted to cards.
+        if (background == CustomerDashboardPalette.walletStart ||
+            background == CustomerDashboardPalette.walletEnd) {
+          if (foreground != Colors.white) continue;
+        }
+        final light = foreground.computeLuminance();
+        final dark = background.computeLuminance();
+        expect((light + .05) / (dark + .05), greaterThanOrEqualTo(4.5));
+      }
+    }
+    for (final title in CustomerServiceColors.byTitle.keys) {
+      final background = CustomerServiceColors.tintFor(title);
+      expect(background.a, 1);
+      expect(
+        (CustomerServiceColors.iconFor(title).computeLuminance() + .05) /
+            (background.computeLuminance() + .05),
+        greaterThanOrEqualTo(3),
+        reason: '$title icon must contrast with its solid well',
+      );
+    }
   });
 
   testWidgets('transaction rows wrap long phone, date and amount readably',
@@ -330,7 +373,7 @@ void main() {
     }
   });
 
-  testWidgets('nine Home service icons use exact brief colours in tinted circles',
+  testWidgets('nine Home service icons retain their colours in solid dark wells',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 1600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -354,7 +397,7 @@ void main() {
       final glyph = tester.widget<CustomerServiceGlyph>(
           find.descendant(of: tile, matching: find.byType(CustomerServiceGlyph)));
       expect(glyph.iconColor, entry.value, reason: entry.key);
-      expect(glyph.backgroundColor, entry.value.withValues(alpha: 0.16));
+      expect(glyph.backgroundColor, const Color(0xFF0B382D));
       expect(glyph.radius, glyph.size / 2);
       expect(
           tester.widget<Text>(find.descendant(

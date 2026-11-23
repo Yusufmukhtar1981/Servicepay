@@ -56,9 +56,9 @@ void main() {
   test('customer theme keeps controls touch-friendly and consistent', () {
     final ThemeData theme = ServicePayTheme.customer();
 
-    expect(ServicePayColors.canvas, const Color(0xFF071F1B));
-    expect(ServicePayColors.accent, const Color(0xFF36C99A));
-    expect(ServicePayColors.brand, const Color(0xFF087F68));
+    expect(ServicePayColors.canvas, const Color(0xFF062A22));
+    expect(ServicePayColors.accent, const Color(0xFF20D69A));
+    expect(ServicePayColors.brand, const Color(0xFF078553));
     expect(theme.colorScheme.primary, ServicePayColors.accent);
     expect(theme.colorScheme.onPrimary, ServicePayColors.onAccent);
     expect(theme.scaffoldBackgroundColor, ServicePayColors.canvas);

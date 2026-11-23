@@ -4,31 +4,31 @@ import '../servicepay_theme.dart';
 /// Customer-home colors are intentionally scoped here so staff dashboards keep
 /// the palette defined by the shared application theme.
 abstract final class CustomerDashboardPalette {
-  static const navy = Color(0xFF071F1B);
-  /// Emerald highlight (#36C99A) for icons and key accents only.
-  static const royalBlue = Color(0xFF36C99A);
-  static const teal = Color(0xFF087F68);
-  static const canvas = Color(0xFF071F1B);
-  static const card = Color(0xFF103D34);
+  static const navy = Color(0xFF062A22);
+  /// Bright emerald highlight for icons and key accents.
+  static const royalBlue = Color(0xFF35E6A8);
+  static const teal = Color(0xFF078553);
+  static const canvas = Color(0xFF062A22);
+  static const card = Color(0xFF104638);
   static const success = Color(0xFF5BE3A9);
   static const warning = Color(0xFFFFC56B);
   static const error = Color(0xFFFF9A8B);
-  static const muted = Color(0xFFB8D0C8);
+  static const muted = Color(0xFF8FC8B6);
   static const border = ServicePayColors.border;
-  static const paleBlue = Color(0xFF16483D);
+  static const paleBlue = Color(0xFF0B382D);
   static const text = Color(0xFFFFFFFF);
-  static const softText = Color(0xFFB8D0C8);
-  static const walletStart = Color(0xFF087F68);
-  static const walletEnd = Color(0xFF0A6655);
-  /// White foreground for the dark luxurious wallet gradient (>= 5:1).
+  static const softText = Color(0xFFBCEFE0);
+  static const walletStart = Color(0xFF078553);
+  static const walletEnd = Color(0xFF086447);
+  /// White foreground for both wallet gradient endpoints (>= 4.5:1).
   static const onWallet = Color(0xFFFFFFFF);
   /// Darker inset fill for secondary wallet actions; carries white text.
-  static const walletInset = Color(0xFF0A4A3F);
+  static const walletInset = Color(0xFF0B382D);
 
   /// ServicePay bright green for active segmented selections.
-  static const activeGreen = Color(0xFF36C99A);
+  static const activeGreen = Color(0xFF20D69A);
   /// Muted green fill for inactive segmented selections.
-  static const inactiveGreen = Color(0xFF16483D);
+  static const inactiveGreen = Color(0xFF0B382D);
 
   /// Shared semantic series colours. Metric cards, chart bars and chart
   /// legends all read from these so a legend always matches its series.
@@ -56,8 +56,8 @@ abstract final class CustomerServiceColors {
   static Color iconFor(String title) =>
       byTitle[title] ?? CustomerDashboardPalette.royalBlue;
 
-  /// Subtle tinted circle: the icon colour at low opacity over the card.
-  static Color tintFor(String title) => iconFor(title).withValues(alpha: 0.16);
+  /// Solid dark icon well keeps every approved service colour clearly visible.
+  static Color tintFor(String title) => CustomerDashboardPalette.paleBlue;
 }
 
 class CustomerServiceGlyph extends StatelessWidget {
@@ -112,7 +112,10 @@ class CustomerCampaignFrame extends StatelessWidget {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: <Color>[Color(0xFF16483D), Color(0xFF103D34)],
+          colors: <Color>[
+            CustomerDashboardPalette.paleBlue,
+            CustomerDashboardPalette.card,
+          ],
         ),
       ),
       foregroundDecoration: BoxDecoration(
