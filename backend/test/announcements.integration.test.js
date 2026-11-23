@@ -162,6 +162,56 @@ test.beforeEach(async () => {
   fullStaff = await makeUser("STAFF", { staffRoleId: role._id });
 });
 
+test("dashboard feed refreshes EVERY_LOGIN banners without replaying popups or changing legacy responses", async () => {
+  const customer = await makeUser();
+  const created = await api({
+    method: "POST", path: "/api/announcements/admin", actor: headOffice,
+    body: announcementBody({ visibility: "EVERY_LOGIN" }),
+  });
+  assert.equal(created.status, 201);
+  const id = created.body.data.announcement.id;
+  const get = (path) => api({ path, actor: customer, loginKey: "same-login" });
+  const first = await get("/api/announcements/active?surface=dashboard");
+  assert.equal(first.body.data.authoritative, true);
+  assert.equal(first.body.data.announcements[0].popupEligible, true);
+  const refreshed = await get("/api/announcements/active?surface=dashboard");
+  assert.equal(refreshed.body.data.announcements[0].id, id);
+  assert.equal(refreshed.body.data.announcements[0].popupEligible, false);
+  assert.deepEqual((await get("/api/announcements/active")).body.data.announcements, []);
+  const disabled = await api({
+    method: "PATCH", path: `/api/announcements/admin/${id}/status`,
+    actor: headOffice, body: { isActive: false },
+  });
+  assert.equal(disabled.status, 200);
+  assert.deepEqual((await get(`/api/announcements/active?surface=dashboard&retainedBannerIds=${id}`))
+    .body.data.announcements, []);
+});
+
+test("retained dashboard banners still enforce dates, publication and audience", async () => {
+  const customer = await makeUser();
+  const other = await makeUser();
+  const records = await Announcement.create([
+    announcementBody({ title: "Visible", visibility: "MANDATORY" }),
+    announcementBody({ title: "Expired", endAt: new Date(Date.now() - 60000) }),
+    announcementBody({ title: "Future", startAt: new Date(Date.now() + 60000) }),
+    announcementBody({ title: "Disabled", isActive: false }),
+    announcementBody({ title: "Targeted", audience: "SELECTED_CUSTOMERS", selectedCustomerIds: [other._id] }),
+    campaignBody({ title: "Draft campaign", campaignStatus: "DRAFT" }),
+  ]);
+  await AnnouncementInteraction.create({
+    announcementId: records[0]._id, customerId: customer._id, acknowledgedAt: new Date(),
+  });
+  const ids = records.map(x => x._id).join(",");
+  const result = await api({
+    path: `/api/announcements/active?surface=dashboard&retainedBannerIds=${ids}`,
+    actor: customer,
+  });
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body.data.announcements.map(x => x.title), ["Visible"]);
+  assert.equal(result.body.data.announcements[0].popupEligible, false);
+  assert.equal(JSON.stringify(result.body).includes(String(other._id)), false);
+});
+
 test("banner image uploads require editor authority, validate files, and persist only via existing announcement CRUD", async () => {
   const { v2: cloudinary } = require("cloudinary");
   const original = cloudinary.uploader.upload_stream;

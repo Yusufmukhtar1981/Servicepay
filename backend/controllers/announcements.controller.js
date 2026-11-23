@@ -545,6 +545,14 @@ const validateCustomerTargets = async (payload) => {
 
 exports.getActive = async (req, res) => {
   try {
+    // Dashboard banners must be revalidated against current Admin state.
+    // Keep the legacy once-per-login response unchanged for older clients.
+    const dashboard = req.query.surface === "dashboard";
+    const retainedIds = new Set(
+      dashboard && typeof req.query.retainedBannerIds === "string"
+        ? req.query.retainedBannerIds.split(",").slice(0, 100).filter(validId)
+        : [],
+    );
     const now = new Date();
     const announcements = await Announcement.find(scheduledFilter(now))
       .sort({ priority: -1, createdAt: -1 })
@@ -559,16 +567,33 @@ exports.getActive = async (req, res) => {
     const active = [];
     for (const announcement of announcements) {
       if (announcement.campaignTrackingEnabled && announcement.campaignStatus !== "ACTIVE") continue;
-      if (await visibleForCustomer(announcement, req.user, byId.get(String(announcement._id)), loginKey)) {
-        active.push(publicView(announcement));
-        if (announcement.visibility === "EVERY_LOGIN" && loginKey) {
+      const visible = await visibleForCustomer(
+        announcement, req.user, byId.get(String(announcement._id)), loginKey,
+      );
+      const retainedBanner = dashboard &&
+        (announcement.visibility === "EVERY_LOGIN" ||
+          retainedIds.has(String(announcement._id))) &&
+        ["BANNER", "BOTH"].includes(announcement.style) &&
+        await matchesAudience(announcement, req.user);
+      if (visible || retainedBanner) {
+        active.push({
+          ...publicView(announcement),
+          ...(dashboard ? { popupEligible: visible } : {}),
+        });
+        if (visible && announcement.visibility === "EVERY_LOGIN" && loginKey) {
           // Presentation is tracked separately from view metrics so repeated
           // dashboard polling during one login does not re-show the notice.
           await markPresentedForLogin(announcement._id, req.user._id, loginKey);
         }
       }
     }
-    return res.json({ success: true, data: { announcements: active } });
+    return res.json({
+      success: true,
+      data: {
+        announcements: active,
+        ...(dashboard ? { surface: "dashboard", authoritative: true } : {}),
+      },
+    });
   } catch (error) {
     console.error("Get active announcements error:", error);
     return res.status(500).json({ success: false, message: "Failed to load announcements." });
