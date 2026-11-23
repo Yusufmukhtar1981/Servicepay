@@ -241,7 +241,7 @@ void main() {
     expect(funding, lessThan(services));
     expect(services, lessThan(activity));
     expect(find.byKey(const Key('customer-business-hub-entry')), findsNothing);
-    expect(activity, lessThan(insights));
+    expect(insights, lessThan(activity));
     expect(insights, lessThan(referral));
     for (final key in ['customer-quick-services',
       'customer-recent-activity', 'customer-transaction-insights',

@@ -114,7 +114,13 @@ class CustomerExperienceApi {
           ? message!
           : 'The server could not prepare a complete statement. Please try again later.');
     }
-    return response.bodyBytes;
+    final bytes = response.bodyBytes;
+    if (bytes.length < 5 ||
+        ascii.decode(bytes.take(5).toList(), allowInvalid: true) != '%PDF-') {
+      throw const CustomerExperienceException(
+          'The statement service did not return a valid PDF. Please try again later.');
+    }
+    return bytes;
   }
 
   Future<Map<String, dynamic>> appUpdate() async {

@@ -7,6 +7,17 @@ import 'package:http/http.dart' as http;
 import 'referral_attribution_service.dart';
 import 'security_utils.dart';
 import 'servicepay_theme.dart';
+import 'widgets/registration_details_fields.dart';
+
+export 'widgets/registration_details_fields.dart'
+    show normalizeNigerianPhone, isValidRegistrationEmail;
+
+/// Identity document used for KYC at registration.
+enum RegistrationIdentityType { nin, bvn }
+
+extension RegistrationIdentityTypeLabel on RegistrationIdentityType {
+  String get code => this == RegistrationIdentityType.bvn ? 'BVN' : 'NIN';
+}
 
 Map<String, dynamic> buildRegistrationPayload({
   required String fullName,
@@ -22,6 +33,7 @@ Map<String, dynamic> buildRegistrationPayload({
   required String lga,
   required String nin,
   String? referralCode,
+  RegistrationIdentityType identityType = RegistrationIdentityType.nin,
 }) =>
     <String, dynamic>{
       'fullName': fullName,
@@ -35,7 +47,13 @@ Map<String, dynamic> buildRegistrationPayload({
       'residentialAddress': residentialAddress,
       'state': state,
       'lga': lga,
-      'nin': nin,
+      // `nin` carries the identity number; BVN registrations send `bvn`
+      // instead so the backend never treats a BVN as a NIN.
+      if (identityType == RegistrationIdentityType.bvn)
+        'bvn': nin
+      else
+        'nin': nin,
+      'identityType': identityType.code,
       'kycConsent': true,
       'acceptTerms': true,
       if (referralCode != null && referralCode.isNotEmpty)
@@ -62,7 +80,7 @@ class SecureRegistrationScreen extends StatefulWidget {
 class _SecureRegistrationScreenState extends State<SecureRegistrationScreen> {
   static const String baseUrl = 'https://api.servicepay.ng/api';
 
-  final PageController _pageController = PageController();
+  final _formKey = GlobalKey<FormState>();
 
   final fullNameController = TextEditingController();
   final phoneController = TextEditingController();
@@ -80,11 +98,8 @@ class _SecureRegistrationScreenState extends State<SecureRegistrationScreen> {
   final ninController = TextEditingController();
   final referralController = TextEditingController();
 
-  int currentStep = 0;
   bool loading = false;
-  bool hidePassword = true;
-  bool hideConfirmPassword = true;
-  bool hidePin = true;
+  RegistrationIdentityType identityType = RegistrationIdentityType.nin;
   late final http.Client _client;
   late final bool _ownsClient;
   late final ReferralAttributionService _referralService;
@@ -982,8 +997,6 @@ class _SecureRegistrationScreenState extends State<SecureRegistrationScreen> {
 
   @override
   void dispose() {
-    _pageController.dispose();
-
     for (final c in [
       fullNameController,
       phoneController,
@@ -1015,142 +1028,55 @@ class _SecureRegistrationScreenState extends State<SecureRegistrationScreen> {
     );
   }
 
-  bool validateStepOne() {
-    if (fullNameController.text.trim().split(' ').length < 2) {
-      showMessage('Please enter your complete name.');
+  // ---- Field validators (inline, shown under each field) ----
+
+  String? _validateState(String? v) =>
+      (v ?? '').isEmpty ? 'Select your state.' : null;
+
+  String? _validateLga(String? v) =>
+      (v ?? '').isEmpty ? 'Select your LGA.' : null;
+
+  String? _validatePin(String? v) => transactionPinError((v ?? '').trim());
+
+  late final FormFieldValidator<String> _validateConfirmPin =
+      RegistrationValidators.matches(
+          pinController, 'Transaction PINs do not match.');
+
+  String? _validateIdentity(String? v) => RegExp(r'^\d{11}$').hasMatch(v ?? '')
+      ? null
+      : 'Enter a valid 11-digit ${identityType.code}.';
+
+  String? _validateDob(String? v) =>
+      (v ?? '').trim().isEmpty ? 'Date of birth is required.' : null;
+
+  String? _validateAddress(String? v) =>
+      (v ?? '').trim().length < 5 ? 'Enter your residential address.' : null;
+
+  bool _validateAll() {
+    final fieldsValid = _formKey.currentState?.validate() ?? false;
+    if (!fieldsValid) {
+      showMessage('Please correct the highlighted fields.');
       return false;
     }
-
-    final phone = phoneController.text.replaceAll(RegExp(r'\D'), '');
-
-    if (phone.length < 10) {
-      showMessage('Please enter a valid phone number.');
-      return false;
-    }
-
-    final email = emailController.text.trim();
-
-    if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(email)) {
-      showMessage('Please enter a valid email address.');
-      return false;
-    }
-
-    if (dobController.text.trim().isEmpty) {
-      showMessage('Date of birth is required.');
-      return false;
-    }
-
     if (gender.isEmpty) {
       showMessage('Please select your gender.');
       return false;
     }
-
-    if (stateController.text.trim().isEmpty ||
-        lgaController.text.trim().isEmpty ||
-        addressController.text.trim().length < 5) {
-      showMessage('Please complete your residential information.');
-      return false;
-    }
-
-    return true;
-  }
-
-  bool validateStepTwo() {
-    final password = passwordController.text;
-
-    if (password.length < 8 ||
-        !RegExp(r'[A-Z]').hasMatch(password) ||
-        !RegExp(r'[a-z]').hasMatch(password) ||
-        !RegExp(r'[0-9]').hasMatch(password) ||
-        !RegExp(r'[^A-Za-z0-9]').hasMatch(password)) {
-      showMessage(
-        'Password must be 8+ characters and include uppercase, '
-        'lowercase, number and special character.',
-      );
-      return false;
-    }
-
-    if (password != confirmPasswordController.text) {
-      showMessage('Passwords do not match.');
-      return false;
-    }
-
-    final pin = pinController.text.trim();
-
-    if (!RegExp(r'^\d{4}$').hasMatch(pin)) {
-      showMessage('Transaction PIN must contain exactly 4 digits.');
-      return false;
-    }
-
-    if (pin != confirmPinController.text.trim()) {
-      showMessage('Transaction PINs do not match.');
-      return false;
-    }
-
-    final pinError = transactionPinError(pin);
-    if (pinError != null) {
-      showMessage(pinError);
-      return false;
-    }
-
     if (!acceptTerms) {
       showMessage('Please accept the Terms and Privacy Policy.');
       return false;
     }
-
-    return true;
-  }
-
-  bool validateStepThree() {
-    final nin = ninController.text.replaceAll(RegExp(r'\D'), '');
-
-    if (nin.length != 11) {
-      showMessage('Please enter a valid 11-digit NIN.');
-      return false;
-    }
-
     if (!kycConsent) {
       showMessage('KYC verification consent is required.');
       return false;
     }
-
     return true;
   }
 
-  void nextStep() {
-    bool valid = false;
-
-    if (currentStep == 0) valid = validateStepOne();
-    if (currentStep == 1) valid = validateStepTwo();
-
-    if (!valid) return;
-
-    setState(() => currentStep++);
-
-    _pageController.animateToPage(
-      currentStep,
-      duration: const Duration(milliseconds: 250),
-      curve: Curves.easeInOut,
-    );
-  }
-
-  void previousStep() {
-    if (currentStep == 0) {
-      Navigator.pop(context);
-      return;
-    }
-
-    setState(() => currentStep--);
-
-    _pageController.animateToPage(
-      currentStep,
-      duration: const Duration(milliseconds: 250),
-      curve: Curves.easeInOut,
-    );
-  }
-
   Future<void> register() async {
-    if (!validateStepThree()) return;
+    if (loading) return;
+    FocusScope.of(context).unfocus();
+    if (!_validateAll()) return;
 
     setState(() => loading = true);
 
@@ -1168,7 +1094,7 @@ class _SecureRegistrationScreenState extends State<SecureRegistrationScreen> {
 
       final payload = buildRegistrationPayload(
         fullName: fullNameController.text.trim(),
-        phone: phoneController.text.trim(),
+        phone: normalizeNigerianPhone(phoneController.text)!,
         email: emailController.text.trim().toLowerCase(),
         password: passwordController.text,
         transactionPin: pinController.text.trim(),
@@ -1179,6 +1105,7 @@ class _SecureRegistrationScreenState extends State<SecureRegistrationScreen> {
         state: stateController.text.trim(),
         lga: lgaController.text.trim(),
         nin: ninController.text.trim(),
+        identityType: identityType,
         referralCode: referralCode,
       );
 
@@ -1206,7 +1133,7 @@ class _SecureRegistrationScreenState extends State<SecureRegistrationScreen> {
         await showDialog<void>(
           context: context,
           barrierDismissible: false,
-          builder: (_) => AlertDialog(
+          builder: (dialogContext) => AlertDialog(
             title: const Text('Account Created'),
             content: const Text(
               'Your ServicePay account has been created successfully. '
@@ -1215,7 +1142,7 @@ class _SecureRegistrationScreenState extends State<SecureRegistrationScreen> {
             ),
             actions: [
               TextButton(
-                onPressed: () => Navigator.pop(context),
+                onPressed: () => Navigator.pop(dialogContext),
                 child: const Text('Continue'),
               ),
             ],
@@ -1223,7 +1150,7 @@ class _SecureRegistrationScreenState extends State<SecureRegistrationScreen> {
         );
 
         if (!mounted) return;
-        Navigator.pop(context);
+        Navigator.maybePop(context);
         return;
       }
 
@@ -1241,327 +1168,292 @@ class _SecureRegistrationScreenState extends State<SecureRegistrationScreen> {
     }
   }
 
-  Widget stepHeader() {
-    final titles = [
-      'Personal Details',
-      'Account Security',
-      'Identity Verification',
-    ];
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Step ${currentStep + 1} of 3',
-          style: TextStyle(
-            color: servicePayGreen,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          titles[currentStep],
+  Widget sectionLabel(String text) => Padding(
+        padding: const EdgeInsets.only(top: 6, bottom: 12),
+        child: Text(
+          text.toUpperCase(),
           style: const TextStyle(
-            fontSize: 24,
+            color: ServicePayColors.accent,
+            fontSize: 12,
             fontWeight: FontWeight.w800,
+            letterSpacing: 1.1,
           ),
         ),
-        const SizedBox(height: 14),
-        Row(
-          children: List.generate(
-            3,
-            (index) => Expanded(
-              child: Container(
-                height: 5,
-                margin: EdgeInsets.only(right: index == 2 ? 0 : 6),
-                decoration: BoxDecoration(
-                  color: index <= currentStep
-                      ? servicePayGreen
-                      : Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
+      );
 
   Widget field({
+    required String keyName,
     required TextEditingController controller,
     required String label,
-    TextInputType? keyboard,
-    bool obscure = false,
-    Widget? suffixIcon,
+    String? Function(String?)? validator,
     int maxLength = 80,
-    List<TextInputFormatter>? inputFormatters,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: TextField(
+  }) =>
+      RegistrationTextField(
+        key: Key('reg-$keyName'),
         controller: controller,
-        keyboardType: keyboard,
-        obscureText: obscure,
+        label: label,
+        validator: validator,
         maxLength: maxLength,
-        inputFormatters: inputFormatters,
-        decoration: InputDecoration(
-          labelText: label,
-          counterText: '',
-          suffixIcon: suffixIcon,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
+      );
+
+  Widget identityTypeSelector() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: SegmentedButton<RegistrationIdentityType>(
+        key: const Key('reg-identityType'),
+        showSelectedIcon: false,
+        segments: const [
+          ButtonSegment(
+            value: RegistrationIdentityType.nin,
+            label: Text('NIN'),
           ),
-        ),
+          ButtonSegment(
+            value: RegistrationIdentityType.bvn,
+            label: Text('BVN'),
+          ),
+        ],
+        selected: {identityType},
+        onSelectionChanged: loading
+            ? null
+            : (s) => setState(() {
+                  identityType = s.first;
+                  ninController.clear();
+                }),
       ),
     );
   }
 
-  Widget personalStep() {
-    return ListView(
-      children: [
-        stepHeader(),
-        const SizedBox(height: 24),
-        field(
-          controller: fullNameController,
-          label: 'Full legal name',
+  Widget referralSection() {
+    if (_appliedAttribution != null) {
+      return Container(
+        padding: const EdgeInsets.all(14),
+        margin: const EdgeInsets.only(bottom: 14),
+        decoration: BoxDecoration(
+          color: servicePayGreen.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: servicePayGreen.withValues(alpha: 0.25)),
         ),
-        field(
-          controller: phoneController,
-          label: 'Phone number',
-          keyboard: TextInputType.phone,
-        ),
-        field(
-          controller: emailController,
-          label: 'Email address',
-          keyboard: TextInputType.emailAddress,
-        ),
-        InkWell(
-          onTap: () async {
-            FocusScope.of(context).unfocus();
-
-            final DateTime now = DateTime.now();
-
-            final DateTime? picked = await showDatePicker(
-              context: context,
-              initialDate: DateTime(now.year - 18, now.month, now.day),
-              firstDate: DateTime(1900, 1, 1),
-              lastDate: now,
-            );
-
-            if (picked != null) {
-              final String yyyy = picked.year.toString().padLeft(4, '0');
-              final String mm = picked.month.toString().padLeft(2, '0');
-              final String dd = picked.day.toString().padLeft(2, '0');
-
-              setState(() {
-                dobController.text = '$yyyy-$mm-$dd';
-              });
-            }
-          },
-          child: AbsorbPointer(
-            child: TextFormField(
-              controller: dobController,
-              readOnly: true,
-              decoration: InputDecoration(
-                labelText: 'Date of birth',
-                hintText: 'Select date of birth',
-                suffixIcon: const Icon(Icons.calendar_month_outlined),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
+        child: Row(
+          children: [
+            Icon(Icons.verified_rounded, color: servicePayGreen),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                _appliedAttribution!.firstName == null
+                    ? 'Referred by Servicepay customer\n'
+                        '${_appliedAttribution!.code} Applied'
+                    : 'Referred by ${_appliedAttribution!.firstName}\n'
+                        '${_appliedAttribution!.code} Applied',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  height: 1.45,
                 ),
               ),
             ),
-          ),
-        ),
-        DropdownButtonFormField<String>(
-          value: gender.isEmpty ? null : gender,
-          decoration: InputDecoration(
-            labelText: 'Gender',
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-          items: const [
-            DropdownMenuItem(value: 'MALE', child: Text('Male')),
-            DropdownMenuItem(value: 'FEMALE', child: Text('Female')),
-            DropdownMenuItem(value: 'OTHER', child: Text('Other')),
           ],
-          onChanged: (value) => setState(() => gender = value ?? ''),
         ),
-        const SizedBox(height: 14),
-        DropdownButtonFormField<String>(
-          value: nigeriaStateLgas.containsKey(stateController.text.trim())
-              ? stateController.text.trim()
-              : null,
-          isExpanded: true,
-          decoration: InputDecoration(
-            labelText: 'State of residence',
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-          hint: const Text('Select State'),
-          items: nigeriaStateLgas.keys
-              .map(
-                (state) => DropdownMenuItem<String>(
-                  value: state,
-                  child: Text(state),
-                ),
-              )
-              .toList(),
-          onChanged: (value) {
-            setState(() {
-              stateController.text = value ?? '';
-              lgaController.clear();
-            });
-          },
-        ),
-        const SizedBox(height: 14),
-        DropdownButtonFormField<String>(
-          value: (stateController.text.trim().isNotEmpty &&
-                  (nigeriaStateLgas[stateController.text.trim()] ??
-                          const <String>[])
-                      .contains(lgaController.text.trim()))
-              ? lgaController.text.trim()
-              : null,
-          isExpanded: true,
-          decoration: InputDecoration(
-            labelText: 'Local Government Area',
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-          hint: Text(
-            stateController.text.trim().isEmpty
-                ? 'Select State first'
-                : 'Select Local Government',
-          ),
-          items: stateController.text.trim().isEmpty
-              ? const <DropdownMenuItem<String>>[]
-              : (nigeriaStateLgas[stateController.text.trim()] ??
-                      const <String>[])
-                  .map(
-                    (lga) => DropdownMenuItem<String>(
-                      value: lga,
-                      child: Text(lga),
-                    ),
-                  )
-                  .toList(),
-          onChanged: stateController.text.trim().isEmpty
-              ? null
-              : (value) {
-                  setState(() {
-                    lgaController.text = value ?? '';
-                  });
-                },
-        ),
-        field(
-          controller: addressController,
-          label: 'Residential address',
-          maxLength: 160,
-        ),
-        if (_appliedAttribution != null)
-          Container(
-            padding: const EdgeInsets.all(14),
-            margin: const EdgeInsets.only(bottom: 14),
-            decoration: BoxDecoration(
-              color: servicePayGreen.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: servicePayGreen.withValues(alpha: 0.25),
-              ),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  Icons.verified_rounded,
-                  color: servicePayGreen,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    _appliedAttribution!.firstName == null
-                        ? 'Referred by Servicepay customer\n'
-                            '${_appliedAttribution!.code} Applied'
-                        : 'Referred by ${_appliedAttribution!.firstName}\n'
-                            '${_appliedAttribution!.code} Applied',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      height: 1.45,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          )
-        else
-          field(
-            controller: referralController,
-            label: 'Referral code (optional)',
-          ),
-      ],
+      );
+    }
+    return field(
+      keyName: 'referral',
+      controller: referralController,
+      label: 'Referral code (optional)',
     );
   }
 
-  Widget securityStep() {
+  Future<void> _pickDob() async {
+    FocusScope.of(context).unfocus();
+    final DateTime now = DateTime.now();
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime(now.year - 18, now.month, now.day),
+      firstDate: DateTime(1900, 1, 1),
+      lastDate: now,
+    );
+    if (picked != null) {
+      final String yyyy = picked.year.toString().padLeft(4, '0');
+      final String mm = picked.month.toString().padLeft(2, '0');
+      final String dd = picked.day.toString().padLeft(2, '0');
+      setState(() => dobController.text = '$yyyy-$mm-$dd');
+    }
+  }
+
+  Widget registrationForm() {
+    final selectedState = stateController.text.trim();
+    final lgas = nigeriaStateLgas[selectedState] ?? const <String>[];
+    final digits = [FilteringTextInputFormatter.digitsOnly];
+
     return ListView(
+      key: const Key('registration-scroll'),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
       children: [
-        stepHeader(),
-        const SizedBox(height: 24),
-        field(
-          controller: passwordController,
-          label: 'Create strong password',
-          obscure: hidePassword,
-          suffixIcon: IconButton(
-            onPressed: () => setState(() => hidePassword = !hidePassword),
-            icon: Icon(
-              hidePassword ? Icons.visibility_off : Icons.visibility,
-            ),
+        const Text(
+          'Create your account',
+          style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Everything on one page. Your secrets never leave this form '
+          'except over a secure connection to ServicePay.',
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
+        const SizedBox(height: 20),
+        // 1-3. Shared Full Name, Phone Number, Email
+        FullNameField(
+            key: const Key('reg-fullName'), controller: fullNameController),
+        NigerianPhoneField(
+            key: const Key('reg-phone'), controller: phoneController),
+        EmailField(key: const Key('reg-email'), controller: emailController),
+        // 4. State
+        Padding(
+          padding: const EdgeInsets.only(bottom: 14),
+          child: DropdownButtonFormField<String>(
+            key: const Key('reg-state'),
+            value: nigeriaStateLgas.containsKey(selectedState)
+                ? selectedState
+                : null,
+            isExpanded: true,
+            decoration: const InputDecoration(labelText: 'State'),
+            hint: const Text('Select State'),
+            validator: _validateState,
+            items: nigeriaStateLgas.keys
+                .map((s) => DropdownMenuItem<String>(value: s, child: Text(s)))
+                .toList(),
+            onChanged: loading
+                ? null
+                : (value) => setState(() {
+                      stateController.text = value ?? '';
+                      lgaController.clear();
+                    }),
           ),
         ),
-        field(
+        // 5. LGA (keyed by state so it fully resets when state changes)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 14),
+          child: DropdownButtonFormField<String>(
+            key: ValueKey('reg-lga-$selectedState'),
+            value: lgas.contains(lgaController.text.trim())
+                ? lgaController.text.trim()
+                : null,
+            isExpanded: true,
+            decoration: const InputDecoration(labelText: 'LGA'),
+            hint: Text(selectedState.isEmpty
+                ? 'Select State first'
+                : 'Select Local Government'),
+            validator: _validateLga,
+            items: lgas
+                .map((l) => DropdownMenuItem<String>(value: l, child: Text(l)))
+                .toList(),
+            onChanged: selectedState.isEmpty || loading
+                ? null
+                : (value) => setState(() => lgaController.text = value ?? ''),
+          ),
+        ),
+        // 6-7. Shared Password and Confirm Password
+        PasswordField(
+            key: const Key('reg-password'), controller: passwordController),
+        ConfirmPasswordField(
+          key: const Key('reg-confirmPassword'),
           controller: confirmPasswordController,
-          label: 'Confirm password',
-          obscure: hideConfirmPassword,
-          suffixIcon: IconButton(
-            onPressed: () => setState(
-              () => hideConfirmPassword = !hideConfirmPassword,
-            ),
-            icon: Icon(
-              hideConfirmPassword ? Icons.visibility_off : Icons.visibility,
+          passwordController: passwordController,
+        ),
+        // 8. PIN
+        SecretTextField(
+          key: const Key('reg-pin'),
+          controller: pinController,
+          label: 'PIN (4 digits)',
+          secretName: 'PIN',
+          toggleKeyName: 'pin',
+          keyboardType: TextInputType.number,
+          maxLength: 4,
+          inputFormatters: digits,
+          validator: _validatePin,
+        ),
+        // 9. Confirm PIN
+        SecretTextField(
+          key: const Key('reg-confirmPin'),
+          controller: confirmPinController,
+          label: 'Confirm PIN',
+          secretName: 'PIN confirmation',
+          toggleKeyName: 'confirmPin',
+          keyboardType: TextInputType.number,
+          maxLength: 4,
+          inputFormatters: digits,
+          validator: _validateConfirmPin,
+        ),
+        // 10. BVN or NIN
+        identityTypeSelector(),
+        SecretTextField(
+          key: const Key('reg-identity'),
+          controller: ninController,
+          label: 'BVN or NIN (11-digit ${identityType.code})',
+          secretName: identityType.code,
+          toggleKeyName: 'identity',
+          keyboardType: TextInputType.number,
+          maxLength: 11,
+          inputFormatters: digits,
+          validator: _validateIdentity,
+        ),
+        const SizedBox(height: 8),
+        sectionLabel('Additional details'),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 14),
+          child: InkWell(
+            onTap: loading ? null : _pickDob,
+            child: AbsorbPointer(
+              child: TextFormField(
+                key: const Key('reg-dob'),
+                controller: dobController,
+                readOnly: true,
+                validator: _validateDob,
+                decoration: const InputDecoration(
+                  labelText: 'Date of birth',
+                  hintText: 'Select date of birth',
+                  suffixIcon: Icon(Icons.calendar_month_outlined),
+                ),
+              ),
             ),
           ),
         ),
+        Padding(
+          padding: const EdgeInsets.only(bottom: 14),
+          child: DropdownButtonFormField<String>(
+            key: const Key('reg-gender'),
+            value: gender.isEmpty ? null : gender,
+            decoration: const InputDecoration(labelText: 'Gender'),
+            items: const [
+              DropdownMenuItem(value: 'MALE', child: Text('Male')),
+              DropdownMenuItem(value: 'FEMALE', child: Text('Female')),
+              DropdownMenuItem(value: 'OTHER', child: Text('Other')),
+            ],
+            onChanged: loading
+                ? null
+                : (value) => setState(() => gender = value ?? ''),
+          ),
+        ),
+        field(
+          keyName: 'address',
+          controller: addressController,
+          label: 'Residential address',
+          maxLength: 160,
+          validator: _validateAddress,
+        ),
+        referralSection(),
         Container(
           padding: const EdgeInsets.all(14),
-          margin: const EdgeInsets.only(bottom: 16),
+          margin: const EdgeInsets.only(bottom: 8),
           decoration: BoxDecoration(
             color: ServicePayColors.surface,
             borderRadius: BorderRadius.circular(12),
           ),
           child: const Text(
-            'Password must contain at least 8 characters, uppercase, '
-            'lowercase, number and special character.',
+            'ServicePay requires basic identity verification to help '
+            'protect your account and support regulatory compliance. '
+            'Higher account tiers may require additional documents.',
           ),
         ),
-        field(
-          controller: pinController,
-          label: 'Create 4-digit transaction PIN',
-          keyboard: TextInputType.number,
-          obscure: hidePin,
-          maxLength: 4,
-          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-        ),
-        field(
-          controller: confirmPinController,
-          label: 'Confirm transaction PIN',
-          keyboard: TextInputType.number,
-          obscure: hidePin,
-          maxLength: 4,
-          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-        ),
         CheckboxListTile(
+          key: const Key('reg-terms'),
           contentPadding: EdgeInsets.zero,
           value: acceptTerms,
           onChanged: (value) => setState(() => acceptTerms = value ?? false),
@@ -1571,35 +1463,8 @@ class _SecureRegistrationScreenState extends State<SecureRegistrationScreen> {
           ),
           controlAffinity: ListTileControlAffinity.leading,
         ),
-      ],
-    );
-  }
-
-  Widget kycStep() {
-    return ListView(
-      children: [
-        stepHeader(),
-        const SizedBox(height: 24),
-        Container(
-          padding: const EdgeInsets.all(16),
-          margin: const EdgeInsets.only(bottom: 18),
-          decoration: BoxDecoration(
-            color: servicePayGreen.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: const Text(
-            'ServicePay requires basic identity verification to help '
-            'protect your account and support regulatory compliance. '
-            'Higher account tiers may require additional documents.',
-          ),
-        ),
-        field(
-          controller: ninController,
-          label: '11-digit NIN',
-          keyboard: TextInputType.number,
-          maxLength: 11,
-        ),
         CheckboxListTile(
+          key: const Key('reg-kyc'),
           contentPadding: EdgeInsets.zero,
           value: kycConsent,
           onChanged: (value) => setState(() => kycConsent = value ?? false),
@@ -1608,6 +1473,29 @@ class _SecureRegistrationScreenState extends State<SecureRegistrationScreen> {
             'for identity and KYC verification.',
           ),
           controlAffinity: ListTileControlAffinity.leading,
+        ),
+        const SizedBox(height: 16),
+        SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: FilledButton(
+            key: const Key('reg-submit'),
+            style: FilledButton.styleFrom(
+              backgroundColor: ServicePayColors.accent,
+              foregroundColor: ServicePayColors.onAccent,
+            ),
+            onPressed: loading ? null : register,
+            child: loading
+                ? const SizedBox(
+                    height: 22,
+                    width: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: ServicePayColors.onAccent,
+                    ),
+                  )
+                : const Text('Create Account'),
+          ),
         ),
       ],
     );
@@ -1618,55 +1506,16 @@ class _SecureRegistrationScreenState extends State<SecureRegistrationScreen> {
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
-          onPressed: loading ? null : previousStep,
+          onPressed: loading ? null : () => Navigator.maybePop(context),
           icon: const Icon(Icons.arrow_back),
         ),
         title: const Text('Create ServicePay Account'),
       ),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-          child: Column(
-            children: [
-              Expanded(
-                child: PageView(
-                  controller: _pageController,
-                  physics: const NeverScrollableScrollPhysics(),
-                  children: [
-                    personalStep(),
-                    securityStep(),
-                    kycStep(),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                height: 52,
-                child: FilledButton(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: ServicePayColors.accent, foregroundColor: ServicePayColors.onAccent,
-                  ),
-                  onPressed: loading
-                      ? null
-                      : currentStep < 2
-                          ? nextStep
-                          : register,
-                  child: loading
-                      ? const SizedBox(
-                          height: 22,
-                          width: 22,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: ServicePayColors.onAccent,
-                          ),
-                        )
-                      : Text(
-                          currentStep < 2 ? 'Continue' : 'Create Account',
-                        ),
-                ),
-              ),
-            ],
+        child: AutofillGroup(
+          child: Form(
+            key: _formKey,
+            child: registrationForm(),
           ),
         ),
       ),

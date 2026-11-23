@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import 'services/session_store.dart';
+import 'widgets/registration_details_fields.dart';
 
 class CreateStateManagerScreen extends StatefulWidget {
   const CreateStateManagerScreen({super.key});
@@ -32,6 +33,7 @@ class _CreateStateManagerScreenState extends State<CreateStateManagerScreen> {
   final TextEditingController lgaController = TextEditingController();
 
   final TextEditingController passwordController = TextEditingController();
+  final TextEditingController confirmPasswordController = TextEditingController();
 
   bool isSaving = false;
   bool hidePassword = true;
@@ -44,6 +46,7 @@ class _CreateStateManagerScreenState extends State<CreateStateManagerScreen> {
     stateController.dispose();
     lgaController.dispose();
     passwordController.dispose();
+    confirmPasswordController.dispose();
     super.dispose();
   }
 
@@ -81,17 +84,7 @@ class _CreateStateManagerScreenState extends State<CreateStateManagerScreen> {
   }
 
   String? validatePhone(String? value) {
-    final String phone = (value ?? '').toString().trim();
-
-    if (phone.isEmpty) {
-      return 'Phone number is required.';
-    }
-
-    if (!RegExp(r'^\d{11}$').hasMatch(phone)) {
-      return 'Enter a valid 11-digit phone number.';
-    }
-
-    return null;
+    return RegistrationValidators.phone(value);
   }
 
   String? validateEmail(String? value) {
@@ -166,7 +159,7 @@ class _CreateStateManagerScreenState extends State<CreateStateManagerScreen> {
             },
             body: jsonEncode({
               'fullName': fullNameController.text.trim(),
-              'phone': phoneController.text.trim(),
+              'phone': normalizeNigerianPhone(phoneController.text)!,
               'email': emailController.text.trim(),
               'state': stateController.text.trim(),
               'lga': lgaController.text.trim(),
@@ -359,43 +352,22 @@ class _CreateStateManagerScreenState extends State<CreateStateManagerScreen> {
                 ),
               ),
               const SizedBox(height: 21),
-              TextFormField(
+              FullNameField(
                 controller: fullNameController,
-                textCapitalization: TextCapitalization.words,
-                decoration: fieldDecoration(
-                  label: 'Full Name',
-                  icon: Icons.person_outline,
-                  hint: 'Enter full name',
-                ),
                 validator: (String? value) => validateRequired(
                   value,
                   'Full name',
                 ),
               ),
               const SizedBox(height: 14),
-              TextFormField(
+              NigerianPhoneField(
                 controller: phoneController,
-                keyboardType: TextInputType.phone,
-                maxLength: 11,
-                decoration: fieldDecoration(
-                  label: 'Phone Number',
-                  icon: Icons.phone_outlined,
-                  hint: '08012345678',
-                ).copyWith(
-                  counterText: '',
-                ),
                 validator: validatePhone,
               ),
               const SizedBox(height: 14),
-              TextFormField(
+              EmailField(
                 controller: emailController,
-                keyboardType: TextInputType.emailAddress,
-                textCapitalization: TextCapitalization.none,
-                decoration: fieldDecoration(
-                  label: 'Email Address (Optional)',
-                  icon: Icons.email_outlined,
-                  hint: 'manager@example.com',
-                ),
+                label: 'Email Address (Optional)',
                 validator: validateEmail,
               ),
               const SizedBox(height: 14),
@@ -423,27 +395,14 @@ class _CreateStateManagerScreenState extends State<CreateStateManagerScreen> {
                 ),
               ),
               const SizedBox(height: 14),
-              TextFormField(
+              PasswordField(
                 controller: passwordController,
-                obscureText: hidePassword,
-                decoration: fieldDecoration(
-                  label: 'Temporary Password',
-                  icon: Icons.lock_outline,
-                  hint: 'Minimum 6 characters',
-                  suffixIcon: IconButton(
-                    onPressed: () {
-                      setState(() {
-                        hidePassword = !hidePassword;
-                      });
-                    },
-                    icon: Icon(
-                      hidePassword
-                          ? Icons.visibility_outlined
-                          : Icons.visibility_off_outlined,
-                    ),
-                  ),
-                ),
+                label: 'Temporary Password',
                 validator: validatePassword,
+              ),
+              ConfirmPasswordField(
+                controller: confirmPasswordController,
+                passwordController: passwordController,
               ),
               const SizedBox(height: 9),
               Container(

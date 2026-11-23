@@ -5,7 +5,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
-import 'account_statement_screen.dart';
+import 'customer_experience_screen.dart';
 import 'help_support_screen.dart';
 import 'receipt_screen.dart';
 import 'services/support_api_service.dart';
@@ -768,101 +768,13 @@ class _TransactionsScreenState extends State<TransactionsScreen> {
   }
 
   Future<void> _openStatement() async {
-    if (isPreparingStatement) return;
-    setState(() => isPreparingStatement = true);
-
-    try {
-      final String token = (await SessionStore.readToken()) ?? '';
-      if (token.trim().isEmpty) {
-        throw Exception('Your login session has expired.');
-      }
-
-      final Map<String, Map<String, dynamic>> complete = {};
-      String? cursor;
-      bool more = true;
-      int pages = 0;
-
-      while (more && pages < 100) {
-        final Map<String, String> query = <String, String>{'limit': '100'};
-        if (cursor != null && cursor.isNotEmpty) {
-          query['before'] = cursor;
-        }
-        final http.Response response = await http.get(
-          Uri.parse('$baseUrl/transactions').replace(
-            queryParameters: query,
-          ),
-          headers: <String, String>{
-            'Accept': 'application/json',
-            'Authorization': 'Bearer $token',
-          },
-        ).timeout(const Duration(seconds: 30));
-        final dynamic decoded = _decodeResponse(response.body);
-        if (response.statusCode < 200 || response.statusCode >= 300) {
-          throw Exception(
-            _extractMessage(
-              decoded,
-              fallback: 'Unable to prepare your complete statement.',
-            ),
-          );
-        }
-        for (final Map<String, dynamic> item in _extractTransactions(decoded)) {
-          complete[_transactionId(item)] = item;
-        }
-        final Map<String, dynamic> pagination = _extractPagination(decoded);
-        more = pagination['hasMore'] == true;
-        cursor = pagination['nextCursor']?.toString();
-        pages += 1;
-        if (more && (cursor == null || cursor.isEmpty)) {
-          throw Exception('Transaction pagination could not be completed.');
-        }
-      }
-      if (more) {
-        throw Exception(
-          'Your history is too large to export safely right now.',
-        );
-      }
-
-      final List<AccountStatementTransaction> statementTransactions =
-          complete.values.map((Map<String, dynamic> transaction) {
-        final TransactionPresentation presentation =
-            TransactionPresentation(transaction);
-        return AccountStatementTransaction(
-          reference: presentation.reference,
-          description: presentation.description.isEmpty
-              ? presentation.title
-              : presentation.description,
-          amount: presentation.amount.toStringAsFixed(2),
-          occurredAt:
-              presentation.date ?? DateTime.fromMillisecondsSinceEpoch(0),
-          status: presentation.status,
-          direction: presentation.direction == 'CREDIT'
-              ? StatementDirection.credit
-              : StatementDirection.debit,
-        );
-      }).where((AccountStatementTransaction item) {
-        return item.occurredAt.millisecondsSinceEpoch > 0;
-      }).toList();
-
-      if (!mounted) return;
-      Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => AccountStatementScreen(
-            transactions: statementTransactions,
-          ),
-        ),
-      );
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error.toString().replaceFirst('Exception: ', '')),
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => isPreparingStatement = false);
-      }
-    }
+    // Use the same authoritative PDF flow as Wallet. Do not infer balances
+    // from a client-side transaction-history page or export a raster image.
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const GenerateStatementScreen(),
+      ),
+    );
   }
 
   void _showTransactionDetails(

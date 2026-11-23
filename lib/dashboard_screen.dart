@@ -6278,16 +6278,16 @@ class _DashboardScreenState extends State<DashboardScreen>
                         const SizedBox(height: 14),
                         buildSchoolPortalCard(),
                       ],
-                      KeyedSubtree(
-                        key: const Key('customer-recent-activity'),
-                        child: buildRecentActivity(),
-                      ),
-                      const SizedBox(height: 14),
                       CustomerTransactionInsightsSection(
                         client: _client,
                         refreshVersion: _championsRefreshVersion,
                         onOpenHistory: () =>
                             openScreen(const TransactionsScreen()),
+                      ),
+                      const SizedBox(height: 14),
+                      KeyedSubtree(
+                        key: const Key('customer-recent-activity'),
+                        child: buildRecentActivity(),
                       ),
                       if (_referralPresentationPolicy != null) ...[
                         const SizedBox(height: 18),
