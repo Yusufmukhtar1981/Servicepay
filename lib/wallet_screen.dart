@@ -12,6 +12,7 @@ import 'customer_experience_screen.dart';
 import 'servicepay_theme.dart';
 import 'widgets/customer_dashboard_visuals.dart';
 import 'services/customer_feature_config_service.dart';
+import 'business_network/merchant_funding_notice.dart';
 
 class WalletScreen extends StatefulWidget {
   const WalletScreen({super.key});
@@ -868,6 +869,7 @@ class _WalletScreenState extends State<WalletScreen> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               _buildWalletCard(),
+                              const MerchantFundingNotice(),
                               if (walletNotice.isNotEmpty) ...[
                                 const SizedBox(height: 12),
                                 _buildWalletNotice(),

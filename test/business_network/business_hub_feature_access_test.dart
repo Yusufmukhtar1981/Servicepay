@@ -12,7 +12,7 @@ import 'package:servicepay_app/data_screen.dart';
 
 Future<void> _openPurchaseScreen(
   WidgetTester tester,
-  String service, {
+  String? service, {
   bool staffMembership = false,
 }) async {
   final client = MockClient((request) async {
@@ -145,6 +145,7 @@ Future<void> _openPurchaseScreen(
   await tester.pumpAndSettle();
   await tester.tap(cta);
   await tester.pumpAndSettle();
+  if (service == null) return;
   await tester.tap(find.text(service).last);
   await tester.pump();
   await tester.pump(const Duration(milliseconds: 350));
@@ -162,6 +163,21 @@ Future<void> _closePurchaseScreen(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('business purchases cannot silently fall back to Customer-only pricing',
+      (tester) async {
+    await _openPurchaseScreen(tester, null);
+    for (final service in ['Electricity', 'Cable TV']) {
+      final tile = tester.widget<ListTile>(find.widgetWithText(ListTile, service));
+      expect(tile.enabled, false);
+      expect(tile.onTap, isNull);
+    }
+    expect(tester.widget<ListTile>(
+      find.widgetWithText(ListTile, 'Data')).enabled, true);
+    Navigator.of(tester.element(find.text('Choose a bill payment'))).pop();
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('approved Agent purchase passes AGENT to Airtime screen',
       (tester) async {
     await _openPurchaseScreen(tester, 'Airtime');

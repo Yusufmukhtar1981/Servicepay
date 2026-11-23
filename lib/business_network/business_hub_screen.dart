@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
@@ -27,7 +28,8 @@ class BusinessHubScreen extends StatefulWidget {
   State<BusinessHubScreen> createState() => _BusinessHubScreenState();
 }
 
-class _BusinessHubScreenState extends State<BusinessHubScreen> {
+class _BusinessHubScreenState extends State<BusinessHubScreen>
+    with WidgetsBindingObserver {
   late final BusinessNetworkApi _api = widget.api ?? BusinessNetworkApi();
   Map<String, dynamic>? _me;
   String? _error;
@@ -37,31 +39,84 @@ class _BusinessHubScreenState extends State<BusinessHubScreen> {
   String _kind = 'AGENT';
   String? _selectedProfileId;
   Map<String, dynamic>? _selectedMembership;
+  Timer? _approvalRefresh;
+  int _meRequest = 0;
+  Future<bool>? _meFuture;
+  bool _foregroundRefreshRequired = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadMe();
   }
 
   @override
   void dispose() {
+    _approvalRefresh?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     if (widget.api == null) _api.close();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) {
+      _approvalRefresh?.cancel();
+      _approvalRefresh = null;
+      if (!_foregroundRefreshRequired) _meRequest++;
+      _foregroundRefreshRequired = true;
+    }
+    // An earlier request may still be waiting after backgrounding. A fresh
+    // foreground read supersedes it; _meRequest prevents stale access restoring.
+    if (state == AppLifecycleState.resumed &&
+        mounted &&
+        _foregroundRefreshRequired) {
+      _foregroundRefreshRequired = false;
+      _fetchMe(supersede: true);
+    }
+  }
+
+  void _scheduleApprovalRefresh() {
+    _approvalRefresh?.cancel();
+    _approvalRefresh = null;
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    final applications = _me?['applications'];
+    if (!mounted ||
+        (lifecycle != null && lifecycle != AppLifecycleState.resumed) ||
+        applications is! List ||
+        !applications.any((row) => row is Map &&
+            ['SUBMITTED', 'UNDER_REVIEW'].contains(row['status']))) {
+      return;
+    }
+    _approvalRefresh = Timer(const Duration(seconds: 20), () {
+      if (mounted && !_loading) _fetchMe();
+    });
   }
 
   Future<void> _loadMe() async {
     await _fetchMe();
   }
 
-  Future<bool> _fetchMe() async {
+  Future<bool> _fetchMe({bool supersede = false}) {
+    if (!supersede && _meFuture != null) return _meFuture!;
+    final future = _performMeFetch();
+    _meFuture = future;
+    future.whenComplete(() {
+      if (identical(_meFuture, future)) _meFuture = null;
+    });
+    return future;
+  }
+
+  Future<bool> _performMeFetch() async {
+    final request = ++_meRequest;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
       final data = await _api.get('me');
-      if (mounted) {
+      if (mounted && request == _meRequest) {
         setState(() {
           _me = Map<String, dynamic>.from(data as Map);
           _meRevision++;
@@ -82,14 +137,16 @@ class _BusinessHubScreenState extends State<BusinessHubScreen> {
           }
           _loading = false;
         });
+        _scheduleApprovalRefresh();
       }
-      return true;
+      return mounted && request == _meRequest;
     } catch (e) {
-      if (mounted) {
+      if (mounted && request == _meRequest) {
         setState(() {
           _error = e.toString();
           _loading = false;
         });
+        _scheduleApprovalRefresh();
       }
       return false;
     }
@@ -1354,9 +1411,15 @@ Future<void> _openBillPayment(
               const SizedBox(height: 8),
               ...['Airtime', 'Data', 'Electricity', 'Cable TV'].map(
                 (name) => ListTile(
+                  enabled: businessKind == null || name == 'Airtime' || name == 'Data',
                   title: Text(name),
+                  subtitle: businessKind != null && name != 'Airtime' && name != 'Data'
+                      ? const Text('Business pricing is not integrated. Use Customer services for personal purchases.')
+                      : null,
                   leading: const Icon(Icons.receipt_long_outlined),
-                  onTap: () => Navigator.pop(context, name),
+                  onTap: businessKind != null && name != 'Airtime' && name != 'Data'
+                      ? null
+                      : () => Navigator.pop(context, name),
                 ),
               ),
             ],
@@ -1416,6 +1479,11 @@ class _MerchantManagementState extends State<_MerchantManagement> {
   }
 
   bool _canManage(List<String> keys) {
+    final legacy = _featureFor(const ['merchantStaff']);
+    if (legacy != null &&
+        !businessFeatureAvailableForKind(legacy, 'MERCHANT')) {
+      return false;
+    }
     final feature = _featureFor(keys);
     return feature == null ||
         businessFeatureAvailableForKind(feature, 'MERCHANT');

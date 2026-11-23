@@ -8,6 +8,7 @@ import 'package:http/testing.dart';
 import 'package:servicepay_app/business_network/business_hub_screen.dart';
 import 'package:servicepay_app/business_network/business_network_api.dart';
 import 'package:servicepay_app/business_network/business_transaction_record_screen.dart';
+import 'package:servicepay_app/servicepay_theme.dart';
 
 Future<void> _scrollTo(WidgetTester tester, Finder target) async {
   final verticalScrollable = find
@@ -41,6 +42,125 @@ Future<void> _scrollTo(WidgetTester tester, Finder target) async {
 }
 
 void main() {
+  testWidgets('foreground refresh supersedes slow reads without duplicate requests',
+      (tester) async {
+    var calls = 0;
+    final oldResponse = Completer<http.Response>();
+    final foregroundResponse = Completer<http.Response>();
+    http.Response response(String status) => http.Response(jsonEncode({
+      'success': true,
+      'data': {
+        'customer': {'_id': 'owner-fixture'},
+        'applications': [{
+          '_id': 'merchant-fixture', 'owner': 'owner-fixture',
+          'kind': 'MERCHANT', 'status': status,
+        }],
+        'memberships': [],
+      },
+    }), 200);
+    final client = MockClient((request) async {
+      expectSync(request.url.path, '/api/business-network/me');
+      calls++;
+      if (calls == 2) return oldResponse.future;
+      if (calls == 3) return foregroundResponse.future;
+      return response('SUBMITTED');
+    });
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpWidget(MaterialApp(home: BusinessHubScreen(
+      api: BusinessNetworkApi(client: client,
+        tokenProvider: () async => 'fixture-token',
+        baseUrl: 'https://example.invalid/api'),
+    )));
+    await tester.pumpAndSettle();
+    expect(calls, 1);
+    await tester.pump(const Duration(seconds: 21));
+    await tester.pump();
+    expect(calls, 2);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump(const Duration(seconds: 1));
+    expect(calls, 2);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+    expect(calls, 3, reason: 'Repeated resumed notifications must not duplicate reads');
+    await tester.tap(find.byTooltip('Refresh'));
+    await tester.pumpAndSettle();
+    expect(calls, 3, reason: 'Manual refresh shares the in-flight foreground read');
+    foregroundResponse.complete(response('APPROVED'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('APPROVED'), findsOneWidget);
+    oldResponse.complete(response('SUBMITTED'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('APPROVED'), findsOneWidget,
+        reason: 'An older background response cannot restore stale permissions');
+    await tester.pump(const Duration(seconds: 21));
+    expect(calls, 3);
+    await tester.pumpWidget(const SizedBox.shrink());
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    client.close();
+  });
+
+  testWidgets('approval refresh stops in background and updates owner status on resume',
+      (tester) async {
+    var calls = 0;
+    final client = MockClient((request) async {
+      expectSync(request.url.path, '/api/business-network/me');
+      calls++;
+      return http.Response(jsonEncode({
+        'success': true,
+        'data': {
+          'customer': {'_id': 'owner-fixture'},
+          'applications': [{
+            '_id': 'merchant-fixture', 'owner': 'owner-fixture',
+            'kind': 'MERCHANT', 'status': calls >= 3 ? 'APPROVED' : 'SUBMITTED',
+          }],
+          'memberships': [],
+        },
+      }), 200);
+    });
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpWidget(MaterialApp(home: BusinessHubScreen(
+      api: BusinessNetworkApi(client: client,
+        tokenProvider: () async => 'fixture-token',
+        baseUrl: 'https://example.invalid/api'),
+    )));
+    await tester.pumpAndSettle();
+    expect(calls, 1);
+    await tester.pump(const Duration(seconds: 21));
+    await tester.pumpAndSettle();
+    expect(calls, 2);
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pumpAndSettle();
+    expect(find.byType(CircularProgressIndicator), findsNothing,
+      reason: 'The second request must complete before backgrounding');
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump(const Duration(seconds: 25));
+    expect(calls, 2);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    await tester.pumpAndSettle();
+    expect(tester.binding.lifecycleState, AppLifecycleState.resumed);
+    expect(find.byType(BusinessHubScreen), findsOneWidget);
+    expect(tester.state(find.byType(BusinessHubScreen)).mounted, isTrue);
+    expect(tester.state(find.byType(BusinessHubScreen)),
+        isA<WidgetsBindingObserver>());
+    expect(calls, 3);
+    expect(find.textContaining('APPROVED'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 21));
+    expect(calls, 3, reason: 'Approved profiles must not keep polling');
+    await tester.pumpWidget(const SizedBox.shrink());
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    client.close();
+  });
+
   testWidgets('hub exposes both independent application paths', (tester) async {
     final client = MockClient((request) async {
       expect(request.url.path, '/api/business-network/me');
@@ -80,7 +200,7 @@ void main() {
 
   testWidgets('Business Hub AppBar overrides inherited white foreground styles',
       (tester) async {
-    const ink = Color(0xFF18372A);
+    const ink = ServicePayColors.accent;
     final client = MockClient((request) async => http.Response(
           jsonEncode({
             'success': true,
