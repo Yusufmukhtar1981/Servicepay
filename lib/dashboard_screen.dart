@@ -5655,7 +5655,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                   const Expanded(
                     child: Text(
                       'Recent Activity',
-                      maxLines: 1,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: CustomerDashboardPalette.text,
@@ -5664,8 +5664,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                       ),
                     ),
                   ),
-                  Flexible(
-                    child: TextButton(
+                  TextButton(
                     key: const Key('dashboard-see-all-transactions'),
                     onPressed: () => openScreen(const TransactionsScreen()),
                     style: TextButton.styleFrom(
@@ -5694,7 +5693,6 @@ class _DashboardScreenState extends State<DashboardScreen>
                         const Icon(Icons.chevron_right_rounded, size: 17),
                       ],
                     ),
-                  ),
                   ),
                 ],
               );
