@@ -1765,16 +1765,29 @@ class _AnnouncementSurfaceState extends State<AnnouncementSurface> {
           : (right.createdAt ?? DateTime(1970))
               .compareTo(left.createdAt ?? DateTime(1970)));
     final List<Widget> children = <Widget>[];
-    children.add(
-      AnnouncementPromotionCarousel(
-        announcements: banners,
-        onDismiss: _dismissBanner,
-        onAcknowledge: (item) => unawaited(_acknowledgeBanner(item)),
-        onAction: (item) => unawaited(_action(item)),
-        referralPolicy: widget.referralPolicy,
-        onReferralAction: widget.onReferralAction,
-      ),
-    );
+    if (banners.isNotEmpty) {
+      children.add(
+        AnnouncementPromotionCarousel(
+          announcements: banners,
+          onDismiss: _dismissBanner,
+          onAcknowledge: (item) => unawaited(_acknowledgeBanner(item)),
+          onAction: (item) => unawaited(_action(item)),
+          referralPolicy: widget.referralPolicy,
+          onReferralAction: widget.onReferralAction,
+        ),
+      );
+    } else if (widget.referralPolicy != null) {
+      children.add(
+        AnnouncementPromotionCarousel(
+          announcements: const <ServicePayAnnouncement>[],
+          onDismiss: _dismissBanner,
+          onAcknowledge: (item) => unawaited(_acknowledgeBanner(item)),
+          onAction: (item) => unawaited(_action(item)),
+          referralPolicy: widget.referralPolicy,
+          onReferralAction: widget.onReferralAction,
+        ),
+      );
+    }
     for (final ServicePayAnnouncement item in _trackedBanners) {
       children.add(
         RewardProgressCard(
