@@ -25,6 +25,8 @@ class StartupSessionGate extends StatefulWidget {
     this.preferencesLoader = SharedPreferences.getInstance,
     this.requestTimeout = const Duration(seconds: 10),
     this.authenticatedHomeOverride,
+    this.noSessionHome,
+    this.now = DateTime.now,
   });
 
   static const String baseUrl = 'https://api.servicepay.ng/api';
@@ -33,6 +35,11 @@ class StartupSessionGate extends StatefulWidget {
   final Future<SharedPreferences> Function() preferencesLoader;
   final Duration requestTimeout;
   final Widget? authenticatedHomeOverride;
+
+  /// Public web content is allowed only when no saved session exists. Expired
+  /// or rejected sessions still return to Login, never to a protected screen.
+  final Widget? noSessionHome;
+  final DateTime Function() now;
 
   @override
   State<StartupSessionGate> createState() => _StartupSessionGateState();
@@ -69,6 +76,7 @@ class _StartupSessionGateState extends State<StartupSessionGate> {
   StartupSessionState _state = StartupSessionState.checking;
   Widget? _authenticatedHome;
   bool _requestInFlight = false;
+  bool _noSavedSession = false;
   int _requestGeneration = 0;
 
   @override
@@ -169,16 +177,24 @@ class _StartupSessionGateState extends State<StartupSessionGate> {
     if (_requestInFlight) return;
     _requestInFlight = true;
     final int generation = ++_requestGeneration;
+    final deadline = widget.now().add(widget.requestTimeout);
+    Future<T> withinStartupBudget<T>(Future<T> operation) {
+      final remaining = deadline.difference(widget.now());
+      return operation
+          .timeout(remaining.isNegative ? Duration.zero : remaining);
+    }
 
     try {
       final SharedPreferences preferences =
-          await widget.preferencesLoader().timeout(widget.requestTimeout);
-      final String token =
-          await RiderAuthSession.token(preferences: preferences);
+          await withinStartupBudget(widget.preferencesLoader());
+      final String token = await withinStartupBudget(
+          RiderAuthSession.token(preferences: preferences));
       if (token.isEmpty) {
+        _noSavedSession = true;
         _showLoggedOut();
         return;
       }
+      _noSavedSession = false;
 
       if (preferences.getBool('must_change_password') == true) {
         final String encodedContext =
@@ -217,13 +233,13 @@ class _StartupSessionGateState extends State<StartupSessionGate> {
         return;
       }
 
-      final http.Response response = await _client.get(
+      final http.Response response = await withinStartupBudget(_client.get(
         Uri.parse('${StartupSessionGate.baseUrl}/auth/profile'),
         headers: <String, String>{
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',
         },
-      ).timeout(widget.requestTimeout);
+      ));
 
       if (generation != _requestGeneration || !mounted) return;
       if (response.statusCode == 401) {
@@ -323,7 +339,9 @@ class _StartupSessionGateState extends State<StartupSessionGate> {
   Widget build(BuildContext context) {
     switch (_state) {
       case StartupSessionState.loggedOut:
-        return const LoginScreen();
+        return _noSavedSession && widget.noSessionHome != null
+            ? widget.noSessionHome!
+            : const LoginScreen();
       case StartupSessionState.authenticated:
         return _authenticatedHome ?? const LoginScreen();
       case StartupSessionState.recoverableError:

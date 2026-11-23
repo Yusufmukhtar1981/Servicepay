@@ -15,10 +15,8 @@ import 'privacy_policy_screen.dart';
 import 'public_website_screen.dart';
 import 'register_screen.dart';
 import 'referral_attribution_service.dart';
-import 'services/session_store.dart';
 import 'edupay/edupay_screen.dart' deferred as edupay;
 import 'widgets/deferred_screen.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'rider/rider_delivery_alert_service.dart';
 import 'rider/rider_auth_session.dart';
@@ -356,51 +354,19 @@ class _ServicePayAppState extends State<ServicePayApp> {
 /// Keeps the public website as the signed-out web root while restoring an
 /// existing authenticated session. This intentionally does not change the
 /// shared StartupSessionGate logged-out behavior used by native and login.
-class WebLandingSessionGate extends StatefulWidget {
+class WebLandingSessionGate extends StatelessWidget {
   const WebLandingSessionGate({super.key, this.edupayEntry = false});
 
   final bool edupayEntry;
 
   @override
-  State<WebLandingSessionGate> createState() => _WebLandingSessionGateState();
-}
-
-class _WebLandingSessionGateState extends State<WebLandingSessionGate> {
-  bool _checking = true;
-  bool _hasSession = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _checkSession();
-  }
-
-  Future<void> _checkSession() async {
-    try {
-      // SharedPreferences is retained here for compatibility with older
-      // sessions; SessionStore is the authoritative token location.
-      final token = (await SessionStore.readToken())?.trim() ?? '';
-      if (mounted) {
-        setState(() {
-          _hasSession = token.isNotEmpty;
-          _checking = false;
-        });
-      }
-    } catch (_) {
-      if (mounted) setState(() => _checking = false);
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
-    if (_checking) {
-      return const ServicePayStartupScreen();
-    }
-    if (!_hasSession) {
-      return const PublicWebsiteScreen();
-    }
+    // A single bounded gate reads storage and verifies a saved token once.
+    // No session gets the existing public landing page; a rejected/expired
+    // session still gets Login. The local splash hint grants no authorization.
     return StartupSessionGate(
-      authenticatedHomeOverride: widget.edupayEntry
+      noSessionHome: const PublicWebsiteScreen(),
+      authenticatedHomeOverride: edupayEntry
           ? DeferredScreen(
               load: edupay.loadLibrary, builder: () => edupay.EduPayScreen())
           : null,

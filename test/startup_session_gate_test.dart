@@ -283,4 +283,80 @@ void main() {
     expect((await preferences()).getString('auth_token'), isNull);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('public landing is allowed only with no saved session',
+      (tester) async {
+    var calls = 0;
+    final client = MockClient((_) async {
+      calls++;
+      return http.Response('{}', 500);
+    });
+    await tester.pumpWidget(MaterialApp(
+        home: StartupSessionGate(
+      client: client,
+      noSessionHome: const Text('Public landing'),
+    )));
+    await tester.pumpAndSettle();
+    expect(find.text('Public landing'), findsOneWidget);
+    expect(calls, 0);
+  });
+
+  testWidgets('expired sessions go to Login, not the anonymous landing',
+      (tester) async {
+    await SessionStore.writeToken('expired-test-token');
+    await tester.pumpWidget(MaterialApp(
+        home: StartupSessionGate(
+      client: MockClient((_) async => http.Response('{}', 401)),
+      noSessionHome: const Text('Public landing'),
+      authenticatedHomeOverride: const Text('Protected home'),
+    )));
+    await tester.pumpAndSettle();
+    expect(find.byType(LoginScreen), findsOneWidget);
+    expect(find.text('Public landing'), findsNothing);
+    expect(find.text('Protected home'), findsNothing);
+    expect(await SessionStore.readToken(), isNull);
+  });
+
+  testWidgets('stalled local storage offers recovery without an API request',
+      (tester) async {
+    var calls = 0;
+    await tester.pumpWidget(MaterialApp(
+        home: StartupSessionGate(
+      client: MockClient((_) async {
+        calls++;
+        return http.Response('{}', 200);
+      }),
+      preferencesLoader: () => Completer<SharedPreferences>().future,
+      requestTimeout: const Duration(milliseconds: 100),
+    )));
+    await tester.pump(const Duration(milliseconds: 110));
+    expect(find.byKey(const Key('startup-retry')), findsOneWidget);
+    expect(calls, 0);
+  });
+
+  testWidgets('storage and profile share one total startup time budget',
+      (tester) async {
+    await SessionStore.writeToken('unverified-test-token');
+    var calls = 0;
+    await tester.pumpWidget(MaterialApp(
+        home: StartupSessionGate(
+      client: MockClient((_) async {
+        calls++;
+        return Completer<http.Response>().future;
+      }),
+      preferencesLoader: () async {
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+        return preferences();
+      },
+      requestTimeout: const Duration(milliseconds: 100),
+      now: tester.binding.clock.now,
+      authenticatedHomeOverride: const Text('Protected home'),
+    )));
+    await tester.pump(const Duration(milliseconds: 80));
+    expect(calls, 1);
+    await tester.pump(const Duration(milliseconds: 25));
+    expect(find.byKey(const Key('startup-retry')), findsOneWidget);
+    expect(find.text('Protected home'), findsNothing);
+    expect(await SessionStore.readToken(), 'unverified-test-token');
+  });
 }

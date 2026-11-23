@@ -1,4 +1,4 @@
-"""Stamp a compiled web release; never read credentials or application data."""
+"""Stamp the existing native Render web release without credentials or app data."""
 import hashlib
 import json
 import pathlib
@@ -7,15 +7,13 @@ import sys
 
 
 def version_customer_scripts(root):
-    """Give each deferred part and entry script a byte-specific URL."""
     main_path = root / "main.dart.js"
     main = main_path.read_text()
     parts = sorted(set(re.findall(r"main\.dart\.js_\d+\.part\.js", main)))
     versioned_parts = []
     for name in parts:
-        data = (root / name).read_bytes()  # Missing parts must fail the release.
-        digest = hashlib.sha256(data).hexdigest()
-        versioned = name.replace(".part.js", f".{digest}.part.js")
+        data = (root / name).read_bytes()
+        versioned = name.replace(".part.js", f".{hashlib.sha256(data).hexdigest()}.part.js")
         (root / versioned).write_bytes(data)
         main = main.replace(name, versioned)
         versioned_parts.append(versioned)
@@ -27,12 +25,9 @@ def version_customer_scripts(root):
     entrypoint = re.compile(r'("mainJsPath"\s*:\s*)"main\.dart\.js"')
     if len(entrypoint.findall(bootstrap)) != 1:
         raise ValueError("Expected exactly one Flutter main entrypoint")
-    bootstrap_path.write_text(
-        entrypoint.sub(lambda match: match.group(1) + json.dumps(main_name), bootstrap)
-    )
-    bootstrap_name = (
-        f"flutter_bootstrap.{hashlib.sha256(bootstrap_path.read_bytes()).hexdigest()}.js"
-    )
+    bootstrap_path.write_text(entrypoint.sub(
+        lambda match: match.group(1) + json.dumps(main_name), bootstrap))
+    bootstrap_name = f"flutter_bootstrap.{hashlib.sha256(bootstrap_path.read_bytes()).hexdigest()}.js"
     (root / bootstrap_name).write_bytes(bootstrap_path.read_bytes())
     return bootstrap_name, main_name, versioned_parts
 
@@ -47,60 +42,38 @@ def stamp(directory, component, commit):
     html = (root / "index.html").read_text()
     loader = re.compile(
         r"""<script\b[^>]*\bsrc=["']flutter_bootstrap\.js(?:\?[^"']*)?["'][^>]*>\s*</script>""",
-        re.IGNORECASE,
-    )
+        re.IGNORECASE)
     if len(loader.findall(html)) != 1:
         raise ValueError("Expected exactly one Flutter bootstrap script")
-    bootstrap_name = "flutter_bootstrap.js"
-    main_name = "main.dart.js"
-    deferred_parts = []
+    bootstrap_name, main_name, deferred_parts = "flutter_bootstrap.js", "main.dart.js", []
     if component == "customer":
         bootstrap_name, main_name, deferred_parts = version_customer_scripts(root)
-    replacement = """
-<script>
-window.SERVICEPAY_BUILD_VERSION = __COMMIT_JSON__;
-window.SERVICEPAY_COMPONENT = __COMPONENT_JSON__;
-(async function () {
-  try {
-    if ("serviceWorker" in navigator) {
-      const registrations = await navigator.serviceWorker.getRegistrations();
-      await Promise.all(registrations.map(registration => registration.unregister()));
-    }
-    if ("caches" in window) {
-      const names = await caches.keys();
-      await Promise.all(names.filter(name => name.startsWith("flutter-"))
-        .map(name => caches.delete(name)));
-    }
-  } catch (error) {
-    console.warn("ServicePay legacy cache cleanup failed", error);
-  }
-  const script = document.createElement("script");
-  script.src = __BOOTSTRAP_URL_JSON__;
-  script.async = true;
-  document.body.appendChild(script);
-})();
-</script>
-""".replace("__COMMIT_JSON__", json.dumps(commit)).replace(
-        "__COMPONENT_JSON__", json.dumps(component)
-    ).replace(
-        "__BOOTSTRAP_URL_JSON__",
-        json.dumps(bootstrap_name if component == "customer"
-                   else "flutter_bootstrap.js?v=" + commit),
-    )
+        preloads = (
+            f'<link rel="preload" as="script" href="{main_name}" fetchpriority="high">\n'
+            f'<link rel="preload" as="script" href="{bootstrap_name}">\n')
+        if html.count("</head>") != 1:
+            raise ValueError("Expected one HTML head for deterministic preloading")
+        html = html.replace("</head>", preloads + "</head>", 1)
+        runtime = pathlib.Path(__file__).with_name("customer_startup.js").read_text()
+        config = json.dumps({"bootstrap": bootstrap_name})
+        replacement = (
+            f"<script>window.SERVICEPAY_BUILD_VERSION={json.dumps(commit)};"
+            f"window.SERVICEPAY_COMPONENT={json.dumps(component)};"
+            f"window.SERVICEPAY_STARTUP={config};\n{runtime}\n</script>")
+    else:
+        # Admin isn't released by this Customer-only optimization.
+        raise ValueError("Use the unchanged Admin release stamper for Admin builds")
     (root / "index.html").write_text(loader.sub(lambda _: replacement, html))
     worker = root / "flutter_service_worker.js"
     if worker.is_file():
         worker.unlink()
     manifest = {
-        "component": component,
-        "commit": commit,
+        "component": component, "commit": commit,
         "entrypoints": {"bootstrap": bootstrap_name, "main": main_name},
         "deferredParts": deferred_parts,
         "sha256": {
             name: hashlib.sha256((root / name).read_bytes()).hexdigest()
-            for name in dict.fromkeys(
-                [*required, bootstrap_name, main_name, *deferred_parts]
-            )
+            for name in dict.fromkeys([*required, bootstrap_name, main_name, *deferred_parts])
         },
     }
     (root / "release.json").write_text(json.dumps(manifest, indent=2) + "\n")
