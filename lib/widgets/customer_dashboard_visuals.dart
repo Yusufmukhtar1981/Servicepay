@@ -3,31 +3,30 @@ import 'package:flutter/material.dart';
 /// Customer-home colors are intentionally scoped here so staff dashboards keep
 /// the palette defined by the shared application theme.
 abstract final class CustomerDashboardPalette {
-  static const navy = Color(0xFF062F24);
+  static const navy = Color(0xFF07373B);
   /// Turquoise highlight for Customer Dashboard icons and key accents.
   static const royalBlue = serviceCyan;
-  /// Unified Customer Home icon and active-navigation identity.
+  /// Turquoise controls and active navigation from the phone reference.
   static const serviceCyan = Color(0xFF22D3EE);
-  /// Opaque, softly turquoise-tinted well on the dark green service cards.
-  static const serviceIconWell = Color(0xFF105443);
-  static const teal = Color(0xFF078553);
-  static const canvas = Color(0xFF062F24);
-  static const card = Color(0xFF083B2B);
-  static const serviceCard = Color(0xFF0B3026);
+  static const teal = Color(0xFF009C9C);
+  static const canvas = Color(0xFF07373B);
+  static const card = Color(0xFF0E6267);
+  static const serviceCard = Color(0xFF0C585D);
   static const success = Color(0xFF5BE3A9);
   static const warning = Color(0xFFFFC56B);
   static const error = Color(0xFFFF9A8B);
   static const muted = softText;
-  static const border = Color(0xFF16845F);
-  static const paleBlue = Color(0xFF0A3529);
+  static const border = Color(0xFF2B8C8D);
+  static const paleBlue = Color(0xFF0B6064);
   static const text = Color(0xFFFFFFFF);
   static const softText = Color(0xFFB8D8CC);
-  static const walletStart = Color(0xFF078553);
-  static const walletEnd = Color(0xFF086447);
-  /// White foreground for both wallet gradient endpoints (>= 4.5:1).
+  static const walletStart = Color(0xFF009C9C);
+  static const walletEnd = Color(0xFF007C80);
+  /// White wallet text, with a large balance on the reference's teal gradient.
   static const onWallet = Color(0xFFFFFFFF);
   /// Darker inset fill for secondary wallet actions; carries white text.
-  static const walletInset = Color(0xFF0B382D);
+  static const walletInset = Color(0xFF0A6A70);
+  static const walletAction = Color(0xFF2BE4DD);
 
   /// ServicePay bright green for active segmented selections.
   static const activeGreen = Color(0xFF20D69A);
@@ -42,25 +41,28 @@ abstract final class CustomerDashboardPalette {
   static const seriesAmber = Color(0xFFFBBF24);
 }
 
-/// The nine Home shortcuts share the approved turquoise identity.
+/// Restore the original individual service identities from the phone reference.
 abstract final class CustomerServiceColors {
   static const Map<String, Color> byTitle = <String, Color>{
-    'Data': CustomerDashboardPalette.serviceCyan,
-    'Airtime': CustomerDashboardPalette.serviceCyan,
-    'Delivery': CustomerDashboardPalette.serviceCyan,
-    'NIN Verification': CustomerDashboardPalette.serviceCyan,
-    'Marketplace': CustomerDashboardPalette.serviceCyan,
-    'Electricity': CustomerDashboardPalette.serviceCyan,
-    'EduPay': CustomerDashboardPalette.serviceCyan,
-    'Keke Napep': CustomerDashboardPalette.serviceCyan,
-    'Flight Booking': CustomerDashboardPalette.serviceCyan,
+    'Data': Color(0xFF38BDF8),
+    'Airtime': Color(0xFF2DD4BF),
+    'Delivery': Color(0xFFFB923C),
+    'NIN Verification': Color(0xFFA78BFA),
+    'Marketplace': Color(0xFFFBBF24),
+    'Electricity': Color(0xFFFDE047),
+    'EduPay': Color(0xFF818CF8),
+    'Keke Napep': Color(0xFFFB7185),
+    'Flight Booking': Color(0xFF60A5FA),
   };
 
-  /// Uniform icon colour without changing a service's identity or route.
+  /// Colours do not change service identity, availability or navigation.
   static Color iconFor(String title) =>
       byTitle[title] ?? CustomerDashboardPalette.serviceCyan;
 
-  static Color tintFor(String title) => CustomerDashboardPalette.serviceIconWell;
+  static Color tintFor(String title) => Color.alphaBlend(
+        iconFor(title).withValues(alpha: .16),
+        CustomerDashboardPalette.canvas,
+      );
 }
 
 class CustomerServiceGlyph extends StatelessWidget {

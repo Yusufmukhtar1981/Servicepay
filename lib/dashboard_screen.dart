@@ -2511,7 +2511,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     return Material(
       key: key,
       color: filled
-          ? ServicePayColors.accent
+          ? CustomerDashboardPalette.walletAction
           : CustomerDashboardPalette.walletInset,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
@@ -2531,7 +2531,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 icon,
                 size: 20,
                 color: filled
-                    ? ServicePayColors.onAccent
+                    ? CustomerDashboardPalette.canvas
                     : CustomerDashboardPalette.onWallet,
               ),
               const SizedBox(height: 3),
@@ -2541,7 +2541,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                 softWrap: true,
                 style: TextStyle(
                   color: filled
-                    ? ServicePayColors.onAccent
+                    ? CustomerDashboardPalette.canvas
                     : CustomerDashboardPalette.onWallet,
                   fontSize: 15,
                   fontWeight: FontWeight.w700,
@@ -3033,7 +3033,10 @@ class _DashboardScreenState extends State<DashboardScreen>
           onTap: service.onTap,
           borderRadius: BorderRadius.circular(15),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 5),
+            padding: EdgeInsets.symmetric(
+              horizontal: MediaQuery.sizeOf(context).width < 360 ? 1 : 4,
+              vertical: 5,
+            ),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(15),
               border: Border.all(color: CustomerDashboardPalette.border),
@@ -3167,7 +3170,12 @@ class _DashboardScreenState extends State<DashboardScreen>
 
     return Container(
       key: const Key('customer-quick-services'),
-      padding: const EdgeInsets.fromLTRB(14, 15, 14, 14),
+      padding: EdgeInsets.fromLTRB(
+        MediaQuery.sizeOf(context).width < 360 ? 8 : 14,
+        15,
+        MediaQuery.sizeOf(context).width < 360 ? 8 : 14,
+        14,
+      ),
       decoration: BoxDecoration(
         color: CustomerDashboardPalette.paleBlue,
         borderRadius: BorderRadius.circular(21),
@@ -3186,7 +3194,8 @@ class _DashboardScreenState extends State<DashboardScreen>
             builder: (BuildContext context, BoxConstraints constraints) {
               final double gridSpacing = constraints.maxWidth < 340 ? 6 : 8;
               final double labelWidth =
-                  (constraints.maxWidth - 2 * gridSpacing) / 3 - 10;
+                  (constraints.maxWidth - 2 * gridSpacing) / 3 -
+                      (MediaQuery.sizeOf(context).width < 360 ? 4 : 10);
               double labelHeight = 0;
               for (final _DashboardService service in quick) {
                 final TextPainter painter = TextPainter(
@@ -3279,33 +3288,29 @@ class _DashboardScreenState extends State<DashboardScreen>
       ),
       child: Row(
         children: <Widget>[
+          const CustomerServiceGlyph(
+            icon: Icons.account_balance_rounded,
+            backgroundColor: CustomerDashboardPalette.paleBlue,
+            iconColor: CustomerDashboardPalette.royalBlue,
+            size: 34,
+            iconSize: 20,
+            radius: 17,
+          ),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                const Row(
-                  children: <Widget>[
-                    Icon(
-                      Icons.account_balance_rounded,
-                      color: CustomerDashboardPalette.royalBlue,
-                      size: 16,
-                    ),
-                    SizedBox(width: 6),
-                    Expanded(
-                      child: Text(
-                        'ServicePay Account',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          color: CustomerDashboardPalette.muted,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: .45,
-                        ),
-                      ),
-                    ),
-                  ],
+                const Text(
+                  'SERVICEPAY · ACCOUNT NUMBER',
+                  maxLines: 2,
+                  style: TextStyle(
+                    color: CustomerDashboardPalette.text,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: .45,
+                  ),
                 ),
                 const SizedBox(height: 4),
                 FittedBox(
@@ -4277,7 +4282,12 @@ class _DashboardScreenState extends State<DashboardScreen>
 
     return Container(
       key: const Key('customer-dashboard-header'),
-      padding: const EdgeInsets.fromLTRB(18, 12, 18, 16),
+      padding: EdgeInsets.fromLTRB(
+        MediaQuery.sizeOf(context).width < 360 ? 12 : 18,
+        12,
+        MediaQuery.sizeOf(context).width < 360 ? 12 : 18,
+        16,
+      ),
       decoration: BoxDecoration(
         color: CustomerDashboardPalette.card,
         borderRadius: BorderRadius.circular(22),

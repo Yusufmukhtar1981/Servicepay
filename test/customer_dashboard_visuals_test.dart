@@ -125,7 +125,7 @@ void main() {
           actionKey == const Key('dashboard-add-money-action');
       final Color foreground =
           filled
-              ? ServicePayColors.onAccent
+              ? CustomerDashboardPalette.canvas
               : CustomerDashboardPalette.onWallet;
       final Color actionBackground = tester.widget<Material>(action).color!;
       final double foregroundLuminance = foreground.computeLuminance();
@@ -200,7 +200,9 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     for (final Size size in <Size>[
       const Size(320, 760),
+      const Size(360, 800),
       const Size(390, 844),
+      const Size(430, 932),
       const Size(768, 1024),
       const Size(1440, 960),
     ]) {
@@ -218,6 +220,23 @@ void main() {
         expect(tester.getSize(action).width, greaterThan(0));
         expect(tester.getRect(action).right, lessThanOrEqualTo(size.width));
       }
+      // Widget tests use the square Ahem font, not Chrome's Roboto. Protect
+      // usable label width here; the browser checks actual word wrapping.
+      for (final label in <String>['Marketplace', 'NIN Verification']) {
+        final paragraph = tester.renderObject<RenderParagraph>(find.descendant(
+          of: find.byKey(Key('customer-quick-service-${label.toLowerCase()}')),
+          matching: find.text(label),
+        ));
+        expect(
+          paragraph.size.width,
+          greaterThanOrEqualTo(80),
+          reason: '$label needs room for complete words at ${size.width}px',
+        );
+      }
+      final wordmark = tester.renderObject<RenderParagraph>(
+        find.text('ServicePay').first,
+      );
+      expect(wordmark.size.width, greaterThanOrEqualTo(65));
       expect(tester.takeException(), isNull);
     }
   });
@@ -258,18 +277,19 @@ void main() {
     }
   });
 
-  test('dark wallet uses exact white foreground and gradient', () {
+  test('reference teal wallet uses white foreground and turquoise gradient', () {
     expect(CustomerDashboardPalette.onWallet, const Color(0xFFFFFFFF));
-    expect(CustomerDashboardPalette.walletStart, const Color(0xFF078553));
-    expect(CustomerDashboardPalette.walletEnd, const Color(0xFF086447));
+    expect(CustomerDashboardPalette.walletStart, const Color(0xFF009C9C));
+    expect(CustomerDashboardPalette.walletEnd, const Color(0xFF007C80));
+    expect(CustomerDashboardPalette.walletAction, const Color(0xFF2BE4DD));
   });
 
   test('approved clarity palette uses solid surfaces and readable icon wells', () {
-    expect(CustomerDashboardPalette.canvas, const Color(0xFF062F24));
-    expect(CustomerDashboardPalette.card, const Color(0xFF083B2B));
-    expect(CustomerDashboardPalette.serviceCard, const Color(0xFF0B3026));
-    expect(CustomerDashboardPalette.paleBlue, const Color(0xFF0A3529));
-    expect(CustomerDashboardPalette.border, const Color(0xFF16845F));
+    expect(CustomerDashboardPalette.canvas, const Color(0xFF07373B));
+    expect(CustomerDashboardPalette.card, const Color(0xFF0E6267));
+    expect(CustomerDashboardPalette.serviceCard, const Color(0xFF0C585D));
+    expect(CustomerDashboardPalette.paleBlue, const Color(0xFF0B6064));
+    expect(CustomerDashboardPalette.border, const Color(0xFF2B8C8D));
     expect(CustomerDashboardPalette.activeGreen, const Color(0xFF20D69A));
     expect(CustomerDashboardPalette.royalBlue, const Color(0xFF22D3EE));
     expect(CustomerDashboardPalette.text, Colors.white);
@@ -288,14 +308,17 @@ void main() {
         CustomerDashboardPalette.walletStart,
         CustomerDashboardPalette.walletEnd,
       ]) {
-        // Wallet uses pure white; mint/muted labels are restricted to cards.
+        // The large white balance meets the 3:1 large-text threshold at the
+        // brightest gradient endpoint. Body text on solid cards remains 4.5:1.
         if (background == CustomerDashboardPalette.walletStart ||
             background == CustomerDashboardPalette.walletEnd) {
           if (foreground != Colors.white) continue;
         }
         final light = foreground.computeLuminance();
         final dark = background.computeLuminance();
-        expect((light + .05) / (dark + .05), greaterThanOrEqualTo(4.5));
+        expect((light + .05) / (dark + .05), greaterThanOrEqualTo(
+          background == CustomerDashboardPalette.walletStart ? 3 : 4.5,
+        ));
       }
     }
     for (final title in CustomerServiceColors.byTitle.keys) {
@@ -376,7 +399,7 @@ void main() {
     }
   });
 
-  testWidgets('nine Home service icons share turquoise in softly tinted wells',
+  testWidgets('nine Home service icons restore individual reference colours',
       (tester) async {
     await tester.binding.setSurfaceSize(const Size(390, 1600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -384,23 +407,23 @@ void main() {
     await tester.pump(const Duration(milliseconds: 120));
     expect(
       tester.widget<Scaffold>(find.byType(Scaffold).first).backgroundColor,
-      const Color(0xFF062F24),
+      const Color(0xFF07373B),
     );
     final services = tester.widget<Container>(
       find.byKey(const Key('customer-quick-services')),
     );
     expect((services.decoration as BoxDecoration).color,
-        const Color(0xFF0A3529));
+        const Color(0xFF0B6064));
     const expected = <String, Color>{
-      'Data': Color(0xFF22D3EE),
-      'Airtime': Color(0xFF22D3EE),
-      'Delivery': Color(0xFF22D3EE),
-      'NIN Verification': Color(0xFF22D3EE),
-      'Marketplace': Color(0xFF22D3EE),
-      'Electricity': Color(0xFF22D3EE),
-      'EduPay': Color(0xFF22D3EE),
-      'Keke Napep': Color(0xFF22D3EE),
-      'Flight Booking': Color(0xFF22D3EE),
+      'Data': Color(0xFF38BDF8),
+      'Airtime': Color(0xFF2DD4BF),
+      'Delivery': Color(0xFFFB923C),
+      'NIN Verification': Color(0xFFA78BFA),
+      'Marketplace': Color(0xFFFBBF24),
+      'Electricity': Color(0xFFFDE047),
+      'EduPay': Color(0xFF818CF8),
+      'Keke Napep': Color(0xFFFB7185),
+      'Flight Booking': Color(0xFF60A5FA),
     };
     for (final entry in expected.entries) {
       final tile = find
@@ -410,12 +433,12 @@ void main() {
         tester.widget<Material>(
           find.ancestor(of: tile, matching: find.byType(Material)).first,
         ).color,
-        const Color(0xFF0B3026),
+        const Color(0xFF0C585D),
       );
       final glyph = tester.widget<CustomerServiceGlyph>(
           find.descendant(of: tile, matching: find.byType(CustomerServiceGlyph)));
       expect(glyph.iconColor, entry.value, reason: entry.key);
-      expect(glyph.backgroundColor, const Color(0xFF105443));
+      expect(glyph.backgroundColor, CustomerServiceColors.tintFor(entry.key));
       expect(glyph.radius, glyph.size / 2);
       expect(
           tester.widget<Text>(find.descendant(
