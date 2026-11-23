@@ -265,14 +265,16 @@ void main() {
   });
 
   test('approved clarity palette uses solid surfaces and readable icon wells', () {
-    expect(CustomerDashboardPalette.canvas, const Color(0xFF062A22));
-    expect(CustomerDashboardPalette.card, const Color(0xFF104638));
-    expect(CustomerDashboardPalette.paleBlue, const Color(0xFF0B382D));
+    expect(CustomerDashboardPalette.canvas, const Color(0xFF062F24));
+    expect(CustomerDashboardPalette.card, const Color(0xFF083B2B));
+    expect(CustomerDashboardPalette.serviceCard, const Color(0xFF0B3026));
+    expect(CustomerDashboardPalette.paleBlue, const Color(0xFF0A3529));
+    expect(CustomerDashboardPalette.border, const Color(0xFF16845F));
     expect(CustomerDashboardPalette.activeGreen, const Color(0xFF20D69A));
-    expect(CustomerDashboardPalette.royalBlue, const Color(0xFF35E6A8));
+    expect(CustomerDashboardPalette.royalBlue, const Color(0xFF22D3EE));
     expect(CustomerDashboardPalette.text, Colors.white);
-    expect(CustomerDashboardPalette.softText, const Color(0xFFBCEFE0));
-    expect(CustomerDashboardPalette.muted, const Color(0xFF8FC8B6));
+    expect(CustomerDashboardPalette.softText, const Color(0xFFB8D8CC));
+    expect(CustomerDashboardPalette.muted, const Color(0xFFB8D8CC));
     for (final foreground in <Color>[
       CustomerDashboardPalette.text,
       CustomerDashboardPalette.softText,
@@ -282,6 +284,7 @@ void main() {
         CustomerDashboardPalette.canvas,
         CustomerDashboardPalette.card,
         CustomerDashboardPalette.paleBlue,
+        CustomerDashboardPalette.serviceCard,
         CustomerDashboardPalette.walletStart,
         CustomerDashboardPalette.walletEnd,
       ]) {
@@ -379,6 +382,15 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(const MaterialApp(home: DashboardScreen()));
     await tester.pump(const Duration(milliseconds: 120));
+    expect(
+      tester.widget<Scaffold>(find.byType(Scaffold).first).backgroundColor,
+      const Color(0xFF062F24),
+    );
+    final services = tester.widget<Container>(
+      find.byKey(const Key('customer-quick-services')),
+    );
+    expect((services.decoration as BoxDecoration).color,
+        const Color(0xFF0A3529));
     const expected = <String, Color>{
       'Data': Color(0xFF22D3EE),
       'Airtime': Color(0xFF22D3EE),
@@ -394,11 +406,17 @@ void main() {
       final tile = find
           .byKey(Key('customer-quick-service-${entry.key.toLowerCase()}'));
       expect(tile, findsOneWidget, reason: entry.key);
+      expect(
+        tester.widget<Material>(
+          find.ancestor(of: tile, matching: find.byType(Material)).first,
+        ).color,
+        const Color(0xFF0B3026),
+      );
       final glyph = tester.widget<CustomerServiceGlyph>(
           find.descendant(of: tile, matching: find.byType(CustomerServiceGlyph)));
       expect(glyph.iconColor, entry.value, reason: entry.key);
-      expect(glyph.backgroundColor, const Color(0xFF104C43));
-      expect(glyph.radius, 12);
+      expect(glyph.backgroundColor, const Color(0xFF105443));
+      expect(glyph.radius, glyph.size / 2);
       expect(
           tester.widget<Text>(find.descendant(
                   of: tile, matching: find.text(entry.key))).style?.color,

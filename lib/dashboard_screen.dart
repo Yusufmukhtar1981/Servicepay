@@ -3026,7 +3026,7 @@ class _DashboardScreenState extends State<DashboardScreen>
     return _floating(
       index: index + 3,
       child: Material(
-        color: CustomerDashboardPalette.card,
+        color: CustomerDashboardPalette.serviceCard,
         borderRadius: BorderRadius.circular(15),
         child: InkWell(
           key: Key('customer-quick-service-${service.title.toLowerCase()}'),
@@ -3051,7 +3051,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                     iconColor: accent,
                     size: 38,
                     iconSize: 22,
-                    radius: 12,
+                    radius: 19,
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -5927,7 +5927,7 @@ class _DashboardScreenState extends State<DashboardScreen>
       child: Ink(
         padding: const EdgeInsets.all(17),
         decoration: BoxDecoration(
-          color: CustomerDashboardPalette.paleBlue,
+          color: CustomerDashboardPalette.card,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(color: CustomerDashboardPalette.border),
         ),
@@ -5977,10 +5977,7 @@ class _DashboardScreenState extends State<DashboardScreen>
   Widget build(
     BuildContext context,
   ) {
-    final Color dashboardBackground =
-        _customerSettings.dashboardBackground == 'default'
-            ? ServicePayColors.canvas
-            : CustomerDashboardPalette.canvas;
+    const Color dashboardBackground = CustomerDashboardPalette.canvas;
     return Scaffold(
       backgroundColor: dashboardBackground,
       body: Stack(

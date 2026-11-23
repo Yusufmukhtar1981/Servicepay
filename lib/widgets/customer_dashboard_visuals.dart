@@ -1,27 +1,27 @@
 import 'package:flutter/material.dart';
-import '../servicepay_theme.dart';
 
 /// Customer-home colors are intentionally scoped here so staff dashboards keep
 /// the palette defined by the shared application theme.
 abstract final class CustomerDashboardPalette {
-  static const navy = Color(0xFF062A22);
-  /// Bright emerald highlight for icons and key accents.
-  static const royalBlue = Color(0xFF35E6A8);
+  static const navy = Color(0xFF062F24);
+  /// Turquoise highlight for Customer Dashboard icons and key accents.
+  static const royalBlue = serviceCyan;
   /// Unified Customer Home icon and active-navigation identity.
   static const serviceCyan = Color(0xFF22D3EE);
   /// Opaque, softly turquoise-tinted well on the dark green service cards.
-  static const serviceIconWell = Color(0xFF104C43);
+  static const serviceIconWell = Color(0xFF105443);
   static const teal = Color(0xFF078553);
-  static const canvas = Color(0xFF062A22);
-  static const card = Color(0xFF104638);
+  static const canvas = Color(0xFF062F24);
+  static const card = Color(0xFF083B2B);
+  static const serviceCard = Color(0xFF0B3026);
   static const success = Color(0xFF5BE3A9);
   static const warning = Color(0xFFFFC56B);
   static const error = Color(0xFFFF9A8B);
-  static const muted = Color(0xFF8FC8B6);
-  static const border = ServicePayColors.border;
-  static const paleBlue = Color(0xFF0B382D);
+  static const muted = softText;
+  static const border = Color(0xFF16845F);
+  static const paleBlue = Color(0xFF0A3529);
   static const text = Color(0xFFFFFFFF);
-  static const softText = Color(0xFFBCEFE0);
+  static const softText = Color(0xFFB8D8CC);
   static const walletStart = Color(0xFF078553);
   static const walletEnd = Color(0xFF086447);
   /// White foreground for both wallet gradient endpoints (>= 4.5:1).
