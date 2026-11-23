@@ -107,7 +107,7 @@ test("Agent and Merchant Airtime markups are independently quoted, debited and s
   for (const [kind, markupBps, expected] of [["AGENT", 100, 50.5], ["MERCHANT", 200, 51]]) {
     const f = await fixture({ markupBps: 0 });
     await User.updateOne({ _id: f.customer._id }, { $set: { kycVerified: true } });
-    const profile = await N.Profile.create({ owner: f.customer._id, kind, status: "APPROVED", revision: 1 });
+    const profile = await N.Profile.create({ owner: f.customer._id, kind, status: "APPROVED", revision: 1, services: ["AIRTIME"] });
     await N.Settings.findOneAndUpdate({ _id: "network" }, { $set: { premium: { airtimePricing: {
       "7": { [kind]: { enabled: true, markupBps } },
     } } } }, { upsert: true });

@@ -19,6 +19,7 @@ const electricityController = require(
 const { electricityProviderEnabled } = require("../middleware/providerRouting.middleware");
 
 const router = express.Router();
+const { requireIntegratedBusinessPricing } = require("../middleware/businessPricingAdmission.middleware");
 
 /*
  * Check whether Electricity is enabled
@@ -114,6 +115,7 @@ router.post(
 router.post(
   "/pay",
   protect,
+  requireIntegratedBusinessPricing("ELECTRICITY"),
   requireNoRestriction("BLOCK_BILL_PURCHASES", "BLOCK_WALLET_DEBIT"),
   requireSpendableBalance,
   electricityEnabled,

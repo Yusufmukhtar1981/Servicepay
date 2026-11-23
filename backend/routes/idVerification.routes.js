@@ -12,11 +12,13 @@ const {
 } = require("../controllers/idVerification.controller");
 
 const { protect } = require("../middleware/auth.middleware");
+const { requireIntegratedBusinessPricing } = require("../middleware/businessPricingAdmission.middleware");
 
 // NIN verification routes
 router.post(
   "/nin",
   protect,
+  requireIntegratedBusinessPricing("NIN"),
   verifyNin
 );
 
@@ -36,6 +38,7 @@ router.get(
 router.post(
   "/bvn",
   protect,
+  requireIntegratedBusinessPricing("BVN"),
   verifyBvn
 );
 

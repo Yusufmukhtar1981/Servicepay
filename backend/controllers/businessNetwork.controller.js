@@ -193,6 +193,38 @@ exports.review = wrap(async (req, res) => {
   const result = await S.atomic(async session => {
     const profile = await adminProfile(req, session);
     const expectedRevision = revision(req.body.revision);
+    if (req.body.configurationOnly !== undefined && typeof req.body.configurationOnly !== "boolean")
+      P.fail("Invalid configuration action.");
+    if (req.body.configurationOnly === true) {
+      if (req.body.status !== profile.status || expectedRevision !== profile.revision)
+        P.fail("Application changed. Refresh before configuring access.", "NETWORK_CONFLICT", 409);
+      const reason = why(req);
+      const services = P.services(req.body.services);
+      const group = P.text(req.body.group || profile.group || "STANDARD", "commission group", 80, true);
+      const settings = await M.Settings.findById("network").session(session);
+      await catalogue.validate(services, profile.kind, settings, { processing: true, session });
+      if (services.some(value => !profile.details.preferredServices.includes(value)))
+        P.fail("Configure only services requested by the applicant.");
+      if (profile.status === "APPROVED" &&
+          !await User.exists({ _id: profile.owner, role: "CUSTOMER", status: "ACTIVE", kycVerified: true }).session(session))
+        P.fail("The Customer must remain active with verified KYC.", "NETWORK_KYC_REQUIRED", 409);
+      const previous = { services: [...profile.services], group: profile.group };
+      if (JSON.stringify([...profile.services].sort()) === JSON.stringify([...services].sort()) && group === profile.group)
+        return { profile, replay: true, configurationChanged: false };
+      if (profile.status === "APPROVED") {
+        const now = new Date();
+        const window = profile.approvalWindows[profile.approvalWindows.length - 1];
+        if (window && !window.end) window.end = now;
+        profile.approvalWindows.push({ start: now, services, group });
+      }
+      profile.services = services;
+      profile.group = group;
+      profile.revision += 1;
+      await profile.save({ session });
+      await S.audit(req.user, "BUSINESS_ACCESS_CONFIGURED", profile, reason,
+        { previous, services, group, revision: profile.revision }, session);
+      return { profile, replay: false, configurationChanged: true };
+    }
     if (profile.status === req.body.status && expectedRevision <= profile.revision) {
       // A retry acknowledges only the same decision, never additional grants.
       const sameServices = req.body.services === undefined ||
@@ -207,11 +239,16 @@ exports.review = wrap(async (req, res) => {
     if (req.body.status === "APPROVED") {
       const owner = await User.findOne({ _id: profile.owner, role: "CUSTOMER", status: "ACTIVE", kycVerified: true }).session(session);
       if (!owner) P.fail("The Customer must be active with existing verified KYC before approval.", "NETWORK_KYC_REQUIRED", 409);
-      profile.services = P.services(req.body.services || profile.services);
-      await catalogue.validate(profile.services, profile.kind, await M.Settings.findById("network").session(session), { processing: true, session });
+      const settings = await M.Settings.findById("network").session(session);
+      const currentCatalogue = (await catalogue.catalogue(settings, session))[profile.kind];
+      const defaultServices = profile.status === "SUSPENDED" || profile.services.length
+        ? profile.services
+        : profile.details.preferredServices.filter(code => currentCatalogue.some(row => row.code === code && row.processable));
+      profile.services = P.services(req.body.services ?? defaultServices);
+      await catalogue.validate(profile.services, profile.kind, settings, { processing: true, session });
       if (profile.services.some(v => !profile.details.preferredServices.includes(v))) P.fail("Approve only services requested by the applicant.");
-      // An approved product/logistics business need not receive bill-payment
-      // authority. Empty services grants NO purchase attribution or commission.
+      // Defaults cover only requested, currently permitted bill services.
+      // An explicit empty list still approves a product/logistics-only business.
       profile.group = P.text(req.body.group || profile.group || "STANDARD", "commission group", 80, true);
       const now = new Date(); profile.approvedAt ||= now; profile.approvalWindows.push({ start: now, services: profile.services, group: profile.group });
     }
@@ -229,8 +266,10 @@ exports.review = wrap(async (req, res) => {
   if (!result.replay) {
     try {
       await require("../services/inAppNotification.service").createInAppNotification({
-        userId: result.profile.owner, title: `${result.profile.kind === "AGENT" ? "Agent" : "Merchant"} application update`,
-        message: `Your Business Network application is ${result.profile.status.toLowerCase().replaceAll("_", " ")}. Open Business Hub to view the decision.`,
+        userId: result.profile.owner, title: result.configurationChanged ? "Business access updated" : `${result.profile.kind === "AGENT" ? "Agent" : "Merchant"} application update`,
+        message: result.configurationChanged
+          ? "Head Office updated your permitted business services. Open Business Hub to view your access."
+          : `Your Business Network application is ${result.profile.status.toLowerCase().replaceAll("_", " ")}. Open Business Hub to view the decision.`,
         type: "ACCOUNT", referenceType: "BUSINESS_NETWORK_APPLICATION", referenceId: result.profile._id,
         relatedStatus: result.profile.status, dedupeKey: `network-review:${result.profile._id}:${result.profile.revision}`,
       });
@@ -343,16 +382,45 @@ exports.audit = wrap(async (req, res) => {
   output(res, { items: await M.Audit.find(filter).sort({ createdAt: -1 }).skip((page(req) - 1) * 50).limit(50).lean(),
     total: await M.Audit.countDocuments(filter), page: page(req) });
 });
-exports.settings = wrap(async (_req, res) => output(res, { categories: (await M.Settings.findById("network"))?.categories || new M.Settings().categories, features: P.features }));
+exports.fundingPolicy = wrap(async (req, res) => output(res, await require("../services/businessNetwork.funding").policy(req.user)));
+exports.settings = wrap(async (_req, res) => {
+  const doc = await M.Settings.findById("network");
+  output(res, { categories: doc?.categories || new M.Settings().categories, features: P.features,
+    revision: doc?.revision || 0, merchantMinimumFundingKobo: require("../services/businessNetwork.funding").merchantMinimum(doc) });
+});
 exports.saveSettings = wrap(async (req, res) => {
-  if (Object.keys(req.body).some(k => k !== "categories")) P.fail("Payment capabilities cannot be enabled through network settings.");
-  if (!Array.isArray(req.body.categories) || req.body.categories.length < 1 || req.body.categories.length > 50) P.fail("Provide 1–50 business categories.");
-  const categories = [...new Set(req.body.categories.map(x => P.text(x, "category", 100, true)))];
-  await S.atomic(async session => {
-    await M.Settings.updateOne({ _id: "network" }, { $set: { categories } }, { upsert: true, session });
-    await S.audit(req.user, "NETWORK_SETTINGS_UPDATED", null, "", { categories }, session);
+  if (Object.keys(req.body).some(k => !["categories", "merchantMinimumFundingKobo", "revision", "reason"].includes(k)))
+    P.fail("Unsupported network setting.");
+  const fundingChanged = Object.hasOwn(req.body, "merchantMinimumFundingKobo");
+  if (!fundingChanged && !Object.hasOwn(req.body, "categories")) P.fail("Provide a network setting to update.");
+  let categories;
+  if (Object.hasOwn(req.body, "categories")) {
+    if (!Array.isArray(req.body.categories) || req.body.categories.length < 1 || req.body.categories.length > 50) P.fail("Provide 1–50 business categories.");
+    categories = [...new Set(req.body.categories.map(x => P.text(x, "category", 100, true)))];
+  }
+  const reason = fundingChanged ? why(req) : "";
+  if (fundingChanged) {
+    P.integer(req.body.revision, "settings revision");
+    P.integer(req.body.merchantMinimumFundingKobo, "Merchant funding minimum", 10000, 100000000000);
+  }
+  const result = await S.atomic(async session => {
+    let doc = await M.Settings.findById("network").session(session);
+    if (fundingChanged && (doc?.revision || 0) !== req.body.revision)
+      P.fail("Settings changed. Refresh before saving.", "NETWORK_CONFLICT", 409);
+    doc ||= new M.Settings({ _id: "network" });
+    const previous = require("../services/businessNetwork.funding").merchantMinimum(doc);
+    if (categories) doc.categories = categories;
+    if (fundingChanged) doc.premium = { ...(doc.premium || {}), merchantMinimumFundingKobo: req.body.merchantMinimumFundingKobo };
+    doc.revision = (doc.revision || 0) + 1;
+    await doc.save({ session });
+    await S.audit(req.user, "NETWORK_SETTINGS_UPDATED", null, reason, {
+      ...(categories ? { categories } : {}),
+      ...(fundingChanged ? { previousMinimumKobo: previous, merchantMinimumFundingKobo: req.body.merchantMinimumFundingKobo } : {}),
+    }, session);
+    return { categories: doc.categories, features: P.features, revision: doc.revision,
+      merchantMinimumFundingKobo: require("../services/businessNetwork.funding").merchantMinimum(doc) };
   });
-  output(res, { categories, features: P.features });
+  output(res, result);
 });
 exports.branches = wrap(async (req, res) => {
   const profile = await S.ownerProfile(req.user, req.params.id);
@@ -377,6 +445,10 @@ exports.updateBranch = wrap(async (req, res) => {
     fields.status = req.body.status;
   }
   if (!Object.keys(fields).length) P.fail("Provide a branch change.");
+  // Access revocation must remain available even when new branch management
+  // has been disabled. Editing or reactivating still requires its own control.
+  if (fields.status !== "SUSPENDED" || Object.keys(fields).some(key => key !== "status"))
+    await require("../services/businessNetwork.controls").requireFeature("MERCHANT", "branchManagement");
   const branch = await S.atomic(async session => {
     const row = await M.Branch.findOneAndUpdate({ _id: S.id(req.params.branchId), profile: profile._id },
       { $set: fields, $inc: { accessVersion: 1 } }, { returnDocument: "after", session });
@@ -410,7 +482,7 @@ exports.staffStatus = wrap(async (req, res) => {
   const profile = await S.ownerProfile(req.user, String(row.profile));
   const fields = { status: req.body.status };
   if (fields.status === "INVITED") {
-    await require("../services/businessNetwork.controls").requireFeature("MERCHANT", "merchantStaff");
+    await require("../services/businessNetwork.controls").requireFeature("MERCHANT", "staffManagement");
     const permissions = req.body.permissions;
     if (!Array.isArray(permissions) || !permissions.length || permissions.some(v => !["reports", "payments"].includes(v))) P.fail("Select only restricted branch permissions.");
     const branch = S.id(req.body.branchId);
@@ -426,7 +498,7 @@ exports.staffStatus = wrap(async (req, res) => {
 });
 exports.acceptStaff = wrap(async (req, res) => {
   const staff = await S.atomic(async session => {
-    await require("../services/businessNetwork.controls").requireFeature("MERCHANT", "merchantStaff", session, { lock: true });
+    await require("../services/businessNetwork.controls").requireFeature("MERCHANT", "staffManagement", session, { lock: true });
     const row = await M.Staff.findOne({ _id: S.id(req.params.id), user: req.user._id, status: "INVITED" }).session(session);
     if (!row || !await M.Profile.findOneAndUpdate({ _id: row.profile, status: "APPROVED" }, { $inc: { revision: 1 } }, { session }) ||
       !await M.Branch.findOneAndUpdate({ _id: row.branch, profile: row.profile, status: "ACTIVE" }, { $inc: { accessVersion: 1 } }, { session }))

@@ -40,13 +40,15 @@ exports.pricing = wrap(async (req, res) => {
     const saved = byCode.get(plan.pricingCode || plan.code);
     return { code: plan.code, pricingCode: plan.pricingCode || plan.code, name: plan.name,
       networkCode: network, provider: "TELECOM_ABODE", providerCost: Number(plan.price),
+      costEvidence: "CATALOGUE_QUOTE_NOT_SETTLED", profitVerified: false,
       revision: saved?.pricingVersion || 0, customer: { sellingPrice: saved?.sellingPrice ?? null, enabled: saved?.active === true },
       categories: Object.fromEntries(["AGENT", "MERCHANT"].map(category => {
         const configured = saved?.businessPrices?.[category];
         const price = Pricing.dataPrice(saved, category, Number(plan.price));
         return [category, { configured: !!configured, ...(configured || {}), effectivePrice: price,
           margin: price === null ? null : Math.round((price - Number(plan.price)) * 100) / 100,
-          available: price !== null, inherited: !configured }];
+          marginIsEstimate: true,
+          available: price !== null, inherited: false, requiresConfiguration: !configured }];
       })) };
   });
   out(res, { items, airtime: { configurable: true,
@@ -111,9 +113,9 @@ exports.airtimePricing = wrap(async (_req, res) => {
     items: networks.map(network => ({ network: String(network.providerId), name: network.displayName,
       categories: Object.fromEntries(["AGENT", "MERCHANT"].map(category => {
         const rule = doc?.premium?.airtimePricing?.[String(network.providerId)]?.[category];
-        return [category, { ...(rule || {}), configured: !!rule, inherited: !rule,
-          enabled: rule ? rule.enabled === true : true,
-          markupBps: rule?.markupBps ?? config.airtimeMarkupBps ?? 0 }];
+        return [category, { ...(rule || {}), configured: !!rule, inherited: false,
+          requiresConfiguration: !rule, enabled: rule?.enabled === true,
+          markupBps: rule?.markupBps ?? null }];
       })) })) });
 });
 exports.saveAirtimePricing = wrap(async (req, res) => {

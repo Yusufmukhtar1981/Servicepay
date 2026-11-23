@@ -13,6 +13,8 @@ const definitions = Object.freeze({
   expenses: { label: "Business expense records", ready: true },
   promotions: { label: "Promotional offers", ready: true },
   merchantStaff: { label: "Merchant staff management", categories: ["MERCHANT"], ready: true },
+  branchManagement: { label: "Merchant branch management", categories: ["MERCHANT"], ready: true, parent: "merchantStaff" },
+  staffManagement: { label: "Merchant staff invitations and access", categories: ["MERCHANT"], ready: true, parent: "merchantStaff" },
   rechargePrinting: { label: "Recharge Card printing", ready: false },
   dataPrinting: { label: "Data Card / Voucher printing", ready: false },
   bluetooth: { label: "Bluetooth thermal printer", ready: false },
@@ -27,9 +29,14 @@ function matrix(doc) {
   return Object.entries(definitions).map(([key, definition]) => ({
     key, ...definition,
     categories: Object.fromEntries((definition.categories || ["AGENT", "MERCHANT"]).map(category =>
-      [category, saved[category]?.[key] || (definition.ready ? "ENABLED" : "COMING_SOON")])),
+      [category, effectiveState(saved[category], key, definition)])),
     reason: definition.ready ? "" : "Not activated: verified integration, allocation and supported device checks are required.",
   }));
+}
+function effectiveState(saved, key, spec = definitions[key]) {
+  if (spec.parent && saved?.[spec.parent] && saved[spec.parent] !== "ENABLED")
+    return saved[spec.parent];
+  return saved?.[key] || (spec.ready ? "ENABLED" : "COMING_SOON");
 }
 function publicMatrix(doc) {
   // Preserve enforcement flags, but keep integration diagnostics in Admin.
@@ -62,7 +69,7 @@ async function requireFeature(category, key, session, { lock = false } = {}) {
     P.fail("This feature does not belong to this business category.", "NETWORK_FORBIDDEN", 403);
   const query = M.Settings.findById("network").session(session || null);
   const doc = await query;
-  const state = doc?.premium?.featureAccess?.[category]?.[key] || (spec.ready ? "ENABLED" : "COMING_SOON");
+  const state = effectiveState(doc?.premium?.featureAccess?.[category], key, spec);
   if (!spec.ready || state !== "ENABLED") P.fail(`${spec.label} is ${state.toLowerCase().replaceAll("_", " ")}.`,
     "NETWORK_FEATURE_UNAVAILABLE", 403);
   if (session && lock && doc)

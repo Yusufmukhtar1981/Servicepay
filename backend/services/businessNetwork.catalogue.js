@@ -27,16 +27,19 @@ function build(settings, networkSettings) {
     const allowed = !Array.isArray(configured[kind]) || configured[kind].includes(code);
     // Flight search is not evidence of a live ticketing integration.
     const verifiedService = row.key !== "flightBooking";
-    const processable = P.billServices.includes(code) && enabled && allowed && verifiedService;
+    const businessPricingReady = ["DATA", "AIRTIME"].includes(code);
+    const processable = businessPricingReady && enabled && allowed && verifiedService;
     return { code, label: row.displayName,
       category: P.billServices.includes(code) ? "Bill payments" :
         ["delivery", "kekeNapep", "transport"].includes(row.key) ? "Logistics and bookings" : "Business products",
-      available: Boolean(enabled && verifiedService), processable,
+      available: Boolean(enabled && verifiedService), processable, businessPricingReady,
       preferencesEnabled: Boolean(enabled && allowed && verifiedService),
       reason: !verifiedService ? "Live flight ticketing is not verified." :
         !enabled ? row.maintenanceMessage || "Currently disabled in ServicePay." :
         !allowed ? "Disabled for this business type by Head Office." :
-        !processable ? "Business interest only; no delegated purchasing or commissions are enabled for this service." : "",
+        P.billServices.includes(code) && !businessPricingReady
+          ? "Independent business pricing is not integrated. The standard Customer service remains unchanged."
+          : !processable ? "Business interest only; no delegated purchasing or commissions are enabled for this service." : "",
     };
   })]));
 }

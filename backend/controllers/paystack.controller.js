@@ -82,7 +82,17 @@ exports.initializePayment = async (req, res) => {
       });
     }
 
-    const amountInKobo = Math.round(amount * 100);
+    const funding = require("../services/businessNetwork.funding");
+    const fundingPolicy = await funding.policy(req.user);
+    let amountInKobo;
+    try {
+      amountInKobo = funding.validateAmount(amount, fundingPolicy.minimumKobo);
+    } catch (error) {
+      return res.status(error.status || 400).json({
+        success: false, code: error.code, message: error.message,
+        minimumKobo: fundingPolicy.minimumKobo,
+      });
+    }
     const secretKey = getSecretKey();
 
     /*

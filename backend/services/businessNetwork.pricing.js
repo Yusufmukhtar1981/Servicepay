@@ -26,9 +26,9 @@ function dataPrice(row, categoryName, currentCost) {
   if (!row || row.active !== true || !Number.isFinite(Number(row.sellingPrice)) || Number(row.sellingPrice) <= 0) return null;
   if (categoryName === "CUSTOMER") return Number(row.sellingPrice);
   const configured = row.businessPrices?.[categoryName];
-  // Absent rules preserve the existing Customer price. Explicit disable blocks
-  // only this category, not Customer, partner API clients or other categories.
-  if (!configured) return Number(row.sellingPrice);
+  // Missing business pricing is unavailable, not implicit Customer pricing.
+  // Customer prices and separately configured business categories stay intact.
+  if (!configured) return null;
   if (!configured.enabled) return null;
   const price = Number(configured.sellingPrice), cost = Number(currentCost);
   if (!Number.isFinite(cost) || cost < 0 || !Number.isFinite(price) || price <= 0 ||
@@ -51,11 +51,16 @@ function validateDataRule(rule, cost) {
 }
 async function context(user, kind, feature, session, options) {
   const resolved = await category(user, kind, session, options);
+  const service = { data: "DATA", airtime: "AIRTIME" }[feature];
+  if (resolved.profile && service && !resolved.profile.services?.includes(service))
+    P.fail("Head Office has not approved this service for your business.", "NETWORK_SERVICE_NOT_APPROVED", 403);
   await Controls.requireFeature(resolved.category, feature, session, options);
   return resolved;
 }
 function airtimePrice(doc, categoryName, network, amount, defaultMarkupBps) {
   const rule = categoryName === "CUSTOMER" ? null : doc?.premium?.airtimePricing?.[String(network)]?.[categoryName];
+  if (categoryName !== "CUSTOMER" && !rule)
+    P.fail("Head Office has not configured Airtime pricing for this business category.", "NETWORK_PRICE_NOT_CONFIGURED", 409);
   if (rule && !rule.enabled) P.fail("Airtime is disabled for this business category.", "NETWORK_FEATURE_UNAVAILABLE", 403);
   const markupBps = rule ? rule.markupBps : defaultMarkupBps;
   P.integer(markupBps, "Airtime markup", 0, 10000);

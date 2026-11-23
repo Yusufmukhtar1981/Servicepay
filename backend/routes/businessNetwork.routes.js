@@ -29,6 +29,7 @@ function createRouter({ authenticate = protect, loadRole = loadStaffRole, ready 
     try { if (!S.isHO(req.user)) S.P.fail("Only Head Office may administer the network.", "NETWORK_FORBIDDEN", 403); next(); } catch (error) { next(error); }
   };
   router.get("/me", customer, c.me);
+  router.get("/funding-policy", customer, c.fundingPolicy);
   router.get("/catalogue", customer, premium.catalogue);
   router.get("/tools/:kind", customer, premium.tools);
   router.get("/directory/:kind", customer, premium.directory);
@@ -52,10 +53,10 @@ function createRouter({ authenticate = protect, loadRole = loadStaffRole, ready 
   router.get("/reports/:kind", customer, c.report);
   router.get("/commissions/:kind", customer, c.commissions);
   router.get("/profiles/:id/branches", c.branches);
-  router.post("/profiles/:id/branches", businessFeature("merchantStaff"), c.createBranch);
+  router.post("/profiles/:id/branches", businessFeature("branchManagement"), c.createBranch);
   router.patch("/profiles/:id/branches/:branchId", c.updateBranch);
   router.get("/profiles/:id/staff", c.staff);
-  router.post("/profiles/:id/staff", businessFeature("merchantStaff"), c.inviteStaff);
+  router.post("/profiles/:id/staff", businessFeature("staffManagement"), c.inviteStaff);
   router.patch("/staff/:id", c.staffStatus);
   router.post("/staff/:id/accept", customer, c.acceptStaff);
   router.post("/support", customer, c.support);

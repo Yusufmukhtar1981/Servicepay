@@ -16,6 +16,7 @@ const {
 );
 
 const router = express.Router();
+const { requireIntegratedBusinessPricing } = require("../middleware/businessPricingAdmission.middleware");
 
 router.get(
   "/products",
@@ -26,6 +27,7 @@ router.get(
 router.post(
   "/buy",
   protect,
+  requireIntegratedBusinessPricing("EXAM_PIN"),
   buyExamPin
 );
 

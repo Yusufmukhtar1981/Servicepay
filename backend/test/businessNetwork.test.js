@@ -164,7 +164,7 @@ test("approval requires existing verified KYC, without triggering identity verif
   r = await call("POST", `/admin/profiles/${r.data.profile._id}/review`, { status: "APPROVED", revision: r.data.profile.revision, reason: "Review only", services: ["DATA"] }, users.admin);
   assert.equal(r.status, 409); assert.equal(r.body.code, "NETWORK_KYC_REQUIRED");
 });
-test("one-click Agent and Merchant approval needs no reason, group or service grants and retries are idempotent", async () => {
+test("one-click approval activates requested allowed services without invented pricing and is idempotent", async () => {
   for (const kind of ["AGENT", "MERCHANT"]) {
     let r = await call("PUT", "/applications/" + kind, detail);
     const id = r.data.profile._id;
@@ -176,7 +176,7 @@ test("one-click Agent and Merchant approval needs no reason, group or service gr
     assert.equal(results.filter(x => x.data.replay).length, 1);
     const profile = await M.Profile.findById(id).lean();
     assert.equal(profile.status, "APPROVED"); assert.equal(profile.group, "STANDARD");
-    assert.deepEqual(profile.services, []); assert.equal(profile.approvalWindows.length, 1);
+    assert.deepEqual([...profile.services].sort(), ["AIRTIME", "DATA"]); assert.equal(profile.approvalWindows.length, 1);
     assert.equal(await M.Audit.countDocuments({ profile: id, action: "APPLICATION_APPROVED" }), 1);
     assert.equal(await require("../models/notification.model").countDocuments({ referenceId: id, relatedStatus: "APPROVED" }), 1);
     assert.equal((await call("GET", "/dashboard/" + kind)).status, 200);
@@ -196,6 +196,32 @@ test("Review and Reject accept optional feedback; retries do not create extra au
     assert.equal(await M.Audit.countDocuments({ profile: id, action: "APPLICATION_" + status }), 1);
   }
   assert.equal((await call("GET", "/dashboard/AGENT")).status, 403);
+});
+test("Head Office can explicitly configure approved business access without rewriting historical authority", async () => {
+  const profile = await approved("MERCHANT");
+  const previousPurchase = await source(users.customer, { serviceType: "AIRTIME" });
+  const change = { status: "APPROVED", configurationOnly: true, revision: profile.revision,
+    services: ["DATA"], group: "STANDARD", reason: "Explicit sandbox service restriction" };
+  const path = `/admin/profiles/${profile._id}/review`;
+  assert.equal((await call("POST", path, change, users.other)).status, 403);
+  assert.equal((await call("POST", path, { ...change, reason: "" }, users.admin)).status, 400);
+  assert.equal((await call("POST", path, { ...change, services: ["EXAM_PIN"] }, users.admin)).status, 400);
+  const result = await call("POST", path, change, users.admin);
+  assert.equal(result.status, 200, JSON.stringify(result.body));
+  assert.equal(result.data.configurationChanged, true);
+  assert.equal(result.data.profile.status, "APPROVED");
+  assert.deepEqual(result.data.profile.services, ["DATA"]);
+  assert.equal(result.data.profile.approvalWindows.length, 2);
+  assert.ok(result.data.profile.approvalWindows[0].end);
+  assert.equal(P.approvalCovers(result.data.profile, previousPurchase.createdAt, "AIRTIME"), true);
+  assert.equal(P.approvalCovers(result.data.profile, new Date(), "AIRTIME"), false);
+  const pricing = require("../services/businessNetwork.pricing");
+  await assert.rejects(pricing.context(users.customer, "MERCHANT", "airtime"),
+    { code: "NETWORK_SERVICE_NOT_APPROVED" });
+  assert.equal((await pricing.context(users.customer, "MERCHANT", "data")).category, "MERCHANT");
+  assert.equal((await call("POST", path, change, users.admin)).status, 409);
+  assert.equal(await M.Audit.countDocuments({ action: "BUSINESS_ACCESS_CONFIGURED" }), 1);
+  assert.equal(await Transaction.countDocuments(), 1);
 });
 test("feature controls are scoped, revisioned and cannot activate unavailable payment or direct infrastructure", async () => {
   let r = await call("GET", "/admin/controls", null, users.admin);
@@ -238,6 +264,9 @@ test("Data category pricing uses Head Office network management, atomic updates 
   C.getCatalog = async () => [{ code: "TEST-DATA-ID", pricingCode: "canonical-plan", name: "Sandbox 1GB", price: 80 }];
   try {
     const row = await Pricing.Prices.create({ networkCode: "01", planCode: "canonical-plan", providerPrice: 80, sellingPrice: 100, active: true });
+    assert.equal(Pricing.dataPrice(row, "AGENT", 80), null, "Agent must not inherit Customer pricing");
+    assert.equal(Pricing.dataPrice(row, "MERCHANT", 80), null, "Merchant must not inherit Customer pricing");
+    assert.equal(Pricing.dataPrice(row, "CUSTOMER", 80), 100);
     const request = { network: "01", reason: "Explicit sandbox category prices", changes: [
       { code: "TEST-DATA-ID", category: "AGENT", revision: 0, rule: { enabled: true, sellingPrice: 90, maximumProviderCost: 85 } },
       { code: "TEST-DATA-ID", category: "MERCHANT", revision: 0, rule: { enabled: true, sellingPrice: 95, maximumProviderCost: 90 } },
@@ -265,9 +294,91 @@ test("business price context requires the authenticated owner's active approved 
   await assert.rejects(Pricing.category(users.customer, "AGENT"), { code: "NETWORK_NOT_FOUND" });
   const profile = await approved("AGENT");
   assert.equal((await Pricing.category(users.customer, "AGENT")).category, "AGENT");
+  assert.equal((await Pricing.context(users.customer, "AGENT", "data")).category, "AGENT");
+  await M.Profile.updateOne({ _id: profile._id }, { $set: { services: [] } });
+  await assert.rejects(Pricing.context(users.customer, "AGENT", "data"), { code: "NETWORK_SERVICE_NOT_APPROVED" });
+  await assert.rejects(Pricing.context(users.customer, "AGENT", "airtime"), { code: "NETWORK_SERVICE_NOT_APPROVED" });
+  assert.equal((await Pricing.context(users.customer, undefined, "data")).category, "CUSTOMER");
   await assert.rejects(Pricing.category(users.other, "AGENT"), { code: "NETWORK_NOT_FOUND" });
   await call("POST", `/admin/profiles/${profile._id}/review`, { status: "SUSPENDED", revision: profile.revision }, users.admin);
   await assert.rejects(Pricing.category(users.customer, "AGENT"), { code: "NETWORK_APPROVAL_REQUIRED" });
+});
+test("Merchant funding uses approved ownership, configurable minimum and no wallet writes", async () => {
+  const funding = require("../services/businessNetwork.funding");
+  const initial = await call("GET", "/funding-policy");
+  assert.equal(initial.status, 200);
+  assert.equal(initial.data.minimumKobo, 10000);
+  await approved("AGENT");
+  assert.equal((await call("GET", "/funding-policy")).data.minimumKobo, 10000);
+  const merchant = await approved("MERCHANT");
+  const policy = await call("GET", "/funding-policy");
+  assert.equal(policy.data.category, "MERCHANT");
+  assert.equal(policy.data.minimumKobo, 5000000);
+  assert.throws(() => funding.validateAmount(49999.99, policy.data.minimumKobo),
+    { code: "NETWORK_FUNDING_BELOW_MINIMUM" });
+  assert.equal(funding.validateAmount(50000, policy.data.minimumKobo), 5000000);
+  const axios = require("axios"), originalPost = axios.post;
+  let providerRequests = 0;
+  axios.post = async () => { providerRequests++; throw new Error("Live provider requests forbidden in this test"); };
+  try {
+    const response = { statusCode: 200, status(code) { this.statusCode = code; return this; },
+      json(body) { this.body = body; return this; } };
+    await require("../controllers/paystack.controller").initializePayment({
+      user: users.customer, body: { amount: 49999.99, businessKind: "CUSTOMER" },
+    }, response);
+    assert.equal(response.statusCode, 400);
+    assert.equal(response.body.code, "NETWORK_FUNDING_BELOW_MINIMUM");
+    assert.equal(providerRequests, 0, "Reject before initiating a provider payment, even with a forged category");
+  } finally { axios.post = originalPost; }
+  for (const amount of [NaN, Infinity, -1, 50000.001, "50000"])
+    assert.throws(() => funding.validateAmount(amount, policy.data.minimumKobo));
+  const settings = await call("GET", "/admin/settings", null, users.admin);
+  const change = { merchantMinimumFundingKobo: 6000000,
+    revision: settings.data.revision, reason: "Explicit sandbox funding policy" };
+  assert.equal((await call("PUT", "/admin/settings", change, users.other)).status, 403);
+  assert.equal((await call("PUT", "/admin/settings", { ...change, merchantMinimumFundingKobo: 0 }, users.admin)).status, 400);
+  assert.equal((await call("PUT", "/admin/settings", { ...change, reason: "" }, users.admin)).status, 400);
+  assert.equal((await call("PUT", "/admin/settings", change, users.admin)).status, 200);
+  assert.equal((await call("GET", "/funding-policy")).data.minimumKobo, 6000000);
+  assert.equal((await call("GET", "/funding-policy", null, users.other)).data.minimumKobo, 10000);
+  assert.equal((await call("PUT", "/admin/settings", change, users.admin)).status, 409);
+  assert.equal(await M.Audit.countDocuments({ "metadata.merchantMinimumFundingKobo": 6000000 }), 1);
+  await call("POST", `/admin/profiles/${merchant._id}/review`,
+    { status: "SUSPENDED", revision: merchant.revision, reason: "Sandbox suspension" }, users.admin);
+  assert.equal((await call("GET", "/funding-policy")).data.minimumKobo, 10000);
+});
+test("branch and staff controls are independent without bypassing the legacy master disable", async () => {
+  const profile = await approved("MERCHANT");
+  const base = `/profiles/${profile._id}`;
+  const created = await call("POST", `${base}/branches`, { name: "Sandbox", address: "Local test only" });
+  assert.equal(created.status, 201);
+  const branchId = created.data.branch._id;
+  let revision = 0;
+  const configure = async features => {
+    const result = await call("PUT", "/admin/controls", { revision, reason: "Isolated permission test",
+      features: { MERCHANT: features } }, users.admin);
+    assert.equal(result.status, 200, JSON.stringify(result.body));
+    revision = result.data.revision;
+    return result;
+  };
+  await configure({ branchManagement: "DISABLED", staffManagement: "ENABLED" });
+  assert.equal((await call("POST", `${base}/branches`, { name: "Blocked", address: "Local test only" })).status, 403);
+  const invitation = await call("POST", `${base}/staff`, {
+    userId: String(users.other._id), branchId, permissions: ["reports"],
+  });
+  assert.equal(invitation.status, 201, JSON.stringify(invitation.body));
+  assert.equal((await call("PATCH", `${base}/branches/${branchId}`, { status: "SUSPENDED" })).status, 200);
+  assert.equal((await call("PATCH", `${base}/branches/${branchId}`, { status: "ACTIVE" })).status, 403);
+  await configure({ branchManagement: "ENABLED", staffManagement: "DISABLED" });
+  assert.equal((await call("PATCH", `${base}/branches/${branchId}`, { status: "ACTIVE" })).status, 200);
+  assert.equal((await call("POST", `${base}/staff`, {
+    userId: String(users.staff._id), branchId, permissions: ["reports"],
+  })).status, 403);
+  assert.equal((await call("POST", `/staff/${invitation.data.staff._id}/accept`, {}, users.other)).status, 403);
+  const legacy = await configure({ merchantStaff: "DISABLED", branchManagement: "ENABLED", staffManagement: "ENABLED" });
+  for (const key of ["branchManagement", "staffManagement"])
+    assert.equal(legacy.data.features.find(row => row.key === key).categories.MERCHANT, "DISABLED");
+  assert.equal((await call("POST", `${base}/branches`, { name: "Still blocked", address: "Local test only" })).status, 403);
 });
 test("Airtime pricing requires Head Office network management and preserves Customer pricing and provider routing", async () => {
   const provider = require("../services/telecomAbodeBillsProvider.service"), manager = require("../services/providerManagement.service");
@@ -281,12 +392,19 @@ test("Airtime pricing requires Head Office network management and preserves Cust
     ] };
     assert.equal((await call("PUT", "/admin/airtime-pricing", body, users.other)).status, 403);
     assert.equal((await call("PUT", "/admin/airtime-pricing", {}, users.admin)).status, 400);
-    const inherited = (await call("GET", "/admin/airtime-pricing", null, users.admin)).data.items[0].categories;
+    const unconfigured = (await call("GET", "/admin/airtime-pricing", null, users.admin)).data.items[0].categories;
+    const pricing = require("../services/businessNetwork.pricing");
+    assert.throws(() => pricing.airtimePrice(null, "AGENT", "7", 100, 300),
+      { code: "NETWORK_PRICE_NOT_CONFIGURED" });
+    assert.throws(() => pricing.airtimePrice(null, "MERCHANT", "7", 100, 300),
+      { code: "NETWORK_PRICE_NOT_CONFIGURED" });
+    assert.equal(pricing.airtimePrice(null, "CUSTOMER", "7", 100, 300).price, 103);
     for (const category of ["AGENT", "MERCHANT"]) {
-      assert.equal(inherited[category].configured, false);
-      assert.equal(inherited[category].inherited, true);
-      assert.equal(inherited[category].enabled, true);
-      assert.equal(inherited[category].markupBps, 300);
+      assert.equal(unconfigured[category].configured, false);
+      assert.equal(unconfigured[category].inherited, false);
+      assert.equal(unconfigured[category].requiresConfiguration, true);
+      assert.equal(unconfigured[category].enabled, false);
+      assert.equal(unconfigured[category].markupBps, null);
     }
     assert.equal((await call("PUT", "/admin/airtime-pricing", { ...body, changes: [{ ...body.changes[0], markupBps: -1 }] }, users.finance)).status, 400);
     assert.equal((await call("PUT", "/admin/airtime-pricing", { ...body, changes: [{ ...body.changes[0], markupBps: 100 }] }, users.finance)).status, 400);
@@ -536,6 +654,8 @@ test("catalogue derives global controls, business-type availability and explicit
   assert.equal(rows.AGENT.find(x => x.code === "DATA").preferencesEnabled, false);
   assert.equal(rows.AGENT.find(x => x.code === "ELECTRICITY").preferencesEnabled, false);
   assert.equal(rows.AGENT.find(x => x.code === "AIRTIME").processable, true);
+  assert.equal(rows.AGENT.find(x => x.code === "CABLE").processable, false);
+  assert.equal(rows.AGENT.find(x => x.code === "CABLE").businessPricingReady, false);
   assert.equal(rows.AGENT.find(x => x.code === "DELIVERY").processable, false);
   assert.match(rows.AGENT.find(x => x.code === "DELIVERY").reason, /interest only/);
   assert.equal(rows.MERCHANT.find(x => x.code === "FLIGHT").available, false);
