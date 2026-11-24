@@ -12,6 +12,7 @@ import 'register_screen.dart';
 import 'servicepay_theme.dart';
 import 'services/biometric_auth_service.dart';
 import 'services/session_store.dart';
+import 'services/login_identifier.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({
@@ -160,18 +161,14 @@ class _LoginScreenState extends State<LoginScreen> {
 
     if (email.isEmpty || password.isEmpty) {
       showMessage(
-        'Please enter your email address and password.',
+        'Please enter your email address or phone number and password.',
       );
       return false;
     }
 
-    final RegExp emailPattern = RegExp(
-      r'^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$',
-    );
-
-    if (!emailPattern.hasMatch(email)) {
+    if (normalizePasswordLoginIdentifier(email) == null) {
       showMessage(
-        'Please enter a valid email address.',
+        'Enter a valid email or Nigerian phone number, such as 08012345678 or +2348012345678.',
       );
       return false;
     }
@@ -489,7 +486,7 @@ class _LoginScreenState extends State<LoginScreen> {
               'Accept': 'application/json',
             },
             body: jsonEncode({
-              'email': emailController.text.trim().toLowerCase(),
+              'identifier': normalizePasswordLoginIdentifier(emailController.text),
               'password': passwordController.text,
             }),
           )
@@ -531,7 +528,7 @@ class _LoginScreenState extends State<LoginScreen> {
         showMessage(
           serverMessage.isNotEmpty
               ? serverMessage
-              : 'Incorrect email address or password.',
+              : 'Incorrect email, phone number or password.',
         );
         return;
       }
@@ -810,17 +807,18 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         TextField(
                           controller: emailController,
-                          keyboardType: TextInputType.emailAddress,
+                          keyboardType: TextInputType.text,
+                          autocorrect: false,
+                          enableSuggestions: false,
                           textInputAction: TextInputAction.next,
                           autofillHints: const [
-                            AutofillHints.email,
                             AutofillHints.username,
                           ],
                           enabled: !isLoading,
                           decoration: inputDecoration(
-                            label: 'Email address',
-                            hint: 'customer@example.com',
-                            icon: Icons.email_outlined,
+                            label: 'Email address or phone number',
+                            hint: 'Email or 08012345678',
+                            icon: Icons.person_outline,
                           ),
                         ),
                         const SizedBox(
