@@ -320,7 +320,7 @@ test("person-specific grants preserve canonical shared roles, peers and sessions
   assert.deepEqual(role, beforeRole, "Existing role and every existing permission remain byte-for-byte unchanged");
   assert.equal(String((await User.findById(peerId).lean()).staffRoleId), operations.roleId);
   assert.equal(String(changed.staffRoleId), operations.roleId);
-  assert.equal(changed.authTokenVersion, 0);
+  assert.equal((await db.collection("users").findOne({ _id: new mongoose.Types.ObjectId(operations.id) })).authTokenVersion, 0);
   const grant = await c.Registry.findOne({ staffUserId: operations.id }).lean();
   assert.ok(grant.expenseGrants.includes(c.r.PERMISSIONS.department));
   assert.equal(await c.Event.countDocuments({ action: "EXPENSE_STAFF_CAPABILITIES_GRANTED", subjectId: String(grant._id) }), 1);
