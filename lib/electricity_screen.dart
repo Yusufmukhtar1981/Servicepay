@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'services/electricity_request_store.dart';
 
 import 'package:flutter/material.dart';
+import 'widgets/servicepay_brand_logo.dart';
 import 'servicepay_theme.dart';
 import 'services/electricity_payment_result.dart';
 import 'widgets/purchase_processing.dart';
@@ -1054,10 +1055,13 @@ class _ElectricityScreenState extends State<ElectricityScreen> {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(22),
           ),
-          icon: Icon(
-            statusIcon,
-            color: statusColor,
-            size: 62,
+          icon: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const ServicePayBrandLogo(size: 48),
+              const SizedBox(height: 8),
+              Icon(statusIcon, color: statusColor, size: 42),
+            ],
           ),
           title: Text(
             successful

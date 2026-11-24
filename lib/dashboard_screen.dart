@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'widgets/servicepay_brand_logo.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
@@ -4468,28 +4469,10 @@ class _DashboardScreenState extends State<DashboardScreen>
                   color: CustomerDashboardPalette.text,
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Image(
-                  image: kIsWeb
-                      ? NetworkImage(
-                          'assets/assets/image/servicepay_dashboard_mark.png',
-                          webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
-                        )
-                      : const ResizeImage(
-                          AssetImage('assets/image/servicepay_dashboard_mark.png'),
-                          width: 128,
-                        ),
-                  key: const Key('customer-dashboard-logo'),
-                  semanticLabel: 'ServicePay logo',
-                  width: 28,
-                  height: 28,
-                  fit: BoxFit.contain,
-                  errorBuilder: (context, error, stackTrace) {
-                    return const Icon(
-                      Icons.account_balance_wallet_rounded,
-                      color: CustomerDashboardPalette.navy,
-                      size: 22,
-                    );
-                  },
+                child: const ServicePayBrandLogo(
+                  key: Key('customer-dashboard-logo'),
+                  size: 28,
+                  decorative: true,
                 ),
               ),
               const SizedBox(width: 11),

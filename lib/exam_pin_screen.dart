@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'widgets/servicepay_brand_logo.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:share_plus/share_plus.dart';
@@ -687,6 +688,8 @@ class _ExamPinScreenState extends State<ExamPinScreen> {
                     ),
                   ),
                   const SizedBox(height: 18),
+                  const ServicePayBrandLogo(size: 48),
+                  const SizedBox(height: 8),
                   const Icon(
                     Icons.verified_rounded,
                     color: ServicePayColors.accent,

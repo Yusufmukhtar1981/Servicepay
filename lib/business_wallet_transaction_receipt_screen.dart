@@ -5,6 +5,8 @@ import 'package:screenshot/screenshot.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'services/receipt_download.dart';
+import 'widgets/receipt_pdf_actions.dart';
+import 'widgets/servicepay_brand_logo.dart';
 import 'servicepay_theme.dart';
 import 'customer_receipt_privacy.dart';
 
@@ -210,6 +212,10 @@ class _BusinessWalletTransactionReceiptScreenState
 
   Future<Uint8List?> captureReceipt() async {
     try {
+      Object? assetError;
+      await precacheImage(ServicePayBrandLogo.image, context,
+          onError: (error, _) => assetError = error);
+      if (assetError != null || !mounted) return null;
       return await screenshotController.capture(
         delay: const Duration(milliseconds: 150),
         pixelRatio: 2.5,
@@ -476,18 +482,15 @@ class _BusinessWalletTransactionReceiptScreenState
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: <Widget>[
-                Image.asset('assets/image/servicepay_logo.png',
-                    width: 32,
-                    height: 32,
-                    semanticLabel: 'Official ServicePay logo'),
+                const ServicePayBrandLogo(size: 40, decorative: true),
                 const SizedBox(width: 8),
-                const Text(
-                  'ServicePay',
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                    color: Color(
-                      0xFF17231D,
+                const Flexible(
+                  child: Text(
+                    'ServicePay',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                      color: Color(0xFF17231D),
                     ),
                   ),
                 ),
@@ -749,6 +752,14 @@ class _BusinessWalletTransactionReceiptScreenState
           ),
           const SizedBox(
             height: 10,
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 18),
+            child: ReceiptPdfActions(
+              reference: textValue(transaction['reference'], fallback: ''),
+              capture: captureReceipt,
+              disabled: isProcessing,
+            ),
           ),
           Padding(
             padding: const EdgeInsets.symmetric(

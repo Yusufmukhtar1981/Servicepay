@@ -75,7 +75,7 @@ void main() {
         expect(find.text('private-route'), findsNothing);
         final image = tester.widget<Image>(find.byType(Image).first);
         expect((image.image as AssetImage).assetName,
-            'assets/image/servicepay_logo.png');
+            'assets/image/servicepay_dashboard_mark.png');
       });
     }
   }

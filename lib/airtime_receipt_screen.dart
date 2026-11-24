@@ -5,6 +5,7 @@ import 'package:share_plus/share_plus.dart';
 import 'services/api_service.dart';
 import 'services/receipt_download.dart';
 import 'servicepay_theme.dart';
+import 'widgets/servicepay_brand_logo.dart';
 
 typedef AirtimeReceiptDownloader = Future<String> Function(
   Uint8List,
@@ -269,8 +270,7 @@ class _AirtimeReceiptScreenState extends State<AirtimeReceiptScreen> {
         ),
         child: Column(
           children: [
-            Image.asset('assets/image/servicepay_logo.png',
-                width: 54, height: 54, semanticLabel: 'ServicePay logo'),
+            const ServicePayBrandLogo(size: 54, decorative: true),
             const SizedBox(height: 10),
             const Text('SERVICEPAY',
                 style: TextStyle(
@@ -298,8 +298,10 @@ class _AirtimeReceiptScreenState extends State<AirtimeReceiptScreen> {
             ]),
             const SizedBox(height: 12),
             Text('₦${_text('amount')}',
-                style:
-                    const TextStyle(fontSize: 30, fontWeight: FontWeight.w900)),
+                style: const TextStyle(
+                    color: Color(0xFF173B2B),
+                    fontSize: 30,
+                    fontWeight: FontWeight.w900)),
             const Divider(height: 30),
             _row('Customer name', _text('customerName')),
             _row('Customer ID', _text('customerId')),

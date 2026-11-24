@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:servicepay_app/widgets/servicepay_brand_logo.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:servicepay_app/airtime_result_screen.dart';
 import 'package:servicepay_app/airtime_receipt_screen.dart';
@@ -49,6 +50,7 @@ void main() {
 
     expect(find.text('SUCCESSFUL'), findsOneWidget);
     expect(find.text('Airtime Purchase Successful'), findsOneWidget);
+    expect(find.byType(ServicePayBrandLogo), findsOneWidget);
     expect(find.text('₦500'), findsOneWidget);
     expect(find.text('SP-AIR-91'), findsOneWidget);
     expect(find.text('View receipt'), findsOneWidget);
@@ -68,6 +70,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('FAILED'), findsOneWidget);
+    expect(find.byType(ServicePayBrandLogo), findsOneWidget);
     expect(find.text('Provider confirmed failure.'), findsOneWidget);
     expect(find.text('View receipt'), findsNothing);
   });

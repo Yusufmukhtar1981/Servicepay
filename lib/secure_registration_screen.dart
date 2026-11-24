@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'widgets/servicepay_brand_logo.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'referral_attribution_service.dart';
@@ -1307,6 +1308,11 @@ class _SecureRegistrationScreenState extends State<SecureRegistrationScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+        const Align(
+          alignment: Alignment.centerLeft,
+          child: ServicePayBrandLogo(size: 52, decorative: true),
+        ),
+        const SizedBox(height: 12),
         const Text(
           'Create your account',
           style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800),

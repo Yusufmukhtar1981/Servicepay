@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'widgets/servicepay_brand_logo.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -697,39 +698,22 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget buildServicePayLogo() {
-    return SizedBox(
-      width: 240,
-      height: 150,
-      child: Image.asset(
-        'assets/image/servicepay_logo.png',
-        fit: BoxFit.contain,
-        filterQuality: FilterQuality.high,
-        gaplessPlayback: true,
-        errorBuilder: (
-          BuildContext context,
-          Object error,
-          StackTrace? stackTrace,
-        ) {
-          debugPrint(
-            'SERVICEPAY LOGO ERROR: $error',
-          );
-
-          return const Center(
-            child: Text(
-              'ServicePay',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 34,
-                fontWeight: FontWeight.w900,
-                color: ServicePayColors.accent,
-              ),
+  Widget buildServicePayLogo() => const Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ServicePayBrandLogo(size: 80, decorative: true),
+          SizedBox(height: 8),
+          Text(
+            'ServicePay',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 25,
+              fontWeight: FontWeight.w800,
+              color: ServicePayColors.ink,
             ),
-          );
-        },
-      ),
-    );
-  }
+          ),
+        ],
+      );
 
   InputDecoration inputDecoration({
     required String label,

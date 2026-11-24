@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'widgets/servicepay_brand_logo.dart';
 import 'widgets/pending_purchase_warning.dart';
 import 'servicepay_theme.dart';
 
@@ -738,10 +739,14 @@ class _DataScreenState extends State<DataScreen> {
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(22),
             ),
-            icon: const Icon(
-              Icons.check_circle_rounded,
-              color: ServicePayColors.accent,
-              size: 60,
+            icon: const Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ServicePayBrandLogo(size: 48),
+                SizedBox(height: 8),
+                Icon(Icons.check_circle_rounded,
+                    color: ServicePayColors.accent, size: 42),
+              ],
             ),
             title: const Text(
               'Data Purchase Successful',

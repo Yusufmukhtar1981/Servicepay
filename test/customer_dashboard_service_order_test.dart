@@ -7,6 +7,7 @@ import 'package:servicepay_app/business_network/business_hub_screen.dart';
 import 'package:servicepay_app/id_verification_screen.dart';
 import 'package:servicepay_app/keke_order_screen.dart';
 import 'package:servicepay_app/widgets/flight_booking_unavailable_screen.dart';
+import 'package:servicepay_app/widgets/servicepay_brand_logo.dart';
 
 class _DashboardRouteObserver extends NavigatorObserver {
   final List<Route<dynamic>> pushedRoutes = <Route<dynamic>>[];
@@ -77,6 +78,10 @@ void main() {
       'Flight Booking',
     ];
 
+    final mark = find.byKey(const Key('customer-dashboard-logo'));
+    final image = find.descendant(of: mark, matching: find.byType(Image));
+    expect(tester.widget<Image>(image).image, ServicePayBrandLogo.image);
+    expect(tester.getSize(image), const Size.square(28));
     for (final String service in mainServices) {
       expect(find.text(service), findsOneWidget);
     }
@@ -153,7 +158,13 @@ void main() {
       }
       navigator.pop();
       await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
     }
+    // Business Hub is intentionally inside All Services in the latest Home.
+    await tester.ensureVisible(find.byKey(const Key('customer-all-services')));
+    await tester.tap(find.byKey(const Key('customer-all-services')));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
     final int beforeBusinessHub = observer.pushedRoutes.length;
     await tester.ensureVisible(
       find.byKey(const Key('customer-business-hub-entry')),
@@ -163,7 +174,9 @@ void main() {
     final businessRoute =
         observer.pushedRoutes.last as MaterialPageRoute<dynamic>;
     expect(
-      businessRoute.builder(tester.element(find.byType(DashboardScreen))),
+      businessRoute.builder(tester.element(
+        find.byKey(const Key('customer-business-hub-entry')),
+      )),
       isA<BusinessHubScreen>(),
     );
     navigator.pop();
@@ -225,7 +238,7 @@ void main() {
     await tester.pump();
     await tester.tap(flight);
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump(const Duration(seconds: 1));
     expect(find.byType(FlightBookingUnavailableScreen), findsOneWidget);
     expect(find.text('Coming soon'), findsOneWidget);
     expect(find.text('This page cannot create a booking or take payment.'), findsOneWidget);

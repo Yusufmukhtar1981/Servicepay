@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'widgets/servicepay_brand_logo.dart';
 
 import 'airtime_receipt_screen.dart';
 import 'services/api_service.dart';
@@ -330,6 +331,8 @@ class _AirtimeResultScreenState extends State<AirtimeResultScreen>
                     ),
                     child: Column(
                       children: [
+                        const ServicePayBrandLogo(size: 44),
+                        const SizedBox(height: 12),
                         CircleAvatar(
                           radius: 34,
                           backgroundColor: _statusColor.withValues(alpha: .12),

@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'widgets/servicepay_brand_logo.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -1106,6 +1107,8 @@ class _QrPaymentSheetState extends State<QrPaymentSheet> {
     return Column(
       key: const Key('qr-payment-success'),
       children: [
+        const ServicePayBrandLogo(size: 48),
+        const SizedBox(height: 10),
         const CircleAvatar(
           radius: 30,
           backgroundColor: Color(0xFFEAF7F0),

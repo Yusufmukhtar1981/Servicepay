@@ -8,6 +8,8 @@ import 'package:share_plus/share_plus.dart';
 import 'services/receipt_download.dart';
 import 'customer_receipt_privacy.dart';
 import 'servicepay_theme.dart';
+import 'widgets/receipt_pdf_actions.dart';
+import 'widgets/servicepay_brand_logo.dart';
 
 /// A receipt is rendered only from the values supplied by the completed
 /// transaction flow. Do not add account credentials or authentication values
@@ -41,6 +43,11 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
   bool _isDownloading = false;
 
   Future<Uint8List> _receiptPng() async {
+    Object? assetError;
+    await precacheImage(ServicePayBrandLogo.image, context,
+        onError: (error, _) => assetError = error);
+    if (assetError != null) throw StateError('Receipt logo could not be loaded.');
+    if (!mounted) throw StateError('The receipt is no longer open.');
     await WidgetsBinding.instance.endOfFrame;
     final RenderObject? renderObject =
         _receiptKey.currentContext?.findRenderObject();
@@ -215,6 +222,12 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
                     side: const BorderSide(color: primaryGreen)),
               ),
             ),
+            const SizedBox(height: 10),
+            ReceiptPdfActions(
+              reference: widget.reference,
+              capture: _receiptPng,
+              disabled: _isDownloading,
+            ),
           ]),
         ),
       ),
@@ -249,8 +262,10 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
                   fontWeight: FontWeight.w600)),
           const SizedBox(height: 18),
           Text('₦${widget.amount}',
-              style:
-                  const TextStyle(fontSize: 32, fontWeight: FontWeight.w900)),
+              style: const TextStyle(
+                  color: Color(0xFF173B2B),
+                  fontSize: 32,
+                  fontWeight: FontWeight.w900)),
           const SizedBox(height: 24),
           const Divider(),
           ..._safeDetails.entries.map(
@@ -260,7 +275,9 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
           _row('Status', widget.status, color: status.color),
           const Divider(height: 34),
           const Text('Thank you for using ServicePay',
-              style: TextStyle(fontWeight: FontWeight.w700)),
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                  color: Color(0xFF173B2B), fontWeight: FontWeight.w700)),
           const SizedBox(height: 6),
           const Text('One Platform, Many Solutions.',
               style: TextStyle(color: Colors.black54, fontSize: 12)),
@@ -269,14 +286,15 @@ class _ReceiptScreenState extends State<ReceiptScreen> {
 
   Widget _logo() =>
       Row(mainAxisAlignment: MainAxisAlignment.center, children: <Widget>[
-        Image.asset('assets/image/servicepay_logo.png',
-            width: 44, height: 44, semanticLabel: 'Official ServicePay logo'),
+        const ServicePayBrandLogo(size: 44, decorative: true),
         const SizedBox(width: 10),
-        const Text('ServicePay',
-            style: TextStyle(
-                fontSize: 23,
-                fontWeight: FontWeight.w900,
-                color: primaryGreen)),
+        const Flexible(
+          child: Text('ServicePay',
+              style: TextStyle(
+                  fontSize: 23,
+                  fontWeight: FontWeight.w900,
+                  color: primaryGreen)),
+        ),
       ]);
 
   Widget _row(String title, String value,

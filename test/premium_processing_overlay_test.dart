@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:servicepay_app/widgets/purchase_processing.dart';
+import 'package:servicepay_app/widgets/servicepay_brand_logo.dart';
 
 Widget _screen({
   required bool processing,
@@ -45,7 +46,7 @@ void main() {
           home: Scaffold(
             body: PurchaseProcessing(
               processing: true,
-              service: 'data',
+              service: 'airtime',
               requestId: 'SP-REQ-2048',
               child: const Center(child: Text('Purchase screen')),
             ),
@@ -61,12 +62,27 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.text('Please wait while we process your transaction...'),
+        find.text(
+            'Your transaction request is being verified. Do not submit another purchase.'),
         findsOneWidget,
       );
       expect(find.text('Please do not close the app.'), findsOneWidget);
       expect(find.text('Request ID: SP-REQ-2048'), findsOneWidget);
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      final mark = find.byKey(const Key('purchase-processing-logo'));
+      expect(mark, findsOneWidget);
+      final image = find.descendant(of: mark, matching: find.byType(Image));
+      expect(tester.widget<Image>(image).image, ServicePayBrandLogo.image);
+      final position = tester.getRect(mark);
+      final element = tester.element(image);
+      await tester.pump(const Duration(milliseconds: 280));
+      expect(tester.getRect(mark), position);
+      expect(tester.element(image), same(element));
+      expect(
+        find.descendant(
+            of: mark, matching: find.byType(CircularProgressIndicator)),
+        findsNothing,
+      );
       expect(tester.takeException(), isNull);
     });
   }

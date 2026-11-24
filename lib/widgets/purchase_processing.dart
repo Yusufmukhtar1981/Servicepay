@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../servicepay_theme.dart';
+import 'servicepay_brand_logo.dart';
 
 enum PurchasePhase { idle, confirming, processing, success, failed, pending }
 
@@ -71,7 +72,8 @@ class PurchaseProcessing extends StatelessWidget {
                     ),
                     child: ConstrainedBox(
                       constraints: BoxConstraints(
-                        minHeight: constraints.maxHeight - 48,
+                        minHeight: (constraints.maxHeight - 48)
+                            .clamp(0.0, double.infinity),
                       ),
                       child: Center(
                         child: ConstrainedBox(
@@ -114,10 +116,14 @@ class PurchaseProcessing extends StatelessWidget {
                                         color: ServicePayColors.brandSoft,
                                         borderRadius: BorderRadius.circular(24),
                                       ),
-                                      child: Image.asset(
-                                        'assets/image/servicepay_logo.png',
-                                        fit: BoxFit.contain,
-                                        semanticLabel: 'ServicePay',
+                                      child: const Center(
+                                        child: RepaintBoundary(
+                                          child: ServicePayBrandLogo(
+                                            key: Key('purchase-processing-logo'),
+                                            size: 56,
+                                            decorative: true,
+                                          ),
+                                        ),
                                       ),
                                     ),
                                     const SizedBox(height: 22),
@@ -138,16 +144,14 @@ class PurchaseProcessing extends StatelessWidget {
                                           .textTheme
                                           .titleLarge
                                           ?.copyWith(
-                                            color: const Color(0xFF163B2D),
+                                            color: ServicePayColors.ink,
                                             fontWeight: FontWeight.w800,
                                             height: 1.2,
                                           ),
                                     ),
                                     const SizedBox(height: 10),
-                                    Text(
-                                      service.toLowerCase() == 'airtime'
-                                          ? 'Your airtime request is being verified. Do not submit another purchase.'
-                                          : 'Please wait while we process your transaction...',
+                                    const Text(
+                                      'Your transaction request is being verified. Do not submit another purchase.',
                                       textAlign: TextAlign.center,
                                       style: TextStyle(
                                         color: ServicePayColors.muted,
