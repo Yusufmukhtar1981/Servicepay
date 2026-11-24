@@ -16,9 +16,12 @@ const PERMISSIONS = Object.freeze({
   export: "expenses.export",
   cancel: "expenses.cancel",
   exception: "expenses.evidence_exception",
+  request: "expenses.requests.create",
+  department: "expenses.requests.department",
 });
 const STATES = Object.freeze([
   "SUBMITTED", "PENDING_APPROVAL", "APPROVED", "REJECTED", "PAID", "CANCELLED", "REVERSED",
+  "DRAFT", "UNDER_REVIEW", "CHANGES_REQUESTED",
 ]);
 const PAYMENT_METHODS = Object.freeze(["BANK_TRANSFER", "CASH", "POS", "CARD", "CHEQUE", "OTHER"]);
 const fail = (message, statusCode = 400, code = "INVALID_EXPENSE") =>
@@ -128,7 +131,7 @@ function canApprove(item, actor) {
       [String(item.createdBy), String(item.submittedBy)].includes(actorId) ||
       (item.approvals || []).some(approval => String(approval.actorId) === actorId)) return false;
   const step = item.approvalSnapshot?.steps?.[(item.approvals || []).length];
-  return !!step && (step.userIds.map(String).includes(actorId) ||
+  return !!step && ([...(step.userIds || []), ...(step.backupUserIds || [])].map(String).includes(actorId) ||
     (actor.roleId && step.roleIds.map(String).includes(String(actor.roleId))));
 }
 function expectedVersion(value) {

@@ -12,6 +12,9 @@ async function find(id, session) {
   if (session) query.session(session);
   const item = await query.lean();
   if (!item) throw r.fail("Expense was not found.", 404, "EXPENSE_NOT_FOUND");
+  if (item.recordType === "DEPARTMENT_REQUEST") {
+    throw r.fail("Use Expense Requests for this record; legacy expense actions cannot modify it.", 409);
+  }
   return item;
 }
 async function normalizedDetails(input, actor, expenseId, session) {
@@ -200,7 +203,7 @@ async function get(id, actor) {
 async function list(query, actor) {
   c.allow(actor, r.PERMISSIONS.view);
   await c.storage.requireReady();
-  const filter = r.filters(query);
+  const filter = { ...r.filters(query), recordType: { $ne: "DEPARTMENT_REQUEST" } };
   const page = Math.max(1, Math.min(Number.parseInt(query.page || "1", 10) || 1, 100000));
   const pageSize = Math.max(1, Math.min(Number.parseInt(query.pageSize || "30", 10) || 30, 100));
   if (query.search) {

@@ -13,8 +13,11 @@ function validate(file) {
   catch { throw r.fail("Expense evidence must be a valid PDF, JPEG or PNG of 8 MiB or less.", 400, "EXPENSE_DOCUMENT_INVALID"); }
 }
 async function upload(file, actor, key, dependencies = {}) {
-  c.allow(actor, r.PERMISSIONS.create);
-  c.allow(actor, r.PERMISSIONS.documents);
+  if (dependencies.authorize) await dependencies.authorize(actor);
+  else {
+    c.allow(actor, r.PERMISSIONS.create);
+    c.allow(actor, r.PERMISSIONS.documents);
+  }
   validate(file);
   file = { ...file, mimetype: String(file.mimetype).toLowerCase() };
   const uploadRequestKey = r.requestKey(key, actor.id), checksum = sha256(file.buffer);
@@ -86,12 +89,15 @@ async function providerBytes(row) {
   return Buffer.from(response.data);
 }
 async function download(id, actor, dependencies = {}) {
-  c.allow(actor, r.PERMISSIONS.view);
-  c.allow(actor, r.PERMISSIONS.documents);
+  if (!dependencies.authorize) {
+    c.allow(actor, r.PERMISSIONS.view);
+    c.allow(actor, r.PERMISSIONS.documents);
+  }
   await c.storage.requireReady();
   const row = await Document.findById(r.id(id, "Document ID")).lean();
   if (!row || !["READY", "ATTACHED"].includes(row.state) ||
       (!row.expenseId && String(row.uploadedBy) !== actor.id)) throw r.fail("Document was not found.", 404);
+  if (dependencies.authorize) await dependencies.authorize(actor, row);
   let buffer;
   try { buffer = await (dependencies.providerBytes || providerBytes)(row); }
   catch { throw r.fail("Private expense evidence is temporarily unavailable.", 503, "EXPENSE_DOCUMENT_DOWNLOAD_FAILED"); }

@@ -16,7 +16,10 @@ function context(req) {
     role: String(req.user?.role || ""),
     roleId: req.staffRole?._id ? String(req.staffRole._id) : null,
     scope: req.staffAccess?.scope?.type,
-    permissions: (req.staffRole?.permissions || []).filter(value => Object.values(r.PERMISSIONS).includes(value)),
+    isStaff: req.user?.isStaff === true || req.user?.role === "HEAD_OFFICE",
+    department: req.staffRole?.department || req.user?.department || "",
+    permissions: [...new Set([...(req.staffRole?.permissions || []), ...(req.expensePermissions || [])])]
+      .filter(value => Object.values(r.PERMISSIONS).includes(value)),
   };
 }
 function reason(value) {

@@ -2,6 +2,8 @@ const permission = (key, value, module, label, description, risk = "STANDARD") =
   Object.freeze({ key, value, module, label, description, risk });
 
 const STAFF_PERMISSION_CATALOG = Object.freeze([
+  permission("EXPENSE_REQUESTS_CREATE", "expenses.requests.create", "EXPENSE_MANAGEMENT", "Submit own department expense requests", "Create and track only own operational funding requests; no global finance or wallet access."),
+  permission("EXPENSE_REQUESTS_DEPARTMENT", "expenses.requests.department", "EXPENSE_MANAGEMENT", "View own department expense requests", "Global-scope designated department staff may view their own department history, not other departments or global financial reports.", "HIGH"),
   permission("EXPENSES_VIEW", "expenses.view", "EXPENSE_MANAGEMENT", "View company expenses", "Explicit access to company operating expenses; no customer wallet authority.", "HIGH"),
   permission("EXPENSES_CREATE", "expenses.create", "EXPENSE_MANAGEMENT", "Create company expenses", "Submit evidenced company expense requests; cannot approve own requests.", "HIGH"),
   permission("EXPENSES_UPDATE", "expenses.update", "EXPENSE_MANAGEMENT", "Edit submitted expenses", "Audited edits to submitted or rejected requests only.", "HIGH"),

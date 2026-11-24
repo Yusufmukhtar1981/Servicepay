@@ -21,10 +21,14 @@ function group(rows, key, label) {
   return [...map.values()].sort((a, b) => b.amountMinor - a.amountMinor || a.label.localeCompare(b.label));
 }
 async function loadRows(query, projection) {
-  const rows = await Expense.find(query).select(projection || "").sort({ expenseDate: 1, _id: 1 })
+  const rows = await Expense.find({ $and: [query, { $or: [
+    { recordType: { $ne: "DEPARTMENT_REQUEST" } },
+    { recordType: "DEPARTMENT_REQUEST", status: { $in: ["PAID", "REVERSED"] } },
+  ] }] }).select(projection ? `${projection} recordType payment.amountMinor` : "").sort({ expenseDate: 1, _id: 1 })
     .limit(MAX_ROWS + 1).maxTimeMS(10000).lean();
   if (rows.length > MAX_ROWS) throw r.fail("More than 10,000 expenses match. Narrow the report filters.", 422);
-  return rows;
+  return rows.map(row => row.recordType === "DEPARTMENT_REQUEST"
+    ? { ...row, amountMinor: row.payment.amountMinor } : row);
 }
 function money(minor) {
   return `${Math.floor(minor / 100)}.${String(minor % 100).padStart(2, "0")}`;

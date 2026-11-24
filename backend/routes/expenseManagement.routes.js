@@ -9,6 +9,8 @@ const catalog = require("../services/expenseManagement.catalog");
 const documents = require("../services/expenseManagement.documents");
 const reports = require("../services/expenseManagement.reports");
 const legacy = require("../services/expenseManagement.legacy");
+const requestAccess = require("../services/expenseRequests.access");
+const requestService = require("../services/expenseRequests.service");
 const router = express.Router();
 const wrap = callback => async (req, res) => {
   try { await callback(req, res, c.context(req)); }
@@ -27,20 +29,35 @@ function financeAccess(req, res, next) {
   catch (error) { res.status(error.statusCode || 403).json({ success: false, message: error.message }); }
 }
 router.use(protect, loadStaffRole);
+router.use(async (req, res, next) => {
+  try {
+    req.expensePermissions = await require("../services/expenseRequests.grants")
+      .load(req.user._id, req.staffRole?._id);
+    next();
+  } catch {
+    res.status(503).json({ success: false, message: "Expense access could not be verified. No financial action was performed." });
+  }
+});
 router.use((_req, res, next) => {
   res.set({ "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff" });
   next();
 });
-router.use(financeAccess);
+router.use(require("./expenseRequests.routes")({ wrap, json, key }));
 router.get("/readiness", wrap(async (_req, res, actor) => {
+  const access = requestAccess.capabilities(actor);
   const ready = await c.storage.readiness();
   const policy = ready.ready
     ? await c.Registry.findOne({ kind: "POLICY", key: "APPROVAL", active: true }).lean() : null;
-  json(res, { ...ready, permissions: actor.permissions, actor: { id: actor.id, role: actor.role },
+  json(res, { ...ready, ...access, pendingRequestCount: ready.ready ? await requestService.pendingCount(actor) : 0,
+    permissions: actor.permissions, actor: { id: actor.id, role: actor.role, name: actor.name,
+      fullName: actor.name, department: access.department },
     workflowConfigured: !!policy?.approvalSteps?.length,
     limits: { maxDocumentBytes: documents.MAX_DOCUMENT_BYTES, maxDocuments: 10 } });
 }));
-router.get("/references", wrap(async (_req, res, actor) => json(res, await catalog.references(actor))));
+router.get("/references", wrap(async (_req, res, actor) => json(res,
+  requestAccess.capabilities(actor).financeAccess
+    ? await catalog.references(actor) : await requestService.references(actor))));
+router.use(financeAccess);
 router.get("/policy", wrap(async (_req, res, actor) => json(res, await catalog.policy(actor))));
 router.put("/policy", wrap(async (req, res, actor) => json(res,
   await catalog.write("POLICY", null, req.body, actor, key(req)))));
