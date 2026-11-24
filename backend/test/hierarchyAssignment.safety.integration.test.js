@@ -71,6 +71,154 @@ test.beforeEach(async () => {
   ]);
 });
 
+test("assignment fails closed without provisioning an absent idempotency index", async () => {
+  const original = Audit.collection.listIndexes;
+  const create = Audit.collection.createIndex;
+  let provisioned = false;
+  Audit.collection.listIndexes = () => ({ toArray: async () => [] });
+  Audit.collection.createIndex = async () => { provisioned = true; };
+  try {
+    const result = await invoke(assignment.assign, assignmentRequest(
+      { _id: new mongoose.Types.ObjectId() }, { _id: new mongoose.Types.ObjectId() }, "missing-index"));
+    assert.equal(result.status, 503);
+    assert.equal(provisioned, false);
+    assert.equal(await Audit.countDocuments({}), 0);
+  } finally {
+    Audit.collection.listIndexes = original;
+    Audit.collection.createIndex = create;
+  }
+});
+
+test("bulk customer assignments persist, audit, replay safely and retain blocked history", async () => {
+  const zonal = await User.create(makeUser("ZONAL_MANAGER", "bulk", { zone: "NORTH" }));
+  const state = await User.create(makeUser("STATE_MANAGER", "bulk", {
+    zone: "NORTH", state: "KANO", zonalManagerId: zonal._id }));
+  const [first, second] = await User.create(["first", "second"].map(suffix => makeUser("AGENT", suffix, {
+    zone: "NORTH", state: "KANO", zonalManagerId: zonal._id, stateManagerId: state._id })));
+  const customers = await User.create(["new", "legacy", "assigned"].map((suffix, i) => makeUser("CUSTOMER", suffix, {
+    walletBalance: 1000.25, agentId: i === 2 ? first._id : null,
+    stateManagerId: i === 2 ? state._id : null, zonalManagerId: i === 2 ? zonal._id : null })));
+  await Transaction.collection.insertOne({ customerId: customers[1]._id, serviceType: "AIRTIME", amount: 100,
+    status: "PENDING", reference: "legacy-bulk-preserved", description: "Unverified historical transaction" });
+  await Transaction.collection.insertOne({ customerId: customers[2]._id, serviceType: "DATA", amount: 200,
+    status: "SUCCESSFUL", reference: "captured-bulk-preserved", hierarchyCapturedAt: new Date(),
+    agentId: first._id, stateManagerId: state._id, zonalManagerId: zonal._id });
+  const history = await Transaction.find({}).sort({ reference: 1 }).lean();
+  const Role = require("../models/role.model");
+  const permissionRole = await Role.create({ name: "FIXTURE_ASSIGNMENT_ADMIN", displayName: "Fixture assignment administrator", department: "ADMINISTRATION",
+    permissions: ["hierarchy.manage"], status: "ACTIVE", scopeType: "GLOBAL" });
+  const operator = await User.create(makeUser("HEAD_OFFICE", "bulk-operator", { staffRoleId: permissionRole._id }));
+  const request = {
+    user: operator, method: "POST", originalUrl: "/api/admin/hierarchy/customer-assignments/bulk",
+    body: { customers: customers.map(c => ({ userId: String(c._id),
+      expectedParentId: c.agentId ? String(c.agentId) : null })),
+      parentId: String(second._id), reason: "Reviewed customer assignment batch", requestId: "reviewed-batch" },
+  };
+  const [result, concurrent] = await Promise.all([
+    invoke(assignment.assignCustomers, request), invoke(assignment.assignCustomers, request),
+  ]);
+  assert.equal(result.body.completed, 2);
+  assert.equal(concurrent.body.completed, 2);
+  assert.equal(result.body.results[1].code, "HIERARCHY_HISTORY_UNVERIFIED");
+  for (const index of [0, 2]) {
+    assert.equal(String((await User.findById(customers[index]._id)).agentId), String(second._id));
+  }
+  assert.equal((await User.findById(customers[1]._id)).agentId, null);
+  const replay = await invoke(assignment.assignCustomers, request);
+  assert.equal(replay.body.completed, 2);
+  assert.equal(replay.body.results[0].duplicate, true);
+  assert.equal(await Audit.countDocuments({ action: "HIERARCHY_ASSIGNMENT_UPDATED" }), 2);
+  assert.deepEqual(await Transaction.find({}).sort({ reference: 1 }).lean(), history);
+  assert.ok((await User.find({ _id: { $in: customers.map(c => c._id) } }).lean())
+    .every(c => c.walletBalance === 1000.25 && c.role === "CUSTOMER"));
+  const changed = await invoke(assignment.assignCustomers, {
+    ...request, body: { ...request.body, parentId: String(first._id) },
+  });
+  assert.equal(changed.body.results[0].code, "HIERARCHY_REQUEST_INTENT_MISMATCH");
+  const staffMove = await invoke(assignment.assignCustomers, {
+    ...request, body: { ...request.body, requestId: "staff-is-not-customer",
+      customers: [{ userId: String(first._id), expectedParentId: String(state._id) }] },
+  });
+  assert.equal(staffMove.body.completed, 0);
+  assert.equal(String((await User.findById(first._id)).stateManagerId), String(state._id));
+  const list = await invoke(assignment.listUsers, { query: { role: "CUSTOMER", parentId: String(second._id), includeInactive: "true" } });
+  assert.equal(list.body.pagination.total, 2);
+  assert.ok(list.body.users.every(c => c.lastAssignment.actorName === operator.fullName));
+  assert.ok(list.body.users.every(c => c.walletBalance === undefined));
+  const unassigned = await invoke(assignment.listUsers, { query: { role: "CUSTOMER", assignment: "UNASSIGNED", includeInactive: "true" } });
+  assert.equal(unassigned.body.pagination.total, 1);
+  const audits = await invoke(assignment.history, { query: { userId: String(customers[0]._id) } });
+  assert.equal(audits.body.records.length, 1);
+  assert.equal(String(audits.body.records[0].actorId), String(operator._id));
+  const workspace = require("../services/managementWorkspace.service");
+  assert.equal((await workspace.customerList(first)).total, 0);
+  assert.equal((await workspace.customerList(second)).total, 2);
+  assert.equal((await workspace.customerList(state)).total, 2);
+  await assert.rejects(workspace.customerDetail(first, String(customers[2]._id)), /not found/i);
+  const moved = await workspace.customerDetail(second, String(customers[2]._id));
+  assert.equal(moved.transactions.total, 0, "new Aggregator must not inherit the old Aggregator's transaction custody");
+  // Exercise the actual HTTP router, JWT authentication and assigned-role guard.
+  const express = require("express");
+  const app = express(); app.use(express.json());
+  app.use("/api/admin/hierarchy", require("../routes/hierarchyAssignment.routes"));
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise(resolve => server.once("listening", resolve));
+  try {
+    const jwt = require("jsonwebtoken");
+    const key = process.env.JWT_SECRET;
+    process.env.JWT_SECRET = "synthetic-assignment-http-only";
+    try {
+      const url = `http://127.0.0.1:${server.address().port}/api/admin/hierarchy/customer-assignments/bulk`;
+      const headers = user => ({ "Content-Type": "application/json", Authorization: `Bearer ${jwt.sign({
+        id: String(user._id), tokenVersion: user.authTokenVersion || 0,
+      }, process.env.JWT_SECRET, { expiresIn: "5m" })}` });
+      const denied = await fetch(url, { method: "POST", headers: headers(first), body: JSON.stringify(request.body) });
+      assert.equal(denied.status, 403);
+      const replayed = await fetch(url, { method: "POST", headers: headers(operator), body: JSON.stringify(request.body) });
+      assert.equal(replayed.status, 200);
+      assert.equal((await replayed.json()).completed, 2);
+      assert.equal(await Audit.countDocuments({ action: "HIERARCHY_ASSIGNMENT_UPDATED" }), 2);
+    } finally {
+      if (key === undefined) delete process.env.JWT_SECRET; else process.env.JWT_SECRET = key;
+    }
+  } finally {
+    await new Promise(resolve => server.close(resolve));
+    await Role.collection.deleteOne({ _id: permissionRole._id });
+  }
+});
+
+test("bulk validation and route guards reject unauthorized, duplicate and unreviewed input", async () => {
+  const body = { requestId: "validation", reason: "Approved reviewed assignment",
+    parentId: String(new mongoose.Types.ObjectId()),
+    customers: [{ userId: String(new mongoose.Types.ObjectId()), expectedParentId: null }] };
+  for (const role of ["AGENT", "STATE_MANAGER", "ZONAL_MANAGER", "CUSTOMER", "CUSTOMER_SUPPORT", "OPERATIONS_MANAGER"]) {
+    assert.equal((await invoke(assignment.assignCustomers, { user: { ...actor(), role }, body })).status, 403);
+  }
+  for (const customers of [[], [...body.customers, ...body.customers],
+    [{ userId: body.customers[0].userId }], Array.from({ length: 51 }, () => body.customers[0])]) {
+    assert.equal((await invoke(assignment.assignCustomers, { user: actor(), body: { ...body, customers } })).status, 400);
+  }
+  const router = require("../routes/hierarchyAssignment.routes");
+  const route = router.stack.find(layer => layer.route?.path === "/customer-assignments/bulk").route;
+  assert.equal(route.stack[2].name, "loadStaffRole");
+  const denied = await invoke(route.stack[3].handle, { staffRole: { permissions: [] } });
+  assert.equal(denied.status, 403);
+});
+
+test("customer directory filters status, assignment, literal search and pagination", async () => {
+  await User.create([
+    makeUser("CUSTOMER", "filter-first", { fullName: "Literal [name]", status: "ACTIVE" }),
+    makeUser("CUSTOMER", "filter-second", { status: "SUSPENDED" }),
+  ]);
+  const list = query => invoke(assignment.listUsers, { query: { role: "CUSTOMER", includeInactive: "true", ...query } });
+  assert.equal((await list({ status: "SUSPENDED" })).body.pagination.total, 1);
+  assert.equal((await list({ search: "[name]" })).body.pagination.total, 1);
+  assert.equal((await list({ limit: "1", page: "2" })).body.users.length, 1);
+  assert.equal((await list({ assignment: "ASSIGNED" })).body.pagination.total, 0);
+  assert.equal((await list({ status: "INVALID" })).status, 400);
+  assert.equal((await list({ assignment: "UNASSIGNED", parentId: String(new mongoose.Types.ObjectId()) })).status, 400);
+});
+
 test("only Head Office can submit an assignment and route guard remains restrictive", async () => {
   const denied = await invoke(assignment.assign, assignmentRequest(
     { _id: new mongoose.Types.ObjectId() },

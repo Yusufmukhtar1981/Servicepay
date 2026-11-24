@@ -21,15 +21,15 @@ const ensureHierarchyRequestIndex = async () => {
       const indexes = await AdminAuditLog.collection.listIndexes().toArray();
       const found = indexes.find((index) => index.name === "uniq_hierarchy_request_id");
       if (found) {
-        if (!found.unique || found.key?.["metadata.hierarchyRequestId"] !== 1) {
+        if (!found.unique || !found.sparse || found.partialFilterExpression ||
+            Object.keys(found.key || {}).length !== 1 || found.key?.["metadata.hierarchyRequestId"] !== 1) {
           throw error(503, "Hierarchy idempotency storage is not configured safely.");
         }
         return;
       }
-      await AdminAuditLog.collection.createIndex(
-        { "metadata.hierarchyRequestId": 1 },
-        { unique: true, sparse: true, name: "uniq_hierarchy_request_id" }
-      );
+      // Request handling must not provision production storage. Keep the
+      // safeguard mandatory and leave missing-index repair to approved ops.
+      throw error(503, "Hierarchy idempotency storage requires approved provisioning.");
     })().catch((err) => {
       hierarchyIndexReady = null;
       throw err;
@@ -78,6 +78,19 @@ exports.listUsers = async (req, res) => {
     if (!ROLES.has(role)) return res.status(400).json({ success: false, message: "A valid hierarchy role is required." });
     const { page, limit } = pageArgs(req.query);
     const query = { ...(req.query.includeInactive === "true" ? { isDeleted: { $ne: true } } : active), role };
+    const status = String(req.query.status || "ALL").toUpperCase();
+    if (!["ALL", "ACTIVE", "INACTIVE", "SUSPENDED", "BLOCKED", "PENDING"].includes(status)) {
+      return res.status(400).json({ success: false, message: "Invalid account status filter." });
+    }
+    if (status !== "ALL") query.status = status;
+    const assignment = String(req.query.assignment || "ALL").toUpperCase();
+    if (!["ALL", "ASSIGNED", "UNASSIGNED"].includes(assignment) || (role !== "CUSTOMER" && assignment !== "ALL")) {
+      return res.status(400).json({ success: false, message: "Invalid customer assignment filter." });
+    }
+    if (assignment !== "ALL") query.agentId = assignment === "ASSIGNED" ? { $ne: null } : null;
+    if (assignment === "UNASSIGNED" && req.query.parentId) {
+      return res.status(400).json({ success: false, message: "An unassigned customer cannot have an Aggregator filter." });
+    }
     if (req.query.parentId) {
       const parentId = oid(req.query.parentId);
       if (!parentId) return res.status(400).json({ success: false, message: "Invalid hierarchy parent ID." });
@@ -107,8 +120,18 @@ exports.listUsers = async (req, res) => {
     const parentIds = [...new Set(rows.map(parentFor).filter(Boolean).map(String))];
     const parents = await User.find({ _id: { $in: parentIds } }).select("_id fullName role").lean();
     const parentMap = new Map(parents.map((parent) => [String(parent._id), parent]));
+    const latest = rows.length ? await AdminAuditLog.aggregate([
+      { $match: { action: "HIERARCHY_ASSIGNMENT_UPDATED", targetUserId: { $in: rows.map(row => row._id) } } },
+      { $sort: { createdAt: -1, _id: -1 } },
+      { $group: { _id: "$targetUserId", createdAt: { $first: "$createdAt" }, actorName: { $first: "$actorName" },
+        actorId: { $first: "$actorId" } } },
+    ]).option({ maxTimeMS: 15000 }) : [];
+    const lastById = new Map(latest.map(row => [String(row._id), row]));
     return res.json({
-      success: true, users: rows.map((row) => dto(row, parentMap.get(String(parentFor(row))))),
+      success: true, users: rows.map((row) => ({
+        ...dto(row, parentMap.get(String(parentFor(row)))),
+        lastAssignment: lastById.get(String(row._id)) || null,
+      })),
       pagination: { page, limit, total, pages: Math.ceil(total / limit) },
     });
   } catch (err) {
@@ -228,6 +251,9 @@ exports.assign = async (req, res) => {
         return;
       }
       const { target, parent } = await loadAssignment(req, session);
+      if (req.body.expectedRole && target.role !== req.body.expectedRole) {
+        throw error(409, "The customer role changed; refresh before assigning.", "HIERARCHY_ROLE_CHANGED");
+      }
       if (String(parentFor(target) || "") !== String(expectedParentId || "")) {
         throw error(409, "The hierarchy changed during this assignment; please retry.");
       }
@@ -317,6 +343,56 @@ exports.assign = async (req, res) => {
     }
     return res.status(err.statusCode || 500).json({ success: false, code: err.code, message: err.statusCode ? err.message : "Unable to assign hierarchy user." });
   } finally { await session.endSession(); }
+};
+
+// Bounded, independently transactional customer moves. A partial result is
+// explicit; retries reuse each customer's durable request ID and original intent.
+exports.assignCustomers = async (req, res) => {
+  if (req.user?.role !== "HEAD_OFFICE") {
+    return res.status(403).json({ success: false, message: "Only Head Office can assign customers." });
+  }
+  const { customers, parentId, reason, requestId } = req.body || {};
+  if (!Array.isArray(customers) || customers.length < 1 || customers.length > 50 ||
+      !oid(parentId) || typeof reason !== "string" || !reason.trim() || reason.trim().length > 500 ||
+      typeof requestId !== "string" || !/^[A-Za-z0-9_-]{1,100}$/.test(requestId)) {
+    return res.status(400).json({ success: false, message: "Provide 1–50 customers, an Aggregator, reason and valid requestId." });
+  }
+  const ids = new Set();
+  for (const row of customers) {
+    if (!row || !oid(row.userId) || !Object.hasOwn(row, "expectedParentId") ||
+        (row.expectedParentId !== null && !oid(row.expectedParentId)) || ids.has(String(oid(row.userId)))) {
+      return res.status(400).json({ success: false, message: "Each customer must be unique and include its reviewed expectedParentId." });
+    }
+    ids.add(String(oid(row.userId)));
+  }
+  try {
+    const parent = await User.exists({ _id: oid(parentId), role: "AGENT", ...active });
+    if (!parent) return res.status(400).json({ success: false, message: "An active Aggregator is required." });
+    const results = [];
+    for (const row of customers) {
+      const userId = String(oid(row.userId));
+      const child = { ...req, body: { ...row, userId, parentId, reason,
+        expectedRole: "CUSTOMER", requestId: `bulk-${requestId}-${userId}` } };
+      let httpStatus = 200;
+      try {
+        await exports.assign(child, {
+          status(code) { httpStatus = code; return this; },
+          json(body) {
+            results.push({ userId, httpStatus, success: body.success === true, duplicate: body.duplicate === true,
+              code: body.code, message: body.message, affectedCount: body.affectedCount });
+            return this;
+          },
+        });
+      } catch {
+        results.push({ userId, httpStatus: 503, success: false,
+          message: "Outcome unavailable. Retry the same reviewed batch; do not create a new request." });
+      }
+    }
+    return res.json({ success: true, results,
+      completed: results.filter(row => row.success).length, total: results.length });
+  } catch {
+    return res.status(503).json({ success: false, message: "Unable to validate the reviewed batch. Retry the same request." });
+  }
 };
 
 exports.history = async (req, res) => {
