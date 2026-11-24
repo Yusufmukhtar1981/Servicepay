@@ -448,7 +448,7 @@ test("approved business DATA uses one category price for signed quote, debit, le
   planRow.businessPrices = { AGENT: { enabled: true, sellingPrice: 110, maximumProviderCost: 110 } };
   await planRow.save();
   await N.Profile.createCollection(); await N.Settings.createCollection();
-  const profile = await N.Profile.create({ owner: user._id, kind: "AGENT", status: "APPROVED", revision: 1 });
+  const profile = await N.Profile.create({ owner: user._id, kind: "AGENT", status: "APPROVED", services: ["DATA"], revision: 1 });
   try {
     const catalog = await invokeHandler(controller.getDataPlans, {
       user: { _id: user._id, role: "CUSTOMER" }, params: { network: "MTN" }, query: { businessKind: "AGENT" },
@@ -475,16 +475,22 @@ test("approved business DATA uses one category price for signed quote, debit, le
     assert.equal((await DataPriceOverride.findById(planRow._id)).sellingPrice, 150);
   } finally { await N.Profile.deleteOne({ _id: profile._id }); await N.Settings.deleteMany({}); }
 });
-test("business DATA inherits Customer pricing only without an override and disabled category does not debit or dispatch", async () => {
+test("business DATA requires explicit category pricing and a disabled category does not debit or dispatch", async () => {
   const N = require("../models/businessNetwork.models");
   const user = await makeUser();
   await User.updateOne({ _id: user._id }, { $set: { kycVerified: true } });
   await N.Profile.createCollection(); await N.Settings.createCollection();
-  const profile = await N.Profile.create({ owner: user._id, kind: "MERCHANT", status: "APPROVED", revision: 1 });
+  const profile = await N.Profile.create({ owner: user._id, kind: "MERCHANT", status: "APPROVED", services: ["DATA"], revision: 1 });
   try {
+    const row = await DataPriceOverride.findOne({}).lean();
+    assert.equal(require("../services/businessNetwork.pricing").dataPrice(row, "MERCHANT", 100), null);
+    await DataPriceOverride.updateOne({}, { $set: {
+      "businessPrices.MERCHANT": { enabled: true, sellingPrice: 100, maximumProviderCost: 100 },
+    } });
     const catalog = await invokeHandler(controller.getDataPlans, {
       user: { _id: user._id, role: "CUSTOMER" }, params: { network: "MTN" }, query: { businessKind: "MERCHANT" },
     });
+    assert.equal(catalog.status, 200);
     assert.equal(catalog.body.plans[0].price, 100);
     const body = { ...purchaseBody(user), businessKind: "MERCHANT", amount: 100, productQuote: catalog.body.plans[0].productQuote };
     const first = await invoke(user, body, { idempotencyKey: "business-inherited-once" });
