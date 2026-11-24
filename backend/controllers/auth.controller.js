@@ -3,6 +3,7 @@ const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const User = require("../models/user.model");
+const { passwordLoginIdentifier } = require("../services/passwordLoginIdentifier.service");
 const { createCustomerRefreshSession } = require("../services/customerRefreshSession.service");
 const AppSettings = require("../models/appSettings.model");
 const AccountRestriction = require("../models/accountRestriction.model");
@@ -809,9 +810,7 @@ exports.registerUser = async (
     }
 
     const duplicateConditions = [
-      {
-        phone: cleanPhone,
-      },
+      passwordLoginIdentifier(cleanPhone).filter,
     ];
 
     if (cleanEmail) {
@@ -1048,7 +1047,7 @@ exports.loginUser = async (
       email,
       identifier,
       password,
-    } = req.body;
+    } = req.body || {};
 
     const loginValue =
       email ||
@@ -1056,7 +1055,9 @@ exports.loginUser = async (
       identifier;
 
     if (
-      !loginValue ||
+      typeof loginValue !== "string" ||
+      typeof password !== "string" ||
+      !loginValue.trim() ||
       !password
     ) {
       return res.status(400).json({
@@ -1066,27 +1067,17 @@ exports.loginUser = async (
       });
     }
 
-    const cleanLoginValue = String(
-      loginValue
-    ).trim();
-
-    const normalizedEmail =
-      cleanLoginValue.toLowerCase();
+    const identity = passwordLoginIdentifier(loginValue);
+    const cleanLoginValue = identity?.auditIdentifier || loginValue.trim().slice(0, 254);
 
     /*
      * Password uses select:false in user.model.js.
      * We must explicitly request it with +password.
      */
-    const user = await User.findOne({
-      $or: [
-        {
-          email: normalizedEmail,
-        },
-        {
-          phone: cleanLoginValue,
-        },
-      ],
-    }).select("+password +authTokenVersion");
+    const matches = identity ? await User.find(identity.filter)
+      .select("+password +authTokenVersion")
+      .limit(2) : [];
+    const user = matches.length === 1 ? matches[0] : null;
 
     if (!user) {
       await recordLoginSecurityEvent(req, {
